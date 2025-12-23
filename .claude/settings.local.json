@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm install:*)",
+      "Bash(powershell -Command \"Copy-Item -Path ''.'' -Destination ''../zxdsProject_backup'' -Recurse -Force\")",
+      "Bash(npm run build:*)",
+      "Bash(dir:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
