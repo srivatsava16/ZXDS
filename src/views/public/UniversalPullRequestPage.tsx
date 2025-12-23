@@ -45,7 +45,7 @@ import {
   Output as OutputIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import OutputModule from '../components/OutputModule/OutputModule';
+import OutputModule from '../../components/OutputModule/OutputModule';
 
 const STATS_FIELDS = [
   'DEVICE',

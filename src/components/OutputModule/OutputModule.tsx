@@ -119,7 +119,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
     sourceIds.forEach(id => {
       const source = availableInputSources.find(src => src.id === id);
-      if (source && source.headers) {
+      if (source?.headers) {
         source.headers.forEach(field => fieldsSet.add(field));
       }
     });
@@ -137,7 +137,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   // Filtered lists based on search queries
   const filteredInputSources = availableInputSources.filter(source =>
-    source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+    source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
   const filteredOutputFields = availableOutputFields.filter(field =>

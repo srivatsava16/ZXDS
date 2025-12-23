@@ -36,8 +36,8 @@ import {
   FileCopy,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import OutputModule from '../components/OutputModule/OutputModule';
-import StatsConfigDialog from '../components/StatsConfigDialog/StatsConfigDialog';
+import OutputModule from '../../components/OutputModule/OutputModule';
+import StatsConfigDialog from '../../components/StatsConfigDialog/StatsConfigDialog';
 
 interface ReportData {
   id: number;

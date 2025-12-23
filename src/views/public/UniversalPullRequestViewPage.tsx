@@ -40,7 +40,7 @@ import {
   Output as OutputIcon,
   ArrowBack,
 } from '@mui/icons-material';
-import OutputModule from '../components/OutputModule/OutputModule';
+import OutputModule from '../../components/OutputModule/OutputModule';
 
 const STATS_FIELDS = [
   'DEVICE',

@@ -70,14 +70,14 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import InputModule from '../components/InputModule/InputModule';
-import AppendModule from '../components/AppendModule/AppendModule';
-import SuppressModule from '../components/SuppressModule/SuppressModule';
-import MatchModule from '../components/MatchModule/MatchModule';
-import OutputModule from '../components/OutputModule/OutputModule';
-import ScheduleModule from '../components/ScheduleModule/ScheduleModule';
-import type { InputSource } from '../components/InputModule/InputModule';
-import { comprehensiveSampleData } from '../mockData/sampleRequestData';
+import InputModule from '../../components/InputModule/InputModule';
+import AppendModule from '../../components/AppendModule/AppendModule';
+import SuppressModule from '../../components/SuppressModule/SuppressModule';
+import MatchModule from '../../components/MatchModule/MatchModule';
+import OutputModule from '../../components/OutputModule/OutputModule';
+import ScheduleModule from '../../components/ScheduleModule/ScheduleModule';
+import type { InputSource } from '../../components/InputModule/InputModule';
+import { comprehensiveSampleData } from '../../mockData/sampleRequestData';
 
 const STATS_FIELDS = [
   'DEVICE',
@@ -379,27 +379,27 @@ const RequestCreationPage: React.FC = () => {
       setInputSources(comprehensiveSampleData.inputSources);
 
       // Load append configurations
-      if (comprehensiveSampleData.appendConfigs && comprehensiveSampleData.appendConfigs.length > 0) {
+      if (comprehensiveSampleData.appendConfigs?.length > 0) {
         setInitialAppendConfigs(comprehensiveSampleData.appendConfigs);
       }
 
       // Load suppress configurations
-      if (comprehensiveSampleData.suppressConfigs && comprehensiveSampleData.suppressConfigs.length > 0) {
+      if (comprehensiveSampleData.suppressConfigs?.length > 0) {
         setInitialSuppressConfigs(comprehensiveSampleData.suppressConfigs);
       }
 
       // Load match configurations
-      if (comprehensiveSampleData.matchConfigs && comprehensiveSampleData.matchConfigs.length > 0) {
+      if (comprehensiveSampleData.matchConfigs?.length > 0) {
         setInitialMatchConfigs(comprehensiveSampleData.matchConfigs);
       }
 
       // Load output configurations
-      if (comprehensiveSampleData.outputConfigs && comprehensiveSampleData.outputConfigs.length > 0) {
+      if (comprehensiveSampleData.outputConfigs?.length > 0) {
         setInitialOutputConfigs(comprehensiveSampleData.outputConfigs);
       }
 
       // Load stats configurations
-      if (comprehensiveSampleData.statsConfigs && comprehensiveSampleData.statsConfigs.length > 0) {
+      if (comprehensiveSampleData.statsConfigs?.length > 0) {
         setStatsConfigurations(comprehensiveSampleData.statsConfigs as StatsConfiguration[]);
       }
 
@@ -411,8 +411,8 @@ const RequestCreationPage: React.FC = () => {
         setNotificationWhen(schedConfig.emailNotification || 'standard');
         setStartDate(schedConfig.startDate || '');
         setEndDate(schedConfig.endDate || '');
-        if (schedConfig.notificationEmails && schedConfig.notificationEmails.length > 0) {
-          setRecipientEmail(schedConfig.notificationEmails.join(', '));
+        if (schedConfig.notificationEmails?.length > 0) {
+          setRecipientEmail(schedConfig.notificationEmails?.join(', ') || '');
         }
       }
     }
@@ -745,7 +745,7 @@ const RequestCreationPage: React.FC = () => {
 
       // Filtered lists for Stats Module
       const filteredStatsInputSources = allAvailableInputSources.filter(source =>
-        source.sourceName.toLowerCase().includes(statsInputSourcesSearch.toLowerCase())
+        source?.sourceName?.toLowerCase().includes(statsInputSourcesSearch.toLowerCase())
       );
 
       const filteredStatsCountsOn = STATS_FIELDS.filter(field =>

@@ -24,7 +24,7 @@ const LoginPage: React.FC = () => {
   });
 
   const handleChange = (field: string) => (event: any) => {
-    const value = field === 'rememberMe' ? event.target.checked : event.target.value;
+    const value = field === 'rememberMe' ? event?.target?.checked : event?.target?.value;
     setFormData({
       ...formData,
       [field]: value,
@@ -34,11 +34,11 @@ const LoginPage: React.FC = () => {
   const handleSignIn = () => {
     // Demo: Navigate to main app
     console.log('Sign in with:', formData);
-    navigate('/report');
+    navigate?.('/report');
   };
 
   const handleForgotPassword = () => {
-    navigate('/forgot-password');
+    navigate?.('/forgot-password');
   };
 
   return (

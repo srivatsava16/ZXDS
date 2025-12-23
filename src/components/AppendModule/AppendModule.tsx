@@ -95,15 +95,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
 
     // If only one source selected, return all its fields
     if (selectedSources.length === 1) {
-      const headers = selectedSources[0].headers || [];
+      const headers = selectedSources[0]?.headers || [];
       // Merge headers with demo fields, ensuring no duplicates
       return [...new Set([...demoFields, ...headers])];
     }
 
     // If multiple sources, return common fields (intersection)
-    const firstSourceHeaders = selectedSources[0].headers || [];
+    const firstSourceHeaders = selectedSources[0]?.headers || [];
     const commonHeaders = firstSourceHeaders.filter(header =>
-      selectedSources.every(src => src.headers?.includes(header))
+      selectedSources.every(src => src?.headers?.includes(header))
     );
     // Merge common headers with demo fields, ensuring no duplicates
     return [...new Set([...demoFields, ...commonHeaders])];
@@ -119,12 +119,12 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
         predefined.fields.forEach(field => fieldsSet.add(field));
       } else {
         const customSource = customAppendSources.find(src => src.id === id);
-        if (customSource && customSource.headers) {
+        if (customSource?.headers) {
           customSource.headers.forEach(field => fieldsSet.add(field));
         } else {
           // Check if it's a versioned source
           const versionedSource = availableInputSources.find(src => src.id === id);
-          if (versionedSource && versionedSource.headers) {
+          if (versionedSource?.headers) {
             versionedSource.headers.forEach(field => fieldsSet.add(field));
           }
         }

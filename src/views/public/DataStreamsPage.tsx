@@ -14,7 +14,7 @@ import {
   Chip,
 } from '@mui/material';
 import { Add, Edit, Delete, Storage } from '@mui/icons-material';
-import DataStreamDialog from '../components/DataStreams/DataStreamDialog';
+import DataStreamDialog from '../../components/DataStreams/DataStreamDialog';
 
 interface DataStream {
   id: string;

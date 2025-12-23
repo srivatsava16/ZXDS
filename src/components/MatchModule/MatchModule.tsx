@@ -122,12 +122,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
     matchSourceIds.forEach(id => {
       // Check if it's a custom match source
       const customSource = customMatchSources.find(src => src.id === id);
-      if (customSource && customSource.headers) {
+      if (customSource?.headers) {
         customSource.headers.forEach(field => fieldsSet.add(field));
       } else {
         // Check if it's a versioned source
         const versionedSource = availableInputSources.find(src => src.id === id);
-        if (versionedSource && versionedSource.headers) {
+        if (versionedSource?.headers) {
           versionedSource.headers.forEach(field => fieldsSet.add(field));
         } else {
           // For predefined sources, use mock fields

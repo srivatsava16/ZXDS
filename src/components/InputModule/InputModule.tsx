@@ -46,21 +46,26 @@ interface InputModuleProps {
   initialSources?: InputSource[];
 }
 
-const InputModule: React.FC<InputModuleProps> = ({ hideButton = false, onAddClick, onSourcesChange, initialSources = [] }) => {
-  const [sources, setSources] = useState<InputSource[]>(initialSources);
+const InputModule: React.FC<InputModuleProps> = ({ 
+  hideButton = false, 
+  onAddClick, 
+  onSourcesChange, 
+  initialSources = [] 
+}) => {
+  const [sources, setSources] = useState<InputSource[]>(initialSources || []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<InputSource | null>(null);
 
   // Sync with prop changes
   useEffect(() => {
-    setSources(initialSources);
+    setSources(initialSources || []);
   }, [initialSources]);
 
   const handleAddSource = () => {
     setEditingSource(null);
     setDialogOpen(true);
     if (onAddClick) {
-      onAddClick();
+      onAddClick?.();
     }
   };
 
@@ -70,19 +75,19 @@ const InputModule: React.FC<InputModuleProps> = ({ hideButton = false, onAddClic
   };
 
   const handleDeleteSource = (id: string) => {
-    const newSources = sources.filter(s => s.id !== id);
+    const newSources = sources?.filter(s => s?.id !== id) || [];
     setSources(newSources);
     if (onSourcesChange) {
-      onSourcesChange(newSources);
+      onSourcesChange?.(newSources);
     }
   };
 
   const handleSaveSource = (source: InputSource, shouldClose: boolean = true) => {
     let newSources: InputSource[];
     if (editingSource) {
-      newSources = sources.map(s => s.id === source.id ? source : s);
+      newSources = sources?.map(s => s?.id === source?.id ? source : s) || [];
     } else {
-      newSources = [...sources, { ...source, id: Date.now().toString() }];
+      newSources = [...(sources || []), { ...source, id: Date.now().toString() }];
     }
     setSources(newSources);
 
@@ -96,7 +101,7 @@ const InputModule: React.FC<InputModuleProps> = ({ hideButton = false, onAddClic
     }
 
     if (onSourcesChange) {
-      onSourcesChange(newSources);
+      onSourcesChange?.(newSources);
     }
   };
 
@@ -139,7 +144,7 @@ const InputModule: React.FC<InputModuleProps> = ({ hideButton = false, onAddClic
       )}
 
       {/* Placeholder content when no sources */}
-      {sources.length === 0 && (
+      {(sources?.length ?? 0) === 0 && (
         <Box
           sx={{
             p: 4,
