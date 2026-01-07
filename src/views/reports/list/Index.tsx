@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -21,6 +21,9 @@ import {
   Card,
   CardContent,
   Divider,
+  Alert,
+  CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import {
   Visibility,
@@ -34,194 +37,43 @@ import {
   Save,
   Edit,
   FileCopy,
+  Refresh,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import OutputModule from '../../components/OutputModule/OutputModule';
-import StatsConfigDialog from '../../components/StatsConfigDialog/StatsConfigDialog';
+import OutputModule from '../../../components/OutputModule/OutputModule';
+import StatsConfigDialog from '../../../components/StatsConfigDialog/StatsConfigDialog';
+import { getAllReports, getMockReportsData, type Report as ApiReport } from '../../../services/api';
 
 interface ReportData {
   id: number;
   requestName: string;
-  filePath: string;
-  fileDetails: { fileName: string; count: number }[];
-  createdDate: string;
-  processedDate: string;
+  createdDate: string | null;
+  processedDate: string | null;
   createdBy: string;
   updatedBy: string;
-  updatedDate: string;
-  status: 'Pending' | 'Processing' | 'Completed' | 'Failed' | 'Waiting';
+  updatedDate: string | null;
+  status: 'Pending' | 'Inprogress' | 'Completed' | 'Failed' | 'Waiting';
+  requestType: 'Adhoc' | 'Scheduled';
+  recipientEmail: string;
+  scheduleDateTime: string | null;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data: ReportData[];
+  Counts: {
+    TodayRequests: number;
+    Waiting: number;
+    Inprogress: number;
+    Completed: number;
+  };
 }
 
 // Get today's date for sample data
 const today = new Date().toISOString().split('T')[0];
 
-const sampleData: ReportData[] = [
-  {
-    id: 1,
-    requestName: 'Sprint Q1 2024',
-    filePath: '/data/sprint/q1_2024',
-    fileDetails: [
-      { fileName: 'customers.csv', count: 15000 },
-      { fileName: 'transactions.csv', count: 45000 },
-    ],
-    createdDate: today, // Today's request
-    processedDate: today,
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: today,
-    status: 'Completed',
-  },
-  {
-    id: 2,
-    requestName: 'Verizon March',
-    filePath: '/data/verizon/march',
-    fileDetails: [
-      { fileName: 'billing.csv', count: 28000 },
-    ],
-    createdDate: '2024-03-01',
-    processedDate: '2024-03-02',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2024-03-02',
-    status: 'Completed',
-  },
-  {
-    id: 3,
-    requestName: 'Credit One Analysis',
-    filePath: '/data/creditone/analysis',
-    fileDetails: [
-      { fileName: 'accounts.csv', count: 12000 },
-      { fileName: 'payments.csv', count: 35000 },
-    ],
-    createdDate: today, // Today's request
-    processedDate: '',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: today,
-    status: 'Processing',
-  },
-  {
-    id: 4,
-    requestName: 'Dish Network Q4 2023',
-    filePath: '/data/dish/q4_2023',
-    fileDetails: [
-      { fileName: 'subscribers.csv', count: 22000 },
-      { fileName: 'packages.csv', count: 18000 },
-    ],
-    createdDate: '2023-12-10',
-    processedDate: '2023-12-11',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2023-12-11',
-    status: 'Completed',
-  },
-  {
-    id: 5,
-    requestName: 'Generic Request Jan 2024',
-    filePath: '/data/generic/jan_2024',
-    fileDetails: [
-      { fileName: 'data_extract.csv', count: 50000 },
-    ],
-    createdDate: today, // Today's request
-    processedDate: '',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: today,
-    status: 'Failed',
-  },
-  {
-    id: 6,
-    requestName: 'Sprint Q2 2024',
-    filePath: '/data/sprint/q2_2024',
-    fileDetails: [
-      { fileName: 'customers.csv', count: 16500 },
-      { fileName: 'transactions.csv', count: 48000 },
-      { fileName: 'products.csv', count: 8500 },
-    ],
-    createdDate: '2024-04-01',
-    processedDate: '2024-04-02',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2024-04-02',
-    status: 'Completed',
-  },
-  {
-    id: 7,
-    requestName: 'Verizon April Data',
-    filePath: '/data/verizon/april',
-    fileDetails: [
-      { fileName: 'billing.csv', count: 30000 },
-      { fileName: 'services.csv', count: 12000 },
-    ],
-    createdDate: today, // Today's request
-    processedDate: '',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: today,
-    status: 'Processing',
-  },
-  {
-    id: 8,
-    requestName: 'Credit One Q1 Report',
-    filePath: '/data/creditone/q1_report',
-    fileDetails: [
-      { fileName: 'accounts.csv', count: 14000 },
-      { fileName: 'payments.csv', count: 38000 },
-      { fileName: 'disputes.csv', count: 2500 },
-    ],
-    createdDate: '2024-03-15',
-    processedDate: '2024-03-16',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2024-03-16',
-    status: 'Completed',
-  },
-  {
-    id: 9,
-    requestName: 'Dish Network Q1 2024',
-    filePath: '/data/dish/q1_2024',
-    fileDetails: [
-      { fileName: 'subscribers.csv', count: 24000 },
-    ],
-    createdDate: '2024-03-20',
-    processedDate: '',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2024-03-21',
-    status: 'Pending',
-  },
-  {
-    id: 10,
-    requestName: 'Generic Request Feb 2024',
-    filePath: '/data/generic/feb_2024',
-    fileDetails: [
-      { fileName: 'data_extract.csv', count: 55000 },
-      { fileName: 'supplemental.csv', count: 12000 },
-    ],
-    createdDate: '2024-02-25',
-    processedDate: '2024-02-26',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: '2024-02-26',
-    status: 'Completed',
-  },
-  {
-    id: 999,
-    requestName: 'Comprehensive Demo Request - Q1 2025',
-    filePath: '/demo/comprehensive_q1_2025',
-    fileDetails: [
-      { fileName: 'customer_master_enriched.csv', count: 50000 },
-      { fileName: 'transactions_processed.parquet', count: 100000 },
-      { fileName: 'credit_analysis_report.xlsx', count: 25000 },
-    ],
-    createdDate: today, // Today's request
-    processedDate: '',
-    createdBy: 'Ranjith Ranga',
-    updatedBy: 'Ranjith Ranga',
-    updatedDate: today,
-    status: 'Waiting',
-  },
-];
+// Get mock API response from service
+const mockApiResponse: ApiResponse = getMockReportsData();
 
 const ReportPage: React.FC = () => {
   const navigate = useNavigate();
@@ -233,6 +85,50 @@ const ReportPage: React.FC = () => {
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsRequestId, setStatsRequestId] = useState<number | null>(null);
+
+  // New API-related state
+  const [reports, setReports] = useState<ReportData[]>([]);
+  const [apiCounts, setApiCounts] = useState<{
+    TodayRequests: number;
+    Waiting: number;
+    Inprogress: number;
+    Completed: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+
+  // Load reports from API
+  const loadReports = async () => {
+    // Prevent multiple simultaneous API calls, but allow initial load
+    if (loading && hasInitialLoaded) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const response: any = await getAllReports();
+      
+      // Handle new API response format
+      if (response && response.success && response.data) {
+        setReports(response.data);
+        setApiCounts(response.Counts);
+      } 
+    } catch (err) {
+      console.warn('API failed, using fallback data:', err);
+      setError('Failed to load reports from API, showing cached data');
+      // Use the centralized mock data when API fails
+      const fallbackData = getMockReportsData();
+      setReports(fallbackData.data);
+      setApiCounts(fallbackData.Counts);
+    } finally {
+      setLoading(false);
+      setHasInitialLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    loadReports();
+  }, []); // Empty dependency array ensures it only runs once on mount
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -253,7 +149,7 @@ const ReportPage: React.FC = () => {
   };
 
   const handleNewRequest = () => {
-    navigate('/dataPullRequests/new');
+    navigate('/data-pull-requests/create');
   };
 
   const handleOpenFileGeneration = (requestId: number) => {
@@ -289,7 +185,7 @@ const ReportPage: React.FC = () => {
           backgroundColor: '#10B981', // Light green
           color: '#fff',
         };
-      case 'Processing':
+      case 'Inprogress':
         return {
           backgroundColor: '#FBBF24', // Light yellow
           color: '#fff',
@@ -317,26 +213,35 @@ const ReportPage: React.FC = () => {
     }
   };
 
-  // Calculate today's statistics
-  const getTodayStats = () => {
-    const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
-
-    const todayRequests = sampleData.filter(request => request.createdDate === today);
-
-    const total = todayRequests.length;
-    const inProgress = todayRequests.filter(r => r.status === 'Processing' || r.status === 'Pending').length;
-    const completed = todayRequests.filter(r => r.status === 'Completed').length;
-    const failed = todayRequests.filter(r => r.status === 'Failed').length;
-
-    return { total, inProgress, completed, failed };
+  // Use API counts if available, otherwise fallback to calculated stats
+  const getDisplayStats = () => {
+    if (apiCounts) {
+      return {
+        total: apiCounts.TodayRequests,
+        inProgress: apiCounts.Inprogress,
+        completed: apiCounts.Completed
+      };
+    }
+    
+    // Fallback calculation for when API is not available
+    const today = new Date().toISOString().split('T')[0];
+    const todayRequests = reports.filter(request => 
+      request.createdDate && request.createdDate.split(' ')[0] === today
+    );
+    
+    return {
+      total: todayRequests.length,
+      inProgress: todayRequests.filter(r => r.status === 'Inprogress' || r.status === 'Pending').length,
+      completed: todayRequests.filter(r => r.status === 'Completed').length
+    };
   };
 
-  const todayStats = getTodayStats();
+  const displayStats = getDisplayStats();
 
   const stats = [
-    { label: 'Total Requests (Today)', value: todayStats.total.toString(), icon: TrendingUp, color: '#296695' },
-    { label: 'In Progress (Today)', value: todayStats.inProgress.toString(), icon: Schedule, color: '#F59E0B' },
-    { label: 'Completed (Today)', value: todayStats.completed.toString(), icon: CheckCircle, color: '#10B981' },
+    { label: 'Total Requests (Today)', value: displayStats.total.toString(), icon: TrendingUp, color: '#296695' },
+    { label: 'In Progress (Today)', value: displayStats.inProgress.toString(), icon: Schedule, color: '#F59E0B' },
+    { label: 'Completed (Today)', value: displayStats.completed.toString(), icon: CheckCircle, color: '#10B981' },
   ];
 
   return (
@@ -354,25 +259,47 @@ const ReportPage: React.FC = () => {
               }}
             >
               Data Pull Reports
+              {loading && (
+                <CircularProgress size={20} sx={{ ml: 2, color: 'primary.main' }} />
+              )}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
               Manage and monitor all data pull requests
             </Typography>
+            {error && (
+              <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
+                {error}
+              </Alert>
+            )}
           </Box>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<Add />}
-            onClick={handleNewRequest}
-            sx={{
-              px: 3,
-              py: 0.75,
-              fontSize: '0.875rem',
-              boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
-            }}
-          >
-            New Request
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <IconButton
+              onClick={loadReports}
+              disabled={loading}
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'background.paper',
+                '&:hover': { backgroundColor: 'grey.50' },
+              }}
+            >
+              <Refresh />
+            </IconButton>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Add />}
+              onClick={handleNewRequest}
+              sx={{
+                px: 3,
+                py: 0.75,
+                fontSize: '0.875rem',
+                boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
+              }}
+            >
+              New Request
+            </Button>
+          </Stack>
         </Box>
 
         {/* Stats Cards */}
@@ -431,7 +358,6 @@ const ReportPage: React.FC = () => {
           <TableHead>
             <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
               <TableCell>Request Name</TableCell>
-              <TableCell>File Path</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Created Date</TableCell>
               <TableCell>Processed Date</TableCell>
@@ -442,46 +368,28 @@ const ReportPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {sampleData
-              .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-              .map((row) => (
-                <TableRow
-                  key={row.id}
-                  hover
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(41, 102, 149, 0.04)',
-                    },
-                    transition: 'all 0.2s ease',
-                  }}
-                >
+            {reports && reports.length > 0 ? (
+              reports
+                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                .map((row) => (
+                  <TableRow
+                    key={row.id}
+                    hover
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(41, 102, 149, 0.04)',
+                      },
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      {row.requestName}
+                      {row.requestName || '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                        {row.filePath}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleFilePathClick(row.fileDetails)}
-                        sx={{
-                          color: 'primary.main',
-                          '&:hover': {
-                            backgroundColor: 'rgba(41, 102, 149, 0.12)',
-                          },
-                        }}
-                      >
-                        <Visibility fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
                     <Chip
-                      label={row.status}
+                      label={row.status || 'Unknown'}
                       size="small"
                       sx={{
                         fontWeight: 600,
@@ -491,105 +399,152 @@ const ReportPage: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.createdDate}
+                      {row.createdDate ? row.createdDate.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.processedDate || '-'}
+                      {row.processedDate ? row.processedDate.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.createdBy}
+                      {row.createdBy || '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.updatedBy}
+                      {row.updatedBy || '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.updatedDate}
+                      {row.updatedDate ? row.updatedDate.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell align="center">
                     <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                      {/* Edit Icon - Only enabled when status is Pending or Waiting */}
-                      <IconButton
-                        size="small"
-                        disabled={row.status !== 'Pending' && row.status !== 'Waiting'}
-                        onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
-                        sx={{
-                          color: (row.status === 'Pending' || row.status === 'Waiting') ? 'primary.main' : 'text.disabled',
-                          '&:hover': {
-                            backgroundColor: (row.status === 'Pending' || row.status === 'Waiting') ? 'rgba(41, 102, 149, 0.12)' : 'transparent',
-                          },
-                          '&.Mui-disabled': {
-                            color: 'text.disabled',
-                            opacity: 0.3,
-                          },
-                        }}
-                        title="Edit"
+                      {/* Edit Icon - Enabled for Waiting, Failed, Pending */}
+                      <Tooltip 
+                        title={['Waiting', 'Failed', 'Pending'].includes(row.status) 
+                          ? "Edit request" 
+                          : "Edit not available for this status"
+                        }
+                        arrow
                       >
-                        <Edit fontSize="small" />
-                      </IconButton>
-                      {/* Duplicate Icon - Only enabled when status is Completed */}
-                      <IconButton
-                        size="small"
-                        disabled={row.status !== 'Completed'}
-                        onClick={() => console.log('Duplicate request:', row.id)}
-                        sx={{
-                          color: row.status === 'Completed' ? 'primary.main' : 'text.disabled',
-                          '&:hover': {
-                            backgroundColor: row.status === 'Completed' ? 'rgba(41, 102, 149, 0.12)' : 'transparent',
-                          },
-                          '&.Mui-disabled': {
-                            color: 'text.disabled',
-                            opacity: 0.3,
-                          },
-                        }}
-                        title="Duplicate"
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
+                            onClick={() => navigate(`/data-pull-requests/edit/${row.id}`)}
+                            sx={{
+                              color: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'primary.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'rgba(41, 102, 149, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      
+                      {/* Duplicate Icon - Enabled for all statuses */}
+                      <Tooltip title="Duplicate request" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={() => console.log('Duplicate request:', row.id)}
+                          sx={{
+                            color: 'primary.main',
+                            '&:hover': {
+                              backgroundColor: 'rgba(41, 102, 149, 0.12)',
+                            },
+                          }}
+                        >
+                          <FileCopy fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {/* Stats & File Generation Icon - Enabled only for Completed */}
+                      <Tooltip 
+                        title={row.status === 'Completed' 
+                          ? "View stats & generate files" 
+                          : "Stats & file generation available only for completed requests"
+                        }
+                        arrow
                       >
-                        <FileCopy fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenStats(row.id)}
-                        sx={{
-                          color: 'primary.main',
-                          '&:hover': {
-                            backgroundColor: 'rgba(41, 102, 149, 0.12)',
-                          },
-                        }}
-                        title="Stats"
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={row.status !== 'Completed'}
+                            onClick={() => handleOpenFileGeneration(row.id)}
+                            sx={{
+                              color: row.status === 'Completed' ? 'info.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: row.status === 'Completed' ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Assessment fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      
+                      {/* Stop Icon - Enabled for Waiting and Pending */}
+                      <Tooltip 
+                        title={['Waiting', 'Pending'].includes(row.status) 
+                          ? "Stop request" 
+                          : "Stop not available for this status"
+                        }
+                        arrow
                       >
-                        <Assessment fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenFileGeneration(row.id)}
-                        sx={{
-                          color: 'info.main',
-                          '&:hover': {
-                            backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                          },
-                        }}
-                        title="File Generation"
-                      >
-                        <Description fontSize="small" />
-                      </IconButton>
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={!['Waiting', 'Pending'].includes(row.status)}
+                            onClick={() => console.log('Stop request:', row.id)}
+                            sx={{
+                              color: ['Waiting', 'Pending'].includes(row.status) ? 'error.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: ['Waiting', 'Pending'].includes(row.status) ? 'rgba(244, 67, 54, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Close fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Box>
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No reports available
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
         <TablePagination
           rowsPerPageOptions={[5, 10, 25]}
           component="div"
-          count={sampleData.length}
+          count={reports?.length || 0}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={handleChangePage}

@@ -257,7 +257,7 @@ The application is configured to be deployed at `/zxPlatformDevEnvironment/`:
 
 ### Production Deployment Context
 
-The app is deployed to `https://qaapp.zt02.net/zxPlatformDevEnvironment/`. When building for production, Vite generates assets that reference this base path.
+The app is deployed to `http://zds-cust-api-01.bo3.e-dialog.com/zxPlatformDevEnvironment/`. When building for production, Vite generates assets that reference this base path.
 
 **Important**: The build process generates:
 - `index.html` - Entry point
@@ -480,7 +480,7 @@ npm run preview
 
 - **Development server port**: Usually 5174 (Vite default for React)
 - **Base URL**: `/zxPlatformDevEnvironment/`
-- **Production URL**: https://qaapp.zt02.net/zxPlatformDevEnvironment/
+- **Production URL**: http://zds-cust-api-01.bo3.e-dialog.com/zxPlatformDevEnvironment/
 - **Font families**: Inter (primary), Roboto (fallback)
 - **Primary brand color**: #296695
 

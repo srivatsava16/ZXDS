@@ -9,15 +9,16 @@ import {
 } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useNotification } from '../../contexts/NotificationContext';
 
 const ForgotPasswordPage: React.FC = () => {
   const navigate = useNavigate();
+  const { showSnackbar } = useNotification();
   const [email, setEmail] = useState('');
 
   const handleSendEmail = () => {
-    console.log('Send verification email to:', email);
     // Demo: Show success message or navigate
-    alert('Verification code sent to your email!');
+    showSnackbar('Verification code sent to your email!', 'success');
   };
 
   const handleBackToSignIn = () => {

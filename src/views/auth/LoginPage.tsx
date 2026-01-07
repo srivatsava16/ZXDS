@@ -33,7 +33,6 @@ const LoginPage: React.FC = () => {
 
   const handleSignIn = () => {
     // Demo: Navigate to main app
-    console.log('Sign in with:', formData);
     navigate?.('/report');
   };
 

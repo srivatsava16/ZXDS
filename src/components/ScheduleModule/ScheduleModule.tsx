@@ -1,10 +1,6 @@
 import {
   Box,
   Typography,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Radio,
   RadioGroup,
   FormControlLabel,
@@ -12,18 +8,14 @@ import {
 } from '@mui/material';
 
 interface ScheduleModuleProps {
-  scheduleType?: 'adhoc' | 'recurrence';
-  onScheduleTypeChange?: (type: 'adhoc' | 'recurrence') => void;
+  scheduleType?: 'adhoc' | 'scheduled_at';
+  onScheduleTypeChange?: (type: 'adhoc' | 'scheduled_at') => void;
   notificationWhen?: string;
   onNotificationWhenChange?: (value: string) => void;
   recipientEmail?: string;
   onRecipientEmailChange?: (value: string) => void;
-  recurrence?: string;
-  onRecurrenceChange?: (value: string) => void;
-  startDate?: string;
-  onStartDateChange?: (value: string) => void;
-  endDate?: string;
-  onEndDateChange?: (value: string) => void;
+  scheduledDateTime?: string;
+  onScheduledDateTimeChange?: (value: string) => void;
 }
 
 const ScheduleModule: React.FC<ScheduleModuleProps> = ({
@@ -33,12 +25,8 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
   onNotificationWhenChange,
   recipientEmail = '',
   onRecipientEmailChange,
-  recurrence = '',
-  onRecurrenceChange,
-  startDate = '',
-  onStartDateChange,
-  endDate = '',
-  onEndDateChange,
+  scheduledDateTime = '',
+  onScheduledDateTimeChange,
 }) => {
   return (
     <Box
@@ -62,7 +50,7 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
           <RadioGroup
             row
             value={scheduleType}
-            onChange={(e) => onScheduleTypeChange && onScheduleTypeChange(e.target.value as 'adhoc' | 'recurrence')}
+            onChange={(e) => onScheduleTypeChange && onScheduleTypeChange(e.target.value as 'adhoc' | 'scheduled_at')}
           >
             <FormControlLabel
               value="adhoc"
@@ -71,9 +59,9 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
               sx={{ mr: 4 }}
             />
             <FormControlLabel
-              value="recurrence"
+              value="scheduled_at"
               control={<Radio size="small" />}
-              label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>Recurrence</Typography>}
+              label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>Scheduled At</Typography>}
             />
           </RadioGroup>
         </Box>
@@ -127,81 +115,34 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
           </Box>
         )}
 
-        {/* Recurrence Options */}
-        {scheduleType === 'recurrence' && (
+        {/* Scheduled At Options */}
+        {scheduleType === 'scheduled_at' && (
           <Box>
-            {/* Recurrence, Start Date, End Date in one row */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 2.5, alignItems: 'flex-end' }}>
-              {/* Recurrence Dropdown */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
-                  Recurrence <span style={{ color: '#EF4444' }}>*</span>
-                </Typography>
-                <FormControl size="small" fullWidth>
-                  <InputLabel id="recurrence-label">Select Recurrence</InputLabel>
-                  <Select
-                    labelId="recurrence-label"
-                    value={recurrence}
-                    onChange={(e) => onRecurrenceChange && onRecurrenceChange(e.target.value)}
-                    label="Select Recurrence"
-                    sx={{ backgroundColor: 'white' }}
-                  >
-                    <MenuItem value="hourly">Hourly</MenuItem>
-                    <MenuItem value="daily">Daily</MenuItem>
-                    <MenuItem value="weekly">Weekly</MenuItem>
-                    <MenuItem value="monthly">Monthly</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-
-              {/* Start Date */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
-                  Start Date <span style={{ color: '#EF4444' }}>*</span>
-                </Typography>
-                <TextField
-                  type="date"
-                  size="small"
-                  fullWidth
-                  value={startDate}
-                  onChange={(e) => onStartDateChange && onStartDateChange(e.target.value)}
-                  required
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: 'white',
-                    },
-                  }}
-                  InputLabelProps={{
-                    shrink: true,
-                  }}
-                />
-              </Box>
-
-              {/* End Date */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
-                  End Date <span style={{ color: '#EF4444' }}>*</span>
-                </Typography>
-                <TextField
-                  type="date"
-                  size="small"
-                  fullWidth
-                  value={endDate}
-                  onChange={(e) => onEndDateChange && onEndDateChange(e.target.value)}
-                  required
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: 'white',
-                    },
-                  }}
-                  InputLabelProps={{
-                    shrink: true,
-                  }}
-                />
-              </Box>
+            {/* Date-Time Picker */}
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
+                Scheduled Date & Time <span style={{ color: '#EF4444' }}>*</span>
+              </Typography>
+              <TextField
+                label="Basic date time picker"
+                type="datetime-local"
+                size="small"
+                value={scheduledDateTime}
+                onChange={(e) => onScheduledDateTimeChange && onScheduledDateTimeChange(e.target.value)}
+                required
+                sx={{
+                  width: '50%',
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                  },
+                }}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+              />
             </Box>
 
-            {/* Send Notifications When */}
+            {/* Send Notifications When - Standard and Error Only options */}
             <Box sx={{ mb: 2.5 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
                 Send Notifications When

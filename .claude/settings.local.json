@@ -7,7 +7,11 @@
       "Bash(powershell -Command \"Copy-Item -Path ''.'' -Destination ''../zxdsProject_backup'' -Recurse -Force\")",
       "Bash(npm run build:*)",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

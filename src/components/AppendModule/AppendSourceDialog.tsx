@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -14,20 +14,22 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
-  Paper,
-  Alert,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
-import SimpleFileSourceConfig from './SimpleFileSourceConfig';
+import FileSourceConfig from '../InputModule/FileSourceConfig';
 import DatabaseSourceConfig from '../InputModule/DatabaseSourceConfig';
 import SelfSourceConfig from './SelfSourceConfig';
+import { type RequestInputsResponse } from '../../services/api';
 
 interface AppendSourceDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (source: InputSource) => void;
   availableInputSources?: InputSource[];
+  apiSources?: RequestInputsResponse | null;
+  sourcesLoading?: boolean;
+  editingSource?: InputSource | null;
 }
 
 const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
@@ -35,40 +37,111 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
   onClose,
   onSave,
   availableInputSources = [],
+  apiSources = null,
+  sourcesLoading = false,
+  editingSource = null,
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
+  const [sourceNameError, setSourceNameError] = useState('');
+
+  // Load editing source data when in edit mode
+  useEffect(() => {
+    if (editingSource && open) {
+      // Only set source type if it's one of the supported dialog types
+      if (editingSource.sourceType === 'File' || editingSource.sourceType === 'Database' || editingSource.sourceType === 'Self') {
+        setSourceType(editingSource.sourceType);
+      }
+      setSourceData(editingSource);
+      setSourceNameError('');
+    } else if (open) {
+      // Reset for new source
+      setSourceType('File');
+      setSourceData({});
+      setSourceNameError('');
+    }
+  }, [editingSource, open]);
+
+  // Validation function for source name
+  const validateSourceName = (name: string): string => {
+    if (!name.trim()) {
+      return 'Source Name is required';
+    }
+    
+    // Check for duplicates (case-insensitive) within available input sources
+    // Exclude current source when editing
+    const existingNames = availableInputSources
+      .filter(source => editingSource ? source.id !== editingSource.id : true)
+      .map(source => source.sourceName.trim().toLowerCase());
+    
+    if (existingNames.includes(name.trim().toLowerCase())) {
+      return 'Source Name must be unique';
+    }
+    
+    return '';
+  };
 
   const handleSave = () => {
-    if (!sourceData.sourceName || !sourceData.headers || sourceData.headers.length === 0) {
-      alert('Please complete the source configuration');
+    // Validate source name
+    const nameError = validateSourceName(sourceData.sourceName || '');
+    setSourceNameError(nameError);
+    
+    if (nameError) {
       return;
     }
 
+    // Validation: For File type sources, headers must be extracted
+    if (sourceType === 'File') {
+      if (!sourceData.headers || sourceData.headers.length === 0) {
+        alert('Please fetch top 10 records to extract headers before adding this append source.');
+        return;
+      }
+    }
+
+    // Validation: For Database type sources, ensure basic configuration
+    if (sourceType === 'Database') {
+      if (!sourceData.sourceName) {
+        alert('Please complete the database source configuration.');
+        return;
+      }
+    }
+
     const source: InputSource = {
-      id: Date.now().toString(),
+      id: editingSource?.id || Date.now().toString(),
       sourceType,
       sourceName: sourceData.sourceName || '',
       subSourceType: sourceData.subSourceType || '',
       fileSource: sourceData.fileSource,
+      fileSourceId: sourceData.fileSourceId,
       filePath: sourceData.filePath,
       fileName: sourceData.fileName,
       delimiter: sourceData.delimiter,
       hasHeader: sourceData.hasHeader,
-      headers: sourceData.headers,
+      headers: sourceData.selectedHeaders || sourceData.headers || [],
+      selectedHeaders: sourceData.selectedHeaders || sourceData.headers || [],
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
+      filterQuery: sourceData.filterQuery,
+      filterConfig: sourceData.filterConfig,
+      // Database specific fields
+      database: sourceData.database,
+      schema: sourceData.schema,
+      table: sourceData.table,
+      originalTableName: sourceData.originalTableName,
+      customTableMetadata: sourceData.customTableMetadata
     };
 
     onSave(source);
     onClose();
     setSourceData({});
+    setSourceNameError('');
   };
 
   const handleClose = () => {
     onClose();
     setSourceData({});
     setSourceType('File');
+    setSourceNameError('');
   };
 
   return (
@@ -94,7 +167,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
         }}
       >
         <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1.25rem', color: 'primary.main' }}>
-          Add Custom Append Source
+          {editingSource ? 'Edit Custom Append Source' : 'Add Custom Append Source'}
         </Typography>
         <IconButton onClick={handleClose} size="small">
           <Close />
@@ -141,14 +214,26 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
 
         {/* Source Configuration based on type */}
         {sourceType === 'File' ? (
-          <SimpleFileSourceConfig
+          <FileSourceConfig
             data={sourceData}
-            onChange={setSourceData}
+            onChange={(data) => {
+              setSourceData(data);
+              // Clear source name error when user starts typing
+              if (sourceNameError && data.sourceName) {
+                const error = validateSourceName(data.sourceName);
+                setSourceNameError(error);
+              }
+            }}
+            sourceNameError={sourceNameError}
+            apiSources={apiSources}
+            sourcesLoading={sourcesLoading}
           />
         ) : sourceType === 'Database' ? (
           <DatabaseSourceConfig
             data={sourceData}
             onChange={setSourceData}
+            apiSources={apiSources}
+            sourcesLoading={sourcesLoading}
           />
         ) : (
           <SelfSourceConfig

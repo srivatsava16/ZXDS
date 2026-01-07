@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -17,7 +17,6 @@ import {
   ListItemText,
   OutlinedInput,
   FormControl,
-  InputLabel,
   Table,
   TableBody,
   TableCell,
@@ -25,32 +24,21 @@ import {
   TableHead,
   TableRow,
   FormControlLabel,
-  Radio,
-  RadioGroup,
   Switch,
   Stepper,
   Step,
   StepLabel,
-  StepContent,
   Tooltip,
+  Alert,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   Save,
   Close,
-  Input as InputIcon,
-  AddCircleOutline,
-  RemoveCircleOutline,
-  CompareArrows,
-  Output as OutputIcon,
+  AccountTree,
   Add,
   Delete,
   Edit,
-  BarChart,
-  ViewAgenda,
-  ViewStream,
-  Schedule as ScheduleIcon,
-  DragIndicator,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -67,266 +55,49 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
-  useSortable,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import InputModule from '../../components/InputModule/InputModule';
-import AppendModule from '../../components/AppendModule/AppendModule';
-import SuppressModule from '../../components/SuppressModule/SuppressModule';
-import MatchModule from '../../components/MatchModule/MatchModule';
-import OutputModule from '../../components/OutputModule/OutputModule';
-import ScheduleModule from '../../components/ScheduleModule/ScheduleModule';
-import type { InputSource } from '../../components/InputModule/InputModule';
-import { comprehensiveSampleData } from '../../mockData/sampleRequestData';
+import InputModule from '../../../components/InputModule/InputModule';
+import AppendModule from '../../../components/AppendModule/AppendModule';
+import SuppressModule from '../../../components/SuppressModule/SuppressModule';
+import MatchModule from '../../../components/MatchModule/MatchModule';
+import OutputModule from '../../../components/OutputModule/OutputModule';
+import ScheduleModule from '../../../components/ScheduleModule/ScheduleModule';
+import type { InputSource } from '../../../components/InputModule/InputModule';
+import { comprehensiveSampleData } from '../../../mockData/sampleRequestData';
+import { checkRequestName, submitRequest, type SubmitRequestPayload } from '../../../services/api';
 
-const STATS_FIELDS = [
-  'DEVICE',
-  'QUALITY SCORE',
-  'FNAME',
-  'LNAME',
-  'DOB',
-  'STATE',
-  'ZIP',
-];
+// Extracted modules
+import type { StatsConfiguration, VersionedSource } from './types';
+import { createModuleDefinitions } from './utils/moduleDefinitions';
+import { validateModuleMove } from './utils/moduleHelpers';
+import { validateRequestName } from './utils/requestValidators';
+import SortableAccordionItem from './components/SortableAccordionItem';
+import SortableStep from './components/SortableStep';
 
-interface StatsConfiguration {
-  id: string;
-  inputSources: string[];
-  countsOn: string[];
-  isDistinct: boolean;
-  breakdownBy: string[];
-}
-
-// Versioned Source Interface
-export interface VersionedSource extends InputSource {
-  isVersioned: true;
-  versionNumber: number;
-  versionLabel: string; // e.g., "Match_v1", "Append_v1", "Suppress_v1"
-  sourceModule: 'Match' | 'Append' | 'Suppress';
-  baseInputSources: string[]; // IDs of the input sources used
-  operationSources: string[]; // IDs of match/append/suppress sources used
-  operationFields?: string[]; // Fields involved in the operation
-  combinedHeaders?: string[]; // All headers after the versioning operation
-}
-
-// Sortable Accordion Item Component
-interface SortableAccordionItemProps {
-  module: any;
-  index: number;
-  expanded: string[];
-  onChange: (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => void;
-  renderContent: (moduleId: string) => React.ReactNode;
-  isDraggable: boolean;
-}
-
-const SortableAccordionItem: React.FC<SortableAccordionItemProps> = ({
-  module,
-  index,
-  expanded,
-  onChange,
-  renderContent,
-  isDraggable,
-}) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: module.id, disabled: !isDraggable });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <Accordion
-        expanded={expanded.includes(module.id)}
-        onChange={onChange(module.id)}
-        sx={{
-          mb: 2,
-          '&:before': {
-            display: 'none',
-          },
-        }}
-      >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{
-            '& .MuiAccordionSummary-content': {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-            },
-          }}
-        >
-          <Box
-            sx={{
-              width: 32,
-              height: 32,
-              borderRadius: 2,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: `${module.color}15`,
-              flexShrink: 0,
-            }}
-          >
-            <module.icon sx={{ fontSize: 16, color: module.color }} />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary', mb: 0.25, fontSize: '0.95rem' }}>
-              {module.title}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-              {module.description}
-            </Typography>
-          </Box>
-          <Chip
-            label={`Step ${index + 1}`}
-            size="small"
-            sx={{
-              backgroundColor: `${module.color}20`,
-              color: module.color,
-              fontWeight: 600,
-              border: 'none',
-            }}
-          />
-          {isDraggable && (
-            <Box
-              {...attributes}
-              {...listeners}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'grab',
-                color: 'text.secondary',
-                ml: 1,
-                '&:active': {
-                  cursor: 'grabbing',
-                },
-                '&:hover': {
-                  color: 'primary.main',
-                },
-              }}
-            >
-              <DragIndicator />
-            </Box>
-          )}
-        </AccordionSummary>
-        <AccordionDetails>{renderContent(module.id)}</AccordionDetails>
-      </Accordion>
-    </div>
-  );
-};
-
-// Sortable Step Component for Stepper
-interface SortableStepProps {
-  module: any;
-  index: number;
-  activeStep: number;
-  onClick: () => void;
-}
-
-const SortableStep: React.FC<SortableStepProps> = ({ module, index, activeStep, onClick }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: module.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    position: 'relative' as const,
-  };
-
-  return (
-    <Step ref={setNodeRef} style={style} sx={{ cursor: 'pointer' }}>
-      <StepLabel
-        onClick={onClick}
-        StepIconProps={{
-          sx: {
-            color: index <= activeStep ? module.color : 'text.disabled',
-            '&.Mui-active': {
-              color: module.color,
-            },
-            '&.Mui-completed': {
-              color: module.color,
-            },
-          },
-        }}
-        sx={{
-          flexDirection: 'column',
-          position: 'relative',
-          '& .MuiStepLabel-iconContainer': {
-            paddingRight: 0,
-          },
-          '& .MuiStepLabel-labelContainer': {
-            marginTop: '8px',
-          },
-          '& .MuiStepLabel-label': {
-            fontSize: '0.8rem',
-            fontWeight: index === activeStep ? 600 : 400,
-            color: index === activeStep ? '#2D3748' : 'text.secondary',
-            textAlign: 'center',
-          },
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          {module.title}
-          {/* Drag indicator - positioned to the right of the step label */}
-          <Box
-            {...attributes}
-            {...listeners}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'grab',
-              color: 'text.secondary',
-              backgroundColor: 'white',
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              px: 0.5,
-              py: 0.25,
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              '&:active': {
-                cursor: 'grabbing',
-              },
-              '&:hover': {
-                color: module.color,
-                borderColor: module.color,
-                boxShadow: `0 2px 8px ${module.color}40`,
-              },
-            }}
-          >
-            <DragIndicator sx={{ fontSize: 16 }} />
-          </Box>
-        </Box>
-      </StepLabel>
-    </Step>
-  );
-};
+// Custom hooks
+import { useDataLoading } from './hooks/useDataLoading';
 
 const RequestCreationPage: React.FC = () => {
   const navigate = useNavigate();
   const { requestId } = useParams<{ requestId?: string }>();
+
+  // View and UI state
   const [viewMode, setViewMode] = useState<'accordion' | 'stepper'>('accordion');
   const [activeStep, setActiveStep] = useState(0);
   const [expanded, setExpanded] = useState<string[]>(['panel1']); // Array to support multiple open accordions
-  const inputModuleRef = useRef<{ handleAddSource: () => void }>(null);
+
+  // Form data state
   const [inputSources, setInputSources] = useState<InputSource[]>([]);
   const [requestName, setRequestName] = useState('');
+
+  // Validation states
+  const [requestNameError, setRequestNameError] = useState('');
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  // Custom hooks for data loading
+  const { apiSources, sourcesLoading } = useDataLoading();
 
   // Drag and Drop sensors
   const sensors = useSensors(
@@ -349,20 +120,27 @@ const RequestCreationPage: React.FC = () => {
   const [statsCountsOnSearch, setStatsCountsOnSearch] = useState('');
   const [statsBreakdownBySearch, setStatsBreakdownBySearch] = useState('');
 
+  // Clear selected fields when input sources change
+  useEffect(() => {
+    setSelectedCountsOn([]);
+    setSelectedBreakdownBy([]);
+  }, [selectedInputSources]);
+
   // Schedule Component state
-  const [scheduleType, setScheduleType] = useState<'adhoc' | 'recurrence'>('adhoc');
+  const [scheduleType, setScheduleType] = useState<'adhoc' | 'scheduled_at'>('adhoc');
   const [notificationWhen, setNotificationWhen] = useState('standard');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [recurrence, setRecurrence] = useState('');
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
   // Versioned Sources State
   const [versionedSources, setVersionedSources] = useState<VersionedSource[]>([]);
-  const [versionCounter, setVersionCounter] = useState<Record<string, number>>({
+  const [versionCounters, setVersionCounters] = useState({
+    Input: 0,
     Match: 0,
     Append: 0,
-    Suppress: 0,
+    Suppress: 0
   });
 
   // Initial configs for modules (for edit mode)
@@ -371,12 +149,21 @@ const RequestCreationPage: React.FC = () => {
   const [initialMatchConfigs, setInitialMatchConfigs] = useState<any[]>([]);
   const [initialOutputConfigs, setInitialOutputConfigs] = useState<any[]>([]);
 
+  // Current output configurations
+  const [outputConfigurations, setOutputConfigurations] = useState<any[]>([]);
+  
+  // Current suppress configurations
+  const [suppressConfigurations, setSuppressConfigurations] = useState<any[]>([]);
+
   // Load sample data when in edit mode for demo request (ID 999)
   useEffect(() => {
     if (requestId === '999') {
       // Load comprehensive sample data
-      setRequestName(comprehensiveSampleData.requestName);
-      setInputSources(comprehensiveSampleData.inputSources);
+      setRequestName(comprehensiveSampleData?.requestName || '');
+      setInputSources(comprehensiveSampleData?.inputSources || []);
+      
+      // Clear validation errors when loading sample data
+      setRequestNameError('');
 
       // Load append configurations
       if (comprehensiveSampleData.appendConfigs?.length > 0) {
@@ -407,7 +194,7 @@ const RequestCreationPage: React.FC = () => {
       if (comprehensiveSampleData.scheduleConfig) {
         const schedConfig = comprehensiveSampleData.scheduleConfig;
         setScheduleType(schedConfig.scheduleType || 'adhoc');
-        setRecurrence(schedConfig.recurrencePattern || '');
+        setScheduledDateTime(schedConfig.scheduledDateTime || '');
         setNotificationWhen(schedConfig.emailNotification || 'standard');
         setStartDate(schedConfig.startDate || '');
         setEndDate(schedConfig.endDate || '');
@@ -418,15 +205,35 @@ const RequestCreationPage: React.FC = () => {
     }
   }, [requestId]);
 
+  const handleUpdateVersionCounter = (module: 'Input' | 'Match' | 'Append' | 'Suppress', increment: number) => {
+    setVersionCounters(prev => ({
+      ...prev,
+      [module]: prev[module] + increment
+    }));
+  };
+
+  const handleUpdateVersionName = (versionId: string, newName: string) => {
+    // Update versioned sources
+    setVersionedSources(prev => prev.map(version => 
+      version?.id === versionId ? { ...version, versionLabel: newName, sourceName: newName } : version
+    ));
+    
+    // Update input sources if the version exists there
+    setInputSources(prev => prev.map(source => 
+      source?.id === versionId ? { ...source, sourceName: newName } : source
+    ));
+  };
+
+
   // Helper to get source name by ID
   const getSourceNameById = (sourceId: string): string => {
     // Check in regular input sources
-    const inputSource = inputSources.find(s => s.id === sourceId);
-    if (inputSource) return inputSource.sourceName;
+    const inputSource = inputSources.find(s => s?.id === sourceId);
+    if (inputSource) return inputSource?.sourceName;
 
     // Check in versioned sources
-    const versionedSource = versionedSources.find(s => s.id === sourceId);
-    if (versionedSource) return versionedSource.sourceName;
+    const versionedSource = versionedSources.find(s => s?.id === sourceId);
+    if (versionedSource) return versionedSource?.sourceName;
 
     return sourceId; // fallback
   };
@@ -434,6 +241,7 @@ const RequestCreationPage: React.FC = () => {
   // Handler to create versioned source from Match/Append/Suppress modules
   const handleCreateVersionedSource = (
     sourceModule: 'Match' | 'Append' | 'Suppress',
+    moduleId: string,
     baseInputSources: string[],
     operationSources: string[],
     operationFields?: string[]
@@ -460,16 +268,15 @@ const RequestCreationPage: React.FC = () => {
       operationSources.forEach(operationSourceId => {
         const operationSourceName = getSourceNameById(operationSourceId);
 
-        // Build cumulative version name
-        // If the input source is already versioned, append to its name
-        // Otherwise, start fresh
+        // Build distinct version name with module prefix
+        const moduleVersionCount = versionCounters[sourceModule] + 1;
         let versionName: string;
         if (inputSource.isVersioned) {
-          // Input is already versioned, append the operation source name
-          versionName = `${inputSource.sourceName}_${operationSourceName}`;
+          // Input is already versioned, append the operation module
+          versionName = `${inputSource.sourceName}_${sourceModule}_v${moduleVersionCount}`;
         } else {
           // Input is a regular source
-          versionName = `${inputSource.sourceName}_${operationSourceName}`;
+          versionName = `${sourceModule}_${inputSource.sourceName}_${operationSourceName}_v${moduleVersionCount}`;
         }
 
         // Get headers from input source
@@ -483,6 +290,7 @@ const RequestCreationPage: React.FC = () => {
           versionLabel: versionName,
           sourceName: versionName,
           sourceModule,
+          createdByModuleId: moduleId,
           baseInputSources: [inputSourceId],
           operationSources: [operationSourceId],
           operationFields,
@@ -495,6 +303,12 @@ const RequestCreationPage: React.FC = () => {
         newVersions.push(versionedSource);
       });
     });
+
+    // Update version counter for this module
+    setVersionCounters(prev => ({
+      ...prev,
+      [sourceModule]: prev[sourceModule] + newVersions.length
+    }));
 
     // Add all new versions to the list
     setVersionedSources(prev => [...prev, ...newVersions]);
@@ -520,15 +334,20 @@ const RequestCreationPage: React.FC = () => {
     });
   };
 
+  // Validation functions
+
   const handleNext = () => {
     // Validation for Step 1 (Input Module)
     if (activeStep === 0) {
-      if (!requestName.trim()) {
-        alert('Please enter a Request Name before continuing');
+      const nameError = validateRequestName(requestName);
+
+      setRequestNameError(nameError || '');
+
+      if (nameError) {
         return;
       }
+      
       if (inputSources.length === 0) {
-        alert('Please add at least one Input Source before continuing');
         return;
       }
     }
@@ -543,12 +362,375 @@ const RequestCreationPage: React.FC = () => {
     setActiveStep(step);
   };
 
-  const handleCancel = () => {
-    navigate('/report');
+  // Transform input sources to the required API format
+  const transformInputSourcesToAPIFormat = (sources: InputSource[]) => {
+    return sources.map((source, index) => {
+      // Determine sourceId: use fileSourceId for preconfigured sources, or parsed ID, or fallback to index+1
+      const sourceId = source?.fileSourceId || parseInt(source?.id || '0') || (index + 1);
+      
+      // Determine inputType based on source context
+      // P – Primary / Workflow Input (first input sources)
+      // A – Append Source (sources used in append operations)
+      // S – Suppress Source (sources used in suppress operations) 
+      // M – Match Source (sources used in match operations)
+      let inputType = 'P'; // Default to Primary for regular input sources
+      
+      // Determine if limited column selection is being used
+      const isLimitedColumnSelection = source?.selectedHeaders && 
+                                      source?.headers && 
+                                      source?.selectedHeaders?.length < source?.headers?.length;
+      
+      // Get filePath
+      const filePath = source?.filePath || source?.fileName || '';
+      
+      // Get filters - check filterQuery and extract from filterConfig if needed
+      let filters = source?.filterQuery || '';
+      
+      // If filterQuery is empty but filterConfig exists, try to extract filter from config
+      if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+        try {
+          // Extract filter information from filterConfig array
+          const filterGroup = source?.filterConfig[0];
+          if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
+            const filterParts: string[] = [];
+            
+            filterGroup?.conditions?.forEach((condition: any) => {
+              if (condition?.field && condition?.operator && condition?.value) {
+                let conditionStr = '';
+                if (condition?.operator === 'BETWEEN' && condition?.value2) {
+                  conditionStr = `(${condition?.field} BETWEEN '${condition?.value}' AND '${condition?.value2}')`;
+                } else {
+                  conditionStr = `(${condition?.field} ${condition?.operator} '${condition?.value}')`;
+                }
+                filterParts.push(conditionStr);
+              }
+            });
+            
+            if (filterParts.length > 0) {
+              const logicalOp = filterGroup?.logicalOperator || 'AND';
+              // Join conditions with logical operator - no extra outer parentheses
+              filters = filterParts.join(` ${logicalOp} `);
+            }
+          }
+        } catch (error) {
+          console.error('Error extracting filter from filterConfig:', error);
+        }
+      }
+      
+      // Dynamic file format detection from extension
+      const getFileFormat = () => {
+        const fileName = source?.fileName || filePath || '';
+        if (!fileName) return 'CSV'; // default fallback
+        
+        // Extract extension and convert to uppercase
+        const lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex === -1) return 'CSV'; // no extension found
+        
+        const extension = fileName.substring(lastDotIndex + 1).toUpperCase();
+        
+        // Handle special cases for compressed files
+        if (extension === 'GZ' || extension === 'GZIP') return 'GZIP';
+        
+        // Return the extension as-is for any other format
+        return extension;
+      };
+      
+      // Build result object based on source type
+      let result: any = {
+        sourceName: source?.sourceName || 'Unknown Source',
+        sourceType: source?.sourceType === 'File' ? 'F' : 
+                    source?.sourceType === 'Database' ? 'T' : 
+                    source?.sourceType === 'Version' ? 'V' : 'F',
+        columnSelectionType: isLimitedColumnSelection ? 'L' : 'A',
+        columns: source?.selectedHeaders || source?.headers || [],
+        selectedColumns: (source?.selectedHeaders || source?.headers || []).join(','),
+        inputType,
+        filters,
+        isSelfSource: source?.sourceType === 'Self' ? 1 : 0
+      };
+
+      // Add sourceId for non-database sources only
+      if (source?.sourceType !== 'Database') {
+        result.sourceId = sourceId;
+      }
+
+      // Add source type specific fields
+      if (source?.sourceType === 'Database') {        
+        // Try different possible property names for database fields
+        const dbName = source?.database || source?.customTableMetadata?.database || '';
+        const tableName = source?.table || source?.customTableMetadata?.tableName || '';
+        const schema = source?.schema || source?.customTableMetadata?.schema || ''; // Already contains ID
+        
+        // Only include database fields if they have values
+        if (dbName) result.dbName = dbName;
+        if (tableName) result.tableName = tableName;
+        if (schema) result.schema = schema;
+        
+        result.isCustomTable = (!source?.originalTableName || source?.customTableMetadata) ? 1 : 0;
+      } else if (source?.sourceType === 'File') {
+        result.filePath = filePath;
+        result.delimiter = source?.delimiter || ',';
+        result.fileFormat = getFileFormat();
+        result.isHeader = source?.hasHeader ? 1 : 0;
+        
+        // Include customHeaders only if source has custom headers
+        if (source?.customHeaders) {
+          result.customHeaders = source.customHeaders;
+        }
+      }
+
+      // Add version-specific fields
+      if (source.sourceType === 'Version') {
+        result.versionName = source.sourceName;
+      }
+
+      return result;
+    });
   };
 
-  const handleSave = () => {
-    console.log('Save request');
+  const handleCancel = () => {
+    navigate('/reports');
+  };
+
+  const handleSave = async () => {
+    // Clear previous messages
+    setSaveSuccess('');
+    setSaveError('');
+    
+    // Validate all fields before saving
+    const nameError = validateRequestName(requestName);
+
+    setRequestNameError(nameError || '');
+    
+    if (nameError) {
+      return;
+    }
+    
+    // if (inputSources.length === 0) {
+    //   setSaveError('Please add at least one input source before saving.');
+    //   return;
+    // }
+    
+    try {
+      setSaveLoading(true);
+
+      // Step 1: Check for duplicate request name
+      const nameExists = await checkRequestName(requestName);
+
+      if (nameExists) {
+        setRequestNameError('Request name already exists. Please choose a different name.');
+        setSaveLoading(false);
+        return;
+      }
+
+      // Step 2: If name is unique, proceed with submit
+
+      // Prepare the payload for submitRequest1.php
+      const requestDetails: any = {
+        requestName: requestName,
+        createdBy: 'system',  // TODO: Integrate with actual authentication
+        updatedBy: 'system',  // TODO: Integrate with actual authentication
+        requestType: scheduleType === 'adhoc' ? 'A' : 'S', // A – Adhoc, S – Schedule Later
+        sendNotificationOn: notificationWhen === 'standard' ? 'S' : 'E', // S – Standard, E – Error Only
+        recipientEmail: recipientEmail || ''
+      };
+
+      // Include scheduledDateTime when requestType is 'S' (Schedule Later)
+      if (scheduleType === 'scheduled_at' && scheduledDateTime) {
+        requestDetails.scheduledDateTime = scheduledDateTime;
+      }
+
+      // Transform input sources to API format
+      const transformedInputSources = transformInputSourcesToAPIFormat(inputSources);
+
+      // Transform stats data to API format - include all saved configurations
+      const transformStatsToAPIFormat = () => {
+        // Transform all saved stats configurations
+        return statsConfigurations.map(config => {
+          // Map input sources to the required format with source_id
+          const statsInputSources = config.inputSources
+            .map((sourceName, index) => {
+              const source = allAvailableInputSources?.find(s => s?.sourceName === sourceName);
+              if (!source) return null;
+              
+              // Use the same sourceId logic as the main transformation function
+              const sourceId = source?.fileSourceId || parseInt(source?.id || '0') || (index + 1);
+              
+              // Determine if using all columns or limited columns
+              const isAllColumns = !source?.selectedHeaders || source?.selectedHeaders?.length === (source?.headers || [])?.length;
+              
+              return {
+                source_id: sourceId,
+                columns: isAllColumns ? "all" as const : "limited" as const
+              };
+            })
+            .filter((item): item is { source_id: number; columns: "all" | "limited" } => item !== null);
+
+          return {
+            input_sources: statsInputSources,
+            generate_counts_on: config.countsOn,
+            is_distinct: config.isDistinct,
+            breakdown_by: config.breakdownBy
+          };
+        });
+      };
+
+      // Transform output configurations to API format
+      const transformOutputToAPIFormat = () => {
+        if (!outputConfigurations.length) return null;
+        
+        // For simplicity, we'll transform the first output configuration
+        // In a more complex scenario, you might want to handle multiple configurations
+        const outputConfig = outputConfigurations[0];
+        
+        // Map input sources to the required format with priority
+        const outputInputSources = (outputConfig.inputSources as string[])
+          .map((sourceName: string, index: number) => {
+            // Try multiple matching strategies
+            let source = allAvailableInputSources.find(s => s.sourceName === sourceName);
+
+            // If not found by sourceName, try by id
+            if (!source) {
+              source = allAvailableInputSources.find(s => s.id === sourceName);
+            }
+
+            // If still not found, log all available sources for debugging
+            if (!source) {
+              console.warn(`Source "${sourceName}" not found in available sources:`,
+                allAvailableInputSources.map(s => s.sourceName));
+              return null;
+            }
+
+            // Use the same sourceId logic as the main transformation function
+            const sourceId = source?.fileSourceId || parseInt(source?.id || '0') || (index + 1);
+
+            // Determine if using all columns or limited columns
+            const isAllColumns = !source?.selectedHeaders || source?.selectedHeaders?.length === (source?.headers || [])?.length;
+
+            const mappedSource = {
+              source_id: sourceId,
+              columns: isAllColumns ? "all" as const : "limited" as const,
+              priority: index + 1 // Set priority based on order
+            };
+
+            return mappedSource;
+          })
+          .filter((item: any): item is { source_id: number; columns: "all" | "limited"; priority: number } => item !== null);
+
+        // Build the output object based on the required format
+        const outputPayload: any = {
+          input_sources: outputInputSources,
+          output_fields: outputConfig?.outputFields || [],
+          combine_sources: outputConfig?.combineSources || false,
+          field_priority: outputConfig?.fieldPriority || [],
+          limitations: {
+            limit_records: outputConfig?.limitCount || null,
+            shuffle_records: outputConfig?.random || false
+          }
+        };
+
+        // Add destination information if available
+        if (outputConfig?.destinations && outputConfig?.destinations?.length > 0) {
+          const firstDestination = outputConfig?.destinations[0];
+          
+          // Map destination names to appropriate configuration
+          let destinationConfig: any = {
+            data_source_id: 3, // Default - would need proper mapping in production
+            path: "/exports/combined",
+            filename: "output.csv",
+            format: "CSV",
+            compression: "GZIP"
+          };
+
+          // Customize based on destination type/name
+          if (firstDestination?.includes('SFTP')) {
+            destinationConfig = {
+              ...destinationConfig,
+              data_source_id: 1,
+              path: "/sftp/exports",
+              format: "CSV"
+            };
+          } else if (firstDestination?.includes('S3')) {
+            destinationConfig = {
+              ...destinationConfig,
+              data_source_id: 2,
+              path: "/s3-bucket/exports",
+              format: "Parquet"
+            };
+          } else if (firstDestination?.includes('NFS')) {
+            destinationConfig = {
+              ...destinationConfig,
+              data_source_id: 3,
+              path: "/nfs/exports",
+              format: "Excel"
+            };
+          }
+
+          outputPayload.destination = destinationConfig;
+        }
+
+        return outputPayload;
+      };
+
+      // Transform suppress configurations to API format
+      const transformSuppressToAPIFormat = () => {
+        if (!suppressConfigurations.length) {
+          return null;
+        }
+
+        const suppressPayload = suppressConfigurations.map(config => ({
+          input_sources: config?.inputSources?.map((sourceId: string) => {
+            const source = allAvailableInputSources.find(s => s?.id === sourceId);
+
+            if (!source) {
+              console.warn(`Source ${sourceId} not found in available sources`);
+              return null;
+            }
+
+            return {
+              source_id: parseInt(source?.id || '0', 10),
+              columns: "all"
+            };
+          }).filter(Boolean), // Remove any null entries
+          suppress_on_fields: config?.suppressOnFields || [],
+          suppress_sources: (config?.suppressSources || []).map((sourceId: string) => {
+            // For suppress sources, convert string IDs to integers
+            if (sourceId.startsWith('suppress_')) {
+              return parseInt(sourceId.replace('suppress_', ''), 10);
+            }
+            return parseInt(sourceId, 10);
+          })
+        }));
+
+        return suppressPayload;
+      };
+
+      const submitPayload: SubmitRequestPayload = {
+        requestDetails,
+        inputSources: transformedInputSources,
+        ...(statsConfigurations.length > 0 && {
+          stats: transformStatsToAPIFormat()
+        }),
+        ...(outputConfigurations.length > 0 && {
+          output: transformOutputToAPIFormat()
+        }),
+        ...(suppressConfigurations.length > 0 && {
+          suppress: transformSuppressToAPIFormat()
+        })
+      };
+
+      const submitResponse = await submitRequest(submitPayload);
+      
+      if (!submitResponse.success) {
+                setSaveError(submitResponse.message || 'Failed to submit request. Please try again.');
+}
+      
+    } catch (error) {
+      console.error('Error submitting request:', error);
+      setSaveError('An error occurred while submitting the request. Please try again.');
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   const handleAddInputSource = (event: React.MouseEvent) => {
@@ -558,6 +740,16 @@ const RequestCreationPage: React.FC = () => {
     const addButton = document.querySelector('[data-add-input-source]') as HTMLButtonElement;
     if (addButton) {
       addButton.click();
+    }
+  };
+
+  const handleCreateInputVersion = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+    // Trigger the create version dialog from InputModule
+    const versionButton = document.querySelector('[data-create-input-version]') as HTMLButtonElement;
+    if (versionButton) {
+      versionButton.click();
     }
   };
 
@@ -624,67 +816,69 @@ const RequestCreationPage: React.FC = () => {
     }
   };
 
-  // Define modules in initial order
-  const initialModules = [
-    {
-      id: 'panel1',
-      title: 'Input Module',
-      icon: InputIcon,
-      color: '#296695',
-      description: 'Configure source file and data import settings',
-      isDraggable: false,
-    },
-    {
-      id: 'panel2',
-      title: 'Append Module',
-      icon: AddCircleOutline,
-      color: '#10B981',
-      description: 'Set up data append rules and additional sources',
-      isDraggable: true,
-    },
-    {
-      id: 'panel3',
-      title: 'Suppression Module',
-      icon: RemoveCircleOutline,
-      color: '#F87171',
-      description: 'Define suppression lists and exclusion rules',
-      isDraggable: true,
-    },
-    {
-      id: 'panel4',
-      title: 'Match Module',
-      icon: CompareArrows,
-      color: '#F59E0B',
-      description: 'Configure matching algorithms and criteria',
-      isDraggable: true,
-    },
-    {
-      id: 'panel5',
-      title: 'Stats Module',
-      icon: BarChart,
-      color: '#8B5CF6',
-      description: 'Statistics and metrics configuration',
-      isDraggable: false,
-    },
-    {
-      id: 'panel6',
-      title: 'Output Module',
-      icon: OutputIcon,
-      color: '#3B82F6',
-      description: 'Specify output format and destination settings',
-      isDraggable: false,
-    },
-    {
-      id: 'panel7',
-      title: 'Schedule Module',
-      icon: ScheduleIcon,
-      color: '#06B6D4',
-      description: 'Configure scheduling and notification settings',
-      isDraggable: false,
-    },
-  ];
+  // Define modules in initial order (using extracted definitions)
+  const [modules, setModules] = useState(createModuleDefinitions());
+  const [moduleCounter, setModuleCounter] = useState({ Append: 1, Suppression: 1, Match: 1 });
 
-  const [modules, setModules] = useState(initialModules);
+  // Handle duplication of modules (panels 2, 3, 4)
+  const handleDuplicateModule = (moduleId: string) => {
+    const moduleIndex = modules.findIndex(m => m.id === moduleId);
+    if (moduleIndex === -1) return;
+
+    const originalModule = modules[moduleIndex];
+    let newTitle: string;
+    let newId: string;
+
+    // Determine module type and generate new details
+    if (originalModule?.title?.includes('Append')) {
+      const newCount = moduleCounter.Append + 1;
+      newTitle = `Append Module ${newCount}`;
+      newId = `panel2_${newCount}`;
+      setModuleCounter(prev => ({ ...prev, Append: newCount }));
+    } else if (originalModule?.title?.includes('Suppression')) {
+      const newCount = moduleCounter.Suppression + 1;
+      newTitle = `Suppression Module ${newCount}`;
+      newId = `panel3_${newCount}`;
+      setModuleCounter(prev => ({ ...prev, Suppression: newCount }));
+    } else if (originalModule?.title?.includes('Match')) {
+      const newCount = moduleCounter.Match + 1;
+      newTitle = `Match Module ${newCount}`;
+      newId = `panel4_${newCount}`;
+      setModuleCounter(prev => ({ ...prev, Match: newCount }));
+    } else {
+      return; // Not a duplicatable module
+    }
+
+    // Create duplicated module with default data only
+    const duplicatedModule = {
+      ...originalModule,
+      id: newId,
+      title: newTitle,
+      description: originalModule.description,
+    };
+
+    // Insert the duplicated module right after the original
+    const newModules = [...modules];
+    newModules.splice(moduleIndex + 1, 0, duplicatedModule);
+    setModules(newModules);
+
+    // Automatically expand the new module
+    setExpanded(prev => [...prev, newId]);
+  };
+
+  const handleDeleteModule = (moduleId: string) => {
+    // Only allow deleting duplicated modules (those with underscore in ID)
+    if (!moduleId.includes('_')) {
+      return;
+    }
+
+    // Remove the module from the modules array
+    const newModules = modules.filter(module => module.id !== moduleId);
+    setModules(newModules);
+
+    // Remove from expanded state if it was expanded
+    setExpanded(prev => prev.filter(id => id !== moduleId));
+  };
 
   // Handle drag end for draggable modules (panels 2, 3, 4)
   const handleDragEnd = (event: DragEndEvent) => {
@@ -695,8 +889,22 @@ const RequestCreationPage: React.FC = () => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
 
-        // Only allow dragging within the draggable range (indices 1, 2, 3)
-        if (oldIndex >= 1 && oldIndex <= 3 && newIndex >= 1 && newIndex <= 3) {
+        // Only allow dragging within the draggable modules
+        const isDraggableModule = (moduleId: string) => {
+          return moduleId.startsWith('panel2') || moduleId.startsWith('panel3') || moduleId.startsWith('panel4');
+        };
+
+        if (isDraggableModule(active.id as string) && isDraggableModule(over.id as string)) {
+          // Validate the move before executing
+          const validation = validateModuleMove(oldIndex, newIndex, modules, versionedSources);
+
+          if (!validation.canMove) {
+            // Show error message with better formatting
+            const errorMessage = `🚫 Module Reordering Not Allowed\n\n${validation.error}\n\n💡 Tip: You can edit or delete the dependent versions first, then reorder the modules.`;
+            alert(errorMessage);
+            return items; // Return unchanged items
+          }
+          
           return arrayMove(items, oldIndex, newIndex);
         }
         return items;
@@ -704,19 +912,71 @@ const RequestCreationPage: React.FC = () => {
     }
   };
 
-  // Get draggable module IDs (only Append, Suppression, Match)
-  const draggableIds = modules.slice(1, 4).map((m) => m.id);
+  // Get draggable module IDs (Append, Suppression, Match modules including duplicates)
+  const draggableIds = modules.filter(m => 
+    m.id.startsWith('panel2') || m.id.startsWith('panel3') || m.id.startsWith('panel4')
+  ).map(m => m.id);
 
   // Render module content based on module ID (not index)
   const renderModuleContent = (moduleId: string) => {
     if (moduleId === 'panel1') {
-      return <InputModule hideButton={true} onSourcesChange={setInputSources} initialSources={inputSources} />;
-    } else if (moduleId === 'panel2') {
-      return <AppendModule availableInputSources={allAvailableInputSources} onCreateVersionedSource={handleCreateVersionedSource} initialConfigs={initialAppendConfigs} />;
-    } else if (moduleId === 'panel3') {
-      return <SuppressModule availableInputSources={allAvailableInputSources} onCreateVersionedSource={handleCreateVersionedSource} initialConfigs={initialSuppressConfigs} />;
-    } else if (moduleId === 'panel4') {
-      return <MatchModule availableInputSources={allAvailableInputSources} onCreateVersionedSource={handleCreateVersionedSource} initialConfigs={initialMatchConfigs} />;
+      return (
+        <InputModule 
+          hideButton={true} 
+          onSourcesChange={setInputSources} 
+          initialSources={inputSources}
+          apiSources={apiSources}
+          sourcesLoading={sourcesLoading}
+          versionCounters={versionCounters}
+          onUpdateVersionCounter={handleUpdateVersionCounter}
+        />
+      );
+    } else if (moduleId === 'panel2' || moduleId.startsWith('panel2_')) {
+      // For duplicated Append modules, only pass initial configs to the original module
+      const initialConfigs = moduleId === 'panel2' ? initialAppendConfigs : [];
+      return <AppendModule 
+        availableInputSources={allAvailableInputSources} 
+        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) => 
+          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
+        }
+        initialConfigs={initialConfigs}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+        versionedSources={versionedSources.filter(v => v.sourceModule === 'Append' && v.createdByModuleId === moduleId)}
+        getSourceNameById={getSourceNameById}
+        onUpdateVersionName={handleUpdateVersionName}
+      />;
+    } else if (moduleId === 'panel3' || moduleId.startsWith('panel3_')) {
+      // For duplicated Suppression modules, only pass initial configs to the original module
+      const initialConfigs = moduleId === 'panel3' ? initialSuppressConfigs : [];
+      return <SuppressModule 
+        availableInputSources={allAvailableInputSources} 
+        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) => 
+          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
+        }
+        initialConfigs={initialConfigs}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+        versionedSources={versionedSources.filter(v => v.sourceModule === 'Suppress' && v.createdByModuleId === moduleId)}
+        getSourceNameById={getSourceNameById}
+        onUpdateVersionName={handleUpdateVersionName}
+        onConfigurationsChange={setSuppressConfigurations}
+      />;
+    } else if (moduleId === 'panel4' || moduleId.startsWith('panel4_')) {
+      // For duplicated Match modules, only pass initial configs to the original module
+      const initialConfigs = moduleId === 'panel4' ? initialMatchConfigs : [];
+      return <MatchModule 
+        availableInputSources={allAvailableInputSources} 
+        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) => 
+          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
+        }
+        initialConfigs={initialConfigs}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+        versionedSources={versionedSources.filter(v => v.sourceModule === 'Match' && v.createdByModuleId === moduleId)}
+        getSourceNameById={getSourceNameById}
+        onUpdateVersionName={handleUpdateVersionName}
+      />;
     } else if (moduleId === 'panel5') {
       // Stats Module Content - Redesigned to match other modules
 
@@ -743,16 +1003,35 @@ const RequestCreationPage: React.FC = () => {
         );
       }
 
+      // Function to get headers from selected input sources
+      const getHeadersFromSelectedSources = (): string[] => {
+        const uniqueHeaders = new Set<string>();
+        
+        selectedInputSources.forEach(sourceName => {
+          const source = allAvailableInputSources.find(s => s.sourceName === sourceName);
+          if (source) {
+            // Use selectedHeaders if available (user's column selection), otherwise fallback to headers
+            const headersToUse = source.selectedHeaders || source.headers || [];
+            headersToUse.forEach(header => uniqueHeaders.add(header));
+          }
+        });
+        
+        return Array.from(uniqueHeaders).sort();
+      };
+
+      // Get available headers from selected sources only
+      const availableHeaders = getHeadersFromSelectedSources();
+
       // Filtered lists for Stats Module
       const filteredStatsInputSources = allAvailableInputSources.filter(source =>
         source?.sourceName?.toLowerCase().includes(statsInputSourcesSearch.toLowerCase())
       );
 
-      const filteredStatsCountsOn = STATS_FIELDS.filter(field =>
+      const filteredStatsCountsOn = availableHeaders.filter(field =>
         field.toLowerCase().includes(statsCountsOnSearch.toLowerCase())
       );
 
-      const filteredStatsBreakdownBy = STATS_FIELDS.filter(field =>
+      const filteredStatsBreakdownBy = availableHeaders.filter(field =>
         field.toLowerCase().includes(statsBreakdownBySearch.toLowerCase())
       );
 
@@ -1462,19 +1741,9 @@ const RequestCreationPage: React.FC = () => {
       return (
         <OutputModule
           availableInputSources={allAvailableInputSources}
-          scheduleType={scheduleType}
-          onScheduleTypeChange={setScheduleType}
-          notificationWhen={notificationWhen}
-          onNotificationWhenChange={setNotificationWhen}
-          recipientEmail={recipientEmail}
-          onRecipientEmailChange={setRecipientEmail}
-          recurrence={recurrence}
-          onRecurrenceChange={setRecurrence}
-          startDate={startDate}
-          onStartDateChange={setStartDate}
-          endDate={endDate}
-          onEndDateChange={setEndDate}
           initialConfigs={initialOutputConfigs}
+          apiSources={apiSources}
+          onConfigurationsChange={setOutputConfigurations}
         />
       );
     } else if (moduleId === 'panel7') {
@@ -1486,12 +1755,8 @@ const RequestCreationPage: React.FC = () => {
           onNotificationWhenChange={setNotificationWhen}
           recipientEmail={recipientEmail}
           onRecipientEmailChange={setRecipientEmail}
-          recurrence={recurrence}
-          onRecurrenceChange={setRecurrence}
-          startDate={startDate}
-          onStartDateChange={setStartDate}
-          endDate={endDate}
-          onEndDateChange={setEndDate}
+          scheduledDateTime={scheduledDateTime}
+          onScheduledDateTimeChange={setScheduledDateTime}
         />
       );
     }
@@ -1550,6 +1815,7 @@ const RequestCreationPage: React.FC = () => {
               size="small"
               startIcon={<Save />}
               onClick={handleSave}
+              disabled={saveLoading}
               sx={{
                 px: 2.5,
                 py: 0.75,
@@ -1557,11 +1823,27 @@ const RequestCreationPage: React.FC = () => {
                 boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
               }}
             >
-              Save Request
+              {saveLoading ? 'Submitting...' : 'Submit Request'}
             </Button>
           </Stack>
         </Box>
       </Box>
+
+      {/* Success/Error Messages */}
+      {saveSuccess && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="success" onClose={() => setSaveSuccess('')}>
+            {saveSuccess}
+          </Alert>
+        </Box>
+      )}
+      {saveError && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="error" onClose={() => setSaveError('')}>
+            {saveError}
+          </Alert>
+        </Box>
+      )}
 
       {/* Request Name Section - Only show in Accordion View */}
       {viewMode === 'accordion' && (
@@ -1597,7 +1879,14 @@ const RequestCreationPage: React.FC = () => {
             variant="outlined"
             placeholder="e.g., Sprint Q1 2024"
             value={requestName}
-            onChange={(e) => setRequestName(e.target.value)}
+            onChange={(e) => {
+              setRequestName(e.target.value);
+              if (requestNameError) {
+                setRequestNameError(validateRequestName(e.target.value) || '');
+              }
+            }}
+            error={!!requestNameError}
+            helperText={requestNameError}
             sx={{
               width: '30%',
               '& .MuiOutlinedInput-root': {
@@ -1702,6 +1991,31 @@ const RequestCreationPage: React.FC = () => {
                           <Add fontSize="small" />
                           Add Input Source
                         </Box>
+                        <Box
+                          component="span"
+                          onClick={handleCreateInputVersion}
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 32,
+                            height: 32,
+                            mr: 1,
+                            backgroundColor: 'transparent',
+                            color: '#6366F1',
+                            border: '2px solid',
+                            borderColor: '#6366F1',
+                            borderRadius: 1,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            '&:hover': {
+                              backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                              borderColor: '#4F46E5',
+                            },
+                          }}
+                        >
+                          <AccountTree fontSize="small" />
+                        </Box>
                         <Chip
                           label={`Step ${index + 1}`}
                           size="small"
@@ -1729,6 +2043,8 @@ const RequestCreationPage: React.FC = () => {
                       onChange={handleChange}
                       renderContent={renderModuleContent}
                       isDraggable={true}
+                      onDuplicate={handleDuplicateModule}
+                      onDelete={handleDeleteModule}
                     />
                   );
                 }
@@ -1905,7 +2221,14 @@ const RequestCreationPage: React.FC = () => {
                     variant="outlined"
                     placeholder="e.g., Sprint Q1 2024"
                     value={requestName}
-                    onChange={(e) => setRequestName(e.target.value)}
+                    onChange={(e) => {
+                      setRequestName(e.target.value);
+                      if (requestNameError) {
+                        setRequestNameError(validateRequestName(e.target.value) || '');
+                      }
+                    }}
+                    error={!!requestNameError}
+                    helperText={requestNameError}
                     sx={{
                       width: '40%',
                       '& .MuiOutlinedInput-root': {
@@ -1942,31 +2265,57 @@ const RequestCreationPage: React.FC = () => {
                       {modules[activeStep].description}
                     </Typography>
                   </Box>
-                  <Box
-                    component="span"
-                    onClick={handleAddInputSource}
-                    sx={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      px: 2,
-                      py: 0.75,
-                      backgroundColor: 'primary.main',
-                      color: 'white',
-                      borderRadius: 1.5,
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(41, 102, 149, 0.3)',
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        backgroundColor: 'primary.dark',
-                        boxShadow: '0 4px 12px rgba(41, 102, 149, 0.4)',
-                      },
-                    }}
-                  >
-                    <Add fontSize="small" />
-                    Add Input Source
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box
+                      component="span"
+                      onClick={handleAddInputSource}
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        px: 2,
+                        py: 0.75,
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                        borderRadius: 1.5,
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(41, 102, 149, 0.3)',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          backgroundColor: 'primary.dark',
+                          boxShadow: '0 4px 12px rgba(41, 102, 149, 0.4)',
+                        },
+                      }}
+                    >
+                      <Add fontSize="small" />
+                      Add Input Source
+                    </Box>
+                    <Box
+                      component="span"
+                      onClick={handleCreateInputVersion}
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 36,
+                        height: 36,
+                        backgroundColor: 'transparent',
+                        color: '#6366F1',
+                        border: '2px solid',
+                        borderColor: '#6366F1',
+                        borderRadius: 1.5,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                          borderColor: '#4F46E5',
+                        },
+                      }}
+                    >
+                      <AccountTree fontSize="small" />
+                    </Box>
                   </Box>
                 </Box>
 
@@ -2062,6 +2411,7 @@ const RequestCreationPage: React.FC = () => {
           size="small"
           startIcon={<Save />}
           onClick={handleSave}
+          disabled={saveLoading}
           sx={{
             px: 3,
             py: 0.75,
@@ -2069,7 +2419,7 @@ const RequestCreationPage: React.FC = () => {
             boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
           }}
         >
-          Save Request
+          {saveLoading ? 'Submitting...' : 'Submit Request'}
         </Button>
       </Box>
     </Box>

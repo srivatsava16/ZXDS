@@ -22,7 +22,7 @@ import {
   FormControlLabel,
   Paper,
 } from '@mui/material';
-import { Close, Add, Delete, CheckCircle } from '@mui/icons-material';
+import { Close, Add, Delete } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 
 interface NewColumn {
@@ -96,11 +96,11 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
 
     if (selectedAddress) {
       PREDEFINED_FIELDS.address.forEach(field => {
-        if (!columns.find(col => col.name === field.name)) {
+        if (!columns.find(col => col?.name === field?.name)) {
           newColumns.push({
-            id: `${Date.now()}-${field.name}`,
-            name: field.name,
-            dataType: field.dataType,
+            id: `${Date.now()}-${field?.name}`,
+            name: field?.name,
+            dataType: field?.dataType,
           });
         }
       });
@@ -108,11 +108,11 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
 
     if (selectedEmail) {
       PREDEFINED_FIELDS.email.forEach(field => {
-        if (!columns.find(col => col.name === field.name)) {
+        if (!columns.find(col => col?.name === field?.name)) {
           newColumns.push({
-            id: `${Date.now()}-${field.name}`,
-            name: field.name,
-            dataType: field.dataType,
+            id: `${Date.now()}-${field?.name}`,
+            name: field?.name,
+            dataType: field?.dataType,
           });
         }
       });
@@ -120,11 +120,11 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
 
     if (selectedProfileId) {
       PREDEFINED_FIELDS.profileId.forEach(field => {
-        if (!columns.find(col => col.name === field.name)) {
+        if (!columns.find(col => col?.name === field?.name)) {
           newColumns.push({
-            id: `${Date.now()}-${field.name}`,
-            name: field.name,
-            dataType: field.dataType,
+            id: `${Date.now()}-${field?.name}`,
+            name: field?.name,
+            dataType: field?.dataType,
           });
         }
       });
@@ -132,11 +132,11 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
 
     if (selectedMD5) {
       PREDEFINED_FIELDS.md5.forEach(field => {
-        if (!columns.find(col => col.name === field.name)) {
+        if (!columns.find(col => col?.name === field?.name)) {
           newColumns.push({
-            id: `${Date.now()}-${field.name}`,
-            name: field.name,
-            dataType: field.dataType,
+            id: `${Date.now()}-${field?.name}`,
+            name: field?.name,
+            dataType: field?.dataType,
           });
         }
       });
@@ -165,7 +165,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
   };
 
   const handleDeleteColumn = (id: string) => {
-    setColumns(columns.filter(col => col.id !== id));
+    setColumns(columns.filter(col => col?.id !== id));
   };
 
   const handleSave = () => {
@@ -241,8 +241,8 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               {selectedInputSources.map((source) => (
                 <Chip
-                  key={source.id}
-                  label={source.sourceName}
+                  key={source?.id}
+                  label={source?.sourceName}
                   size="small"
                   color="primary"
                   sx={{ fontWeight: 600 }}
@@ -428,7 +428,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
               <List disablePadding>
                 {columns.map((column, index) => (
                   <ListItem
-                    key={column.id}
+                    key={column?.id}
                     sx={{
                       py: 1,
                       px: 2,
@@ -442,7 +442,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       <IconButton
                         edge="end"
                         size="small"
-                        onClick={() => handleDeleteColumn(column.id)}
+                        onClick={() => handleDeleteColumn(column?.id)}
                         sx={{
                           color: 'error.main',
                           '&:hover': {
@@ -458,10 +458,10 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {column.name}
+                            {column?.name}
                           </Typography>
                           <Chip
-                            label={column.dataType}
+                            label={column?.dataType}
                             size="small"
                             sx={{
                               backgroundColor: '#F3F4F6',

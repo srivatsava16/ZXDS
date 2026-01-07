@@ -6,13 +6,9 @@ import {
   MenuItem,
   OutlinedInput,
   FormControl,
-  InputLabel,
   ListItemText,
-  Radio,
-  RadioGroup,
   FormControlLabel,
   TextField,
-  Divider,
   Checkbox,
   Chip,
   IconButton,
@@ -28,11 +24,12 @@ import {
 } from '@mui/material';
 import { Add, Delete, Edit, AccountTree } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
+import type { RequestInputsResponse } from '../../services/api';
 import DraggableOutputSources from './DraggableOutputSources';
 import OutputDestinationDialog, { type OutputDestination } from './OutputDestinationDialog';
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
-
-const DEFAULT_OUTPUT_DESTINATIONS = ['DC SFTP', 'ZXDS S3', 'AWS S3', 'NFS'];
+import { generateId } from '../../utils/idGenerator';
+import { useNotification } from '../../contexts/NotificationContext';
 
 interface OutputConfig {
   id: string;
@@ -51,37 +48,18 @@ interface OutputConfig {
 interface OutputModuleProps {
   availableInputSources?: InputSource[];
   onOutputChange?: (outputSource: string) => void;
-  scheduleType?: 'adhoc' | 'recurrence';
-  onScheduleTypeChange?: (type: 'adhoc' | 'recurrence') => void;
-  notificationWhen?: string;
-  onNotificationWhenChange?: (value: string) => void;
-  recipientEmail?: string;
-  onRecipientEmailChange?: (value: string) => void;
-  recurrence?: string;
-  onRecurrenceChange?: (value: string) => void;
-  startDate?: string;
-  onStartDateChange?: (value: string) => void;
-  endDate?: string;
-  onEndDateChange?: (value: string) => void;
   initialConfigs?: OutputConfig[];
+  apiSources?: RequestInputsResponse | null;
+  onConfigurationsChange?: (configurations: OutputConfig[]) => void;
 }
 
 const OutputModule: React.FC<OutputModuleProps> = ({
   availableInputSources = [],
-  scheduleType = 'adhoc',
-  onScheduleTypeChange,
-  notificationWhen = 'standard',
-  onNotificationWhenChange,
-  recipientEmail = '',
-  onRecipientEmailChange,
-  recurrence = '',
-  onRecurrenceChange,
-  startDate = '',
-  onStartDateChange,
-  endDate = '',
-  onEndDateChange,
   initialConfigs,
+  apiSources,
+  onConfigurationsChange,
 }) => {
+  const { showAlert } = useNotification();
   const [configs, setConfigs] = useState<OutputConfig[]>([]);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
   const [customDestinations, setCustomDestinations] = useState<OutputDestination[]>([]);
@@ -95,6 +73,13 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
+
+  // Notify parent component whenever configurations change
+  useEffect(() => {
+    if (onConfigurationsChange) {
+      onConfigurationsChange(configs);
+    }
+  }, [configs, onConfigurationsChange]);
 
   // Current working config state
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
@@ -120,7 +105,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     sourceIds.forEach(id => {
       const source = availableInputSources.find(src => src.id === id);
       if (source?.headers) {
-        source.headers.forEach(field => fieldsSet.add(field));
+        source?.headers?.forEach(field => fieldsSet.add(field));
       }
     });
 
@@ -129,9 +114,14 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   const availableOutputFields = getOutputFields(selectedInputSources);
 
+  // Get output destinations from API or use fallback
+  const getDefaultDestinations = () => {
+    return apiSources?.dbSource?.preconfiguredTables?.output || ['DC SFTP', 'ZXDS S3', 'AWS S3', 'NFS'];
+  };
+
   // Get all available destinations (default + custom)
   const allOutputDestinations = [
-    ...DEFAULT_OUTPUT_DESTINATIONS,
+    ...getDefaultDestinations(),
     ...customDestinations.map(dest => dest.name),
   ];
 
@@ -170,15 +160,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   const handleAddOrUpdateConfig = () => {
     if (selectedInputSources.length === 0) {
-      alert('Please select at least one Input Source');
+      showAlert('Please select at least one Input Source', 'warning');
       return;
     }
     if (selectedOutputFields.length === 0) {
-      alert('Please select at least one Output Field');
+      showAlert('Please select at least one Output Field', 'warning');
       return;
     }
     if (selectedDestinations.length === 0) {
-      alert('Please select at least one Output Destination');
+      showAlert('Please select at least one Output Destination', 'warning');
       return;
     }
 
@@ -205,7 +195,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     } else {
       // Add new config
       const newConfig: OutputConfig = {
-        id: Date.now().toString(),
+        id: generateId(),
         inputSources: selectedInputSources,
         outputFields: selectedOutputFields,
         destinations: selectedDestinations,
@@ -234,17 +224,17 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   };
 
   const handleEditConfig = (config: OutputConfig) => {
-    setEditingConfigId(config.id);
-    setSelectedInputSources(config.inputSources);
-    setSelectedOutputFields(config.outputFields);
-    setSelectedDestinations(config.destinations);
-    setCombineSources(config.combineSources);
-    setCombineSourcesList(config.combineSourcesList || []);
-    setPriorityOrder(config.priorityOrder || []);
-    setFieldPriority(config.fieldPriority || []);
-    setLimitation(config.limitation);
-    setLimitCount(config.limitCount);
-    setRandom(config.random);
+    setEditingConfigId(config?.id);
+    setSelectedInputSources(config?.inputSources);
+    setSelectedOutputFields(config?.outputFields);
+    setSelectedDestinations(config?.destinations);
+    setCombineSources(config?.combineSources);
+    setCombineSourcesList(config?.combineSourcesList || []);
+    setPriorityOrder(config?.priorityOrder || []);
+    setFieldPriority(config?.fieldPriority || []);
+    setLimitation(config?.limitation);
+    setLimitCount(config?.limitCount);
+    setRandom(config?.random);
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -274,7 +264,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   const getSourceName = (id: string): string => {
     const source = availableInputSources.find(src => src.id === id);
-    return source ? source.sourceName : id;
+    return source ? source?.sourceName : id;
   };
 
   return (
@@ -517,9 +507,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       </MenuItem>
                     )}
                     {filteredInputSources.map((source) => (
-                      <MenuItem key={source.id} value={source.id}>
-                        <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} size="small" />
-                        <ListItemText primary={source.sourceName} />
+                      <MenuItem key={source?.id} value={source?.id}>
+                        <Checkbox checked={selectedInputSources.indexOf(source?.id) > -1} size="small" />
+                        <ListItemText primary={source?.sourceName} />
                       </MenuItem>
                     ))}
                   </Select>
@@ -1277,15 +1267,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         >
                           {/* Input Sources Column */}
                           <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                            {config.inputSources.length > 0 ? (
+                            {config?.inputSources?.length > 0 ? (
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
                                     <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                      Input Sources ({config.inputSources.length}):
+                                      Input Sources ({config?.inputSources?.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
-                                      {config.inputSources.map(id => getSourceName(id)).join(', ')}
+                                      {config?.inputSources?.map(id => getSourceName(id))?.join(', ')}
                                     </Typography>
                                   </Box>
                                 }
@@ -1294,7 +1284,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               >
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <Chip
-                                    label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
+                                    label={`${config?.inputSources?.length} source${config?.inputSources?.length !== 1 ? 's' : ''}`}
                                     size="small"
                                     sx={{
                                       backgroundColor: '#29669520',
@@ -1315,8 +1305,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       whiteSpace: 'nowrap',
                                     }}
                                   >
-                                    {config.inputSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
-                                    {config.inputSources.length > 2 ? '...' : ''}
+                                    {config?.inputSources?.slice(0, 2)?.map(id => getSourceName(id))?.join(', ')}
+                                    {config?.inputSources?.length > 2 ? '...' : ''}
                                   </Typography>
                                 </Box>
                               </Tooltip>

@@ -45,7 +45,7 @@ import {
   Output as OutputIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import OutputModule from '../components/OutputModule/OutputModule';
+import OutputModule from '../../components/OutputModule/OutputModule';
 
 const STATS_FIELDS = [
   'DEVICE',
@@ -96,10 +96,10 @@ const UniversalPullRequestPage: React.FC = () => {
   const [statsCombinations, setStatsCombinations] = useState<StatsCombination[]>([]);
 
   // Schedule Component state
-  const [scheduleType, setScheduleType] = useState<'adhoc' | 'recurrence'>('adhoc');
+  const [scheduleType, setScheduleType] = useState<'adhoc' | 'scheduled_at'>('adhoc');
   const [notificationWhen, setNotificationWhen] = useState('standard');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [recurrence, setRecurrence] = useState('');
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -362,137 +362,186 @@ const UniversalPullRequestPage: React.FC = () => {
             />
           </AccordionSummary>
           <AccordionDetails>
+            {/* Configuration Form - Horizontal Layout */}
             <Box
               sx={{
-                backgroundColor: '#F8FAFB',
-                borderRadius: 3,
-                p: 3,
+                display: 'flex',
+                gap: 2,
+                alignItems: 'stretch',
+                mb: 2.5,
               }}
             >
-              {/* Generate Counts On */}
-              <Box sx={{ mb: 3 }}>
+              {/* Step 1: Generate Counts On */}
+              <Box
+                sx={{
+                  flex: 1,
+                  p: 2,
+                  backgroundColor: 'white',
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
-                    #1 Generate Counts On
+                  <Chip
+                    label={'1'}
+                    size="small"
+                    sx={{
+                      backgroundColor: '#8B5CF6',
+                      color: '#fff',
+                      fontWeight: 700,
+                      mr: 1,
+                      width: 24,
+                      height: 24,
+                    }}
+                  />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
+                    Generate Counts On
+                  </Typography>
+                  <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
+                    *
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <Box sx={{ width: '40%' }}>
-                    <FormControl size="small" fullWidth>
-                      <InputLabel id="counts-label">Select Fields</InputLabel>
-                      <Select
-                        labelId="counts-label"
-                        multiple
-                        value={generateCountsOn}
-                        onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                        onClose={() => setCountsSearchQuery('')}
-                        input={<OutlinedInput label="Select Fields" />}
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => (
-                              <Chip key={value} label={value} size="small" color="success" sx={{ height: 22, fontSize: '0.75rem', color: '#fff' }} />
-                            ))}
-                          </Box>
-                        )}
-                        sx={{ backgroundColor: 'white' }}
-                        MenuProps={{ PaperProps: { style: { maxHeight: 300 } }, autoFocus: false }}
-                      >
-                        <Box sx={{ px: 2, py: 1, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid', borderColor: 'divider' }} onKeyDown={(e) => e.stopPropagation()}>
-                          <TextField size="small" placeholder="Search fields..." fullWidth value={countsSearchQuery} onChange={(e) => setCountsSearchQuery(e.target.value)} autoFocus sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#F8FAFB' } }} />
-                        </Box>
-                        {filteredCountsFields.length > 0 ? filteredCountsFields.map((field) => (
-                          <MenuItem key={field} value={field}>
-                            <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
-                            <ListItemText primary={field} />
-                          </MenuItem>
-                        )) : (
-                          <MenuItem disabled><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>No fields found</Typography></MenuItem>
-                        )}
-                      </Select>
-                    </FormControl>
-                  </Box>
-
-                  {/* Is Distinct Checkbox */}
-                  <Box>
-                    <FormControlLabel
-                      control={<Checkbox checked={isDistinct} onChange={(e) => setIsDistinct(e.target.checked)} size="small" />}
-                      label={<Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Is Distinct</Typography>}
-                    />
-                  </Box>
-                </Box>
-              </Box>
-
-              {/* Breakdown By */}
-              <Box sx={{ mb: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
-                    #2 Breakdown By
-                  </Typography>
-                </Box>
-                <Box sx={{ width: '40%' }}>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="breakdown-label">Select Fields</InputLabel>
-                    <Select
-                      labelId="breakdown-label"
-                      multiple
-                      value={breakdownBy}
-                      onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                      onClose={() => setBreakdownSearchQuery('')}
-                      input={<OutlinedInput label="Select Fields" />}
-                      renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
-                            <Chip key={value} label={value} size="small" color="warning" sx={{ height: 22, fontSize: '0.75rem', color: '#fff' }} />
-                          ))}
-                        </Box>
-                      )}
-                      sx={{ backgroundColor: 'white' }}
-                      MenuProps={{ PaperProps: { style: { maxHeight: 300 } }, autoFocus: false }}
-                    >
-                      <Box sx={{ px: 2, py: 1, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid', borderColor: 'divider' }} onKeyDown={(e) => e.stopPropagation()}>
-                        <TextField size="small" placeholder="Search fields..." fullWidth value={breakdownSearchQuery} onChange={(e) => setBreakdownSearchQuery(e.target.value)} autoFocus sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#F8FAFB' } }} />
+                <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+                  <Select
+                    multiple
+                    value={generateCountsOn}
+                    onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                    input={<OutlinedInput />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                        ))}
                       </Box>
-                      {filteredBreakdownFields.length > 0 ? filteredBreakdownFields.map((field) => (
-                        <MenuItem key={field} value={field}>
-                          <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
-                          <ListItemText primary={field} />
-                        </MenuItem>
-                      )) : (
-                        <MenuItem disabled><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>No fields found</Typography></MenuItem>
-                      )}
-                    </Select>
-                  </FormControl>
-                </Box>
+                    )}
+                    displayEmpty
+                    sx={{ backgroundColor: 'white' }}
+                  >
+                    <MenuItem disabled value="">
+                      <em>Select fields...</em>
+                    </MenuItem>
+                    {STATS_FIELDS.map((field) => (
+                      <MenuItem key={field} value={field}>
+                        <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
+                        <ListItemText primary={field} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControlLabel
+                  control={<Checkbox checked={isDistinct} onChange={(e) => setIsDistinct(e.target.checked)} size="small" sx={{ py: 0 }} />}
+                  label={<Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600 }}>Distinct</Typography>}
+                  sx={{ m: 0, whiteSpace: 'nowrap' }}
+                />
               </Box>
 
-              {/* +1 Select Button */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 3 }}>
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<Add />}
+              {/* Step 2: Breakdown By */}
+              <Box
+                sx={{
+                  flex: 1,
+                  p: 2,
+                  backgroundColor: 'white',
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+                  <Chip
+                    label={'2'}
+                    size="small"
+                    sx={{
+                      backgroundColor: '#8B5CF6',
+                      color: '#fff',
+                      fontWeight: 700,
+                      mr: 1,
+                      width: 24,
+                      height: 24,
+                    }}
+                  />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
+                    Breakdown By
+                  </Typography>
+                  <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
+                    *
+                  </Typography>
+                </Box>
+                <FormControl size="small" fullWidth>
+                  <Select
+                    multiple
+                    value={breakdownBy}
+                    onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                    input={<OutlinedInput />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                        ))}
+                      </Box>
+                    )}
+                    displayEmpty
+                    sx={{ backgroundColor: 'white' }}
+                  >
+                    <MenuItem disabled value="">
+                      <em>Select fields...</em>
+                    </MenuItem>
+                    {STATS_FIELDS.map((field) => (
+                      <MenuItem key={field} value={field}>
+                        <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
+                        <ListItemText primary={field} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {/* Add Button */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconButton
                   onClick={handleAddCombination}
                   sx={{
-                    px: 2.5,
-                    py: 0.75,
-                    fontSize: '0.875rem',
-                    backgroundColor: '#296695',
-                    '&:hover': { backgroundColor: '#1A4A6B' },
-                    boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
+                    width: 48,
+                    height: 48,
+                    backgroundColor: '#8B5CF6',
+                    color: 'white',
+                    boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
+                    '&:hover': {
+                      backgroundColor: '#7C3AED',
+                      boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
+                    },
                   }}
                 >
-                  +1 Select
-                </Button>
+                  <Add sx={{ fontSize: 28 }} />
+                </IconButton>
               </Box>
+            </Box>
 
-              {/* Combinations Table */}
+              {/* Stats Configurations Table */}
               {statsCombinations.length > 0 && (
-                <Box sx={{ mt: 3 }}>
+                <Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-                      Stat Combinations
+                      Stats Configurations
                     </Typography>
-                    <Chip label={`${statsCombinations.length} combination${statsCombinations.length !== 1 ? 's' : ''}`} size="small" color="primary" sx={{ fontWeight: 600 }} />
+                    <Chip
+                      label={`${statsCombinations.length} configuration${statsCombinations.length !== 1 ? 's' : ''}`}
+                      size="small"
+                      sx={{
+                        fontWeight: 600,
+                        backgroundColor: '#8B5CF6',
+                        color: '#FFFFFF',
+                        '&:hover': {
+                          backgroundColor: '#7C3AED',
+                        }
+                      }}
+                    />
                   </Box>
                   <TableContainer
                     component={Paper}
@@ -506,8 +555,8 @@ const UniversalPullRequestPage: React.FC = () => {
                     <Table size="small">
                       <TableHead>
                         <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Generate Counts On</TableCell>
-                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Is Distinct</TableCell>
+                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Counts On</TableCell>
+                          <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Is Distinct</TableCell>
                           <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Breakdown By</TableCell>
                           <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
                         </TableRow>
@@ -519,7 +568,7 @@ const UniversalPullRequestPage: React.FC = () => {
                             hover
                             sx={{
                               '&:hover': {
-                                backgroundColor: 'rgba(41, 102, 149, 0.04)',
+                                backgroundColor: 'rgba(139, 92, 246, 0.04)',
                               },
                             }}
                           >
@@ -530,7 +579,7 @@ const UniversalPullRequestPage: React.FC = () => {
                                   title={
                                     <Box sx={{ maxWidth: 400 }}>
                                       <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                        Generate Counts On ({combination.generateCountsOn.length} fields):
+                                        Counts On ({combination.generateCountsOn.length}):
                                       </Typography>
                                       <Typography variant="caption" sx={{ display: 'block' }}>
                                         {combination.generateCountsOn.join(', ')}
@@ -669,7 +718,6 @@ const UniversalPullRequestPage: React.FC = () => {
                   </TableContainer>
                 </Box>
               )}
-          </Box>
           </AccordionDetails>
         </Accordion>
 
@@ -728,20 +776,7 @@ const UniversalPullRequestPage: React.FC = () => {
             />
           </AccordionSummary>
           <AccordionDetails>
-            <OutputModule
-              scheduleType={scheduleType}
-              onScheduleTypeChange={setScheduleType}
-              notificationWhen={notificationWhen}
-              onNotificationWhenChange={setNotificationWhen}
-              recipientEmail={recipientEmail}
-              onRecipientEmailChange={setRecipientEmail}
-              recurrence={recurrence}
-              onRecurrenceChange={setRecurrence}
-              startDate={startDate}
-              onStartDateChange={setStartDate}
-              endDate={endDate}
-              onEndDateChange={setEndDate}
-            />
+            <OutputModule />
           </AccordionDetails>
         </Accordion>
         </Box>
@@ -759,13 +794,45 @@ const UniversalPullRequestPage: React.FC = () => {
               }}
             >
               <Step key="step1">
-                <StepLabel>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>Request Name & Stats</Typography>
+                <StepLabel
+                  sx={{
+                    flexDirection: 'column',
+                    '& .MuiStepLabel-iconContainer': {
+                      paddingRight: 0,
+                    },
+                    '& .MuiStepLabel-labelContainer': {
+                      marginTop: '8px',
+                    },
+                    '& .MuiStepLabel-label': {
+                      fontSize: '0.8rem',
+                      fontWeight: activeStep === 0 ? 600 : 400,
+                      color: activeStep === 0 ? '#2D3748' : 'text.secondary',
+                      textAlign: 'center',
+                    },
+                  }}
+                >
+                  Request Name & Stats
                 </StepLabel>
               </Step>
               <Step key="step2">
-                <StepLabel>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>Output</Typography>
+                <StepLabel
+                  sx={{
+                    flexDirection: 'column',
+                    '& .MuiStepLabel-iconContainer': {
+                      paddingRight: 0,
+                    },
+                    '& .MuiStepLabel-labelContainer': {
+                      marginTop: '8px',
+                    },
+                    '& .MuiStepLabel-label': {
+                      fontSize: '0.8rem',
+                      fontWeight: activeStep === 1 ? 600 : 400,
+                      color: activeStep === 1 ? '#2D3748' : 'text.secondary',
+                      textAlign: 'center',
+                    },
+                  }}
+                >
+                  Output
                 </StepLabel>
               </Step>
             </Stepper>
@@ -809,147 +876,184 @@ const UniversalPullRequestPage: React.FC = () => {
                   />
                 </Box>
 
-                {/* Stats Module Content */}
+                {/* Stats Module Content - Horizontal Layout */}
                 <Box
                   sx={{
-                    backgroundColor: '#F8FAFB',
-                    borderRadius: 3,
-                    p: 3,
+                    display: 'flex',
+                    gap: 2,
+                    alignItems: 'stretch',
+                    mb: 2.5,
                   }}
                 >
-                  {/* Generate Counts On */}
-                  <Box sx={{ mb: 3 }}>
+                  {/* Step 1: Generate Counts On */}
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 2,
+                      backgroundColor: 'white',
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
-                        #1 Generate Counts On
+                      <Chip
+                        label={'1'}
+                        size="small"
+                        sx={{
+                          backgroundColor: '#8B5CF6',
+                          color: '#fff',
+                          fontWeight: 700,
+                          mr: 1,
+                          width: 24,
+                          height: 24,
+                        }}
+                      />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
+                        Generate Counts On
+                      </Typography>
+                      <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
+                        *
                       </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                      <Box sx={{ width: '40%' }}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id="counts-label-stepper">Select Fields</InputLabel>
-                          <Select
-                            labelId="counts-label-stepper"
-                            multiple
-                            value={generateCountsOn}
-                            onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                            onClose={() => setCountsSearchQuery('')}
-                            input={<OutlinedInput label="Select Fields" />}
-                            renderValue={(selected) => (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                {selected.map((value) => (
-                                  <Chip key={value} label={value} size="small" color="success" sx={{ height: 22, fontSize: '0.75rem', color: '#fff' }} />
-                                ))}
-                              </Box>
-                            )}
-                            sx={{ backgroundColor: 'white' }}
-                            MenuProps={{ PaperProps: { style: { maxHeight: 300 } }, autoFocus: false }}
-                          >
-                            <Box sx={{ px: 2, py: 1, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid', borderColor: 'divider' }} onKeyDown={(e) => e.stopPropagation()}>
-                              <TextField size="small" placeholder="Search fields..." fullWidth value={countsSearchQuery} onChange={(e) => setCountsSearchQuery(e.target.value)} autoFocus sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#F8FAFB' } }} />
-                            </Box>
-                            {filteredCountsFields.length > 0 ? filteredCountsFields.map((field) => (
-                              <MenuItem key={field} value={field}>
-                                <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
-                                <ListItemText primary={field} />
-                              </MenuItem>
-                            )) : (
-                              <MenuItem disabled><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>No fields found</Typography></MenuItem>
-                            )}
-                          </Select>
-                        </FormControl>
-                      </Box>
-
-                      {/* Is Distinct Checkbox */}
-                      <Box>
-                        <FormControlLabel
-                          control={<Checkbox checked={isDistinct} onChange={(e) => setIsDistinct(e.target.checked)} size="small" />}
-                          label={<Typography variant="body2" sx={{ fontSize: '0.85rem' }}>Is Distinct</Typography>}
-                        />
-                      </Box>
-                    </Box>
-                  </Box>
-
-                  {/* Breakdown By */}
-                  <Box sx={{ mb: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
-                        #2 Breakdown By
-                      </Typography>
-                    </Box>
-                    <Box sx={{ width: '40%' }}>
-                      <FormControl size="small" fullWidth>
-                        <InputLabel id="breakdown-label-stepper">Select Fields</InputLabel>
-                        <Select
-                          labelId="breakdown-label-stepper"
-                          multiple
-                          value={breakdownBy}
-                          onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                          onClose={() => setBreakdownSearchQuery('')}
-                          input={<OutlinedInput label="Select Fields" />}
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.map((value) => (
-                                <Chip key={value} label={value} size="small" color="info" sx={{ height: 22, fontSize: '0.75rem', color: '#fff' }} />
-                              ))}
-                            </Box>
-                          )}
-                          sx={{ backgroundColor: 'white' }}
-                          MenuProps={{ PaperProps: { style: { maxHeight: 300 } }, autoFocus: false }}
-                        >
-                          <Box sx={{ px: 2, py: 1, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid', borderColor: 'divider' }} onKeyDown={(e) => e.stopPropagation()}>
-                            <TextField size="small" placeholder="Search fields..." fullWidth value={breakdownSearchQuery} onChange={(e) => setBreakdownSearchQuery(e.target.value)} autoFocus sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#F8FAFB' } }} />
+                    <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+                      <Select
+                        multiple
+                        value={generateCountsOn}
+                        onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                        input={<OutlinedInput />}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((value) => (
+                              <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                            ))}
                           </Box>
-                          {filteredBreakdownFields.length > 0 ? filteredBreakdownFields.map((field) => (
-                            <MenuItem key={field} value={field}>
-                              <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
-                              <ListItemText primary={field} />
-                            </MenuItem>
-                          )) : (
-                            <MenuItem disabled><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>No fields found</Typography></MenuItem>
-                          )}
-                        </Select>
-                      </FormControl>
-                    </Box>
+                        )}
+                        displayEmpty
+                        sx={{ backgroundColor: 'white' }}
+                      >
+                        <MenuItem disabled value="">
+                          <em>Select fields...</em>
+                        </MenuItem>
+                        {STATS_FIELDS.map((field) => (
+                          <MenuItem key={field} value={field}>
+                            <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
+                            <ListItemText primary={field} />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControlLabel
+                      control={<Checkbox checked={isDistinct} onChange={(e) => setIsDistinct(e.target.checked)} size="small" sx={{ py: 0 }} />}
+                      label={<Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600 }}>Distinct</Typography>}
+                      sx={{ m: 0, whiteSpace: 'nowrap' }}
+                    />
                   </Box>
 
-                  {/* Add Combination Button */}
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={<Add />}
+                  {/* Step 2: Breakdown By */}
+                  <Box
+                    sx={{
+                      flex: 1,
+                      p: 2,
+                      backgroundColor: 'white',
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+                      <Chip
+                        label={'2'}
+                        size="small"
+                        sx={{
+                          backgroundColor: '#8B5CF6',
+                          color: '#fff',
+                          fontWeight: 700,
+                          mr: 1,
+                          width: 24,
+                          height: 24,
+                        }}
+                      />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
+                        Breakdown By
+                      </Typography>
+                      <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
+                        *
+                      </Typography>
+                    </Box>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        multiple
+                        value={breakdownBy}
+                        onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                        input={<OutlinedInput />}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((value) => (
+                              <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                            ))}
+                          </Box>
+                        )}
+                        displayEmpty
+                        sx={{ backgroundColor: 'white' }}
+                      >
+                        <MenuItem disabled value="">
+                          <em>Select fields...</em>
+                        </MenuItem>
+                        {STATS_FIELDS.map((field) => (
+                          <MenuItem key={field} value={field}>
+                            <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
+                            <ListItemText primary={field} />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  {/* Add Button */}
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <IconButton
                       onClick={handleAddCombination}
                       sx={{
-                        textTransform: 'none',
-                        fontSize: '0.875rem',
-                        px: 2,
-                        py: 0.75,
-                        fontWeight: 600,
+                        width: 48,
+                        height: 48,
                         backgroundColor: '#8B5CF6',
+                        color: 'white',
+                        boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
                         '&:hover': {
                           backgroundColor: '#7C3AED',
+                          boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
                         },
                       }}
                     >
-                      Add Combination
-                    </Button>
+                      <Add sx={{ fontSize: 28 }} />
+                    </IconButton>
                   </Box>
+                </Box>
 
-                  {/* Stats Combinations Table */}
+                  {/* Stats Configurations Table */}
                   {statsCombinations.length > 0 && (
                     <Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-                          Configured Stats Combinations
+                          Stats Configurations
                         </Typography>
                         <Chip
-                          label={`${statsCombinations.length} combination${statsCombinations.length !== 1 ? 's' : ''}`}
+                          label={`${statsCombinations.length} configuration${statsCombinations.length !== 1 ? 's' : ''}`}
                           size="small"
                           sx={{
                             fontWeight: 600,
                             backgroundColor: '#8B5CF6',
                             color: '#FFFFFF',
+                            '&:hover': {
+                              backgroundColor: '#7C3AED',
+                            }
                           }}
                         />
                       </Box>
@@ -965,18 +1069,144 @@ const UniversalPullRequestPage: React.FC = () => {
                         <Table size="small">
                           <TableHead>
                             <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                              <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Combination</TableCell>
+                              <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Counts On</TableCell>
+                              <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Is Distinct</TableCell>
+                              <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Breakdown By</TableCell>
                               <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {statsCombinations.map((combination) => (
-                              <TableRow key={combination.id} hover>
+                              <TableRow
+                                key={combination.id}
+                                hover
+                                sx={{
+                                  '&:hover': {
+                                    backgroundColor: 'rgba(139, 92, 246, 0.04)',
+                                  },
+                                }}
+                              >
+                                {/* Generate Counts On Column */}
                                 <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                                    {getCombinationText(combination)}
-                                  </Typography>
+                                  {combination.generateCountsOn.length > 0 ? (
+                                    <Tooltip
+                                      title={
+                                        <Box sx={{ maxWidth: 400 }}>
+                                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                            Counts On ({combination.generateCountsOn.length}):
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ display: 'block' }}>
+                                            {combination.generateCountsOn.join(', ')}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      arrow
+                                      placement="top"
+                                    >
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Chip
+                                          label={`${combination.generateCountsOn.length} field${combination.generateCountsOn.length !== 1 ? 's' : ''}`}
+                                          size="small"
+                                          sx={{
+                                            backgroundColor: '#8B5CF620',
+                                            color: '#8B5CF6',
+                                            border: '1px solid #8B5CF640',
+                                            fontWeight: 600,
+                                            height: 20,
+                                            fontSize: '0.65rem',
+                                          }}
+                                        />
+                                        <Typography
+                                          variant="body2"
+                                          color="text.secondary"
+                                          sx={{
+                                            fontSize: '0.7rem',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {combination.generateCountsOn.slice(0, 2).join(', ')}
+                                          {combination.generateCountsOn.length > 2 ? '...' : ''}
+                                        </Typography>
+                                      </Box>
+                                    </Tooltip>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                      --
+                                    </Typography>
+                                  )}
                                 </TableCell>
+
+                                {/* Is Distinct Column */}
+                                <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
+                                  <Chip
+                                    label={combination.isDistinct ? 'Yes' : 'No'}
+                                    size="small"
+                                    sx={{
+                                      backgroundColor: combination.isDistinct ? '#8B5CF620' : '#64748B20',
+                                      color: combination.isDistinct ? '#8B5CF6' : '#64748B',
+                                      border: combination.isDistinct ? '1px solid #8B5CF640' : '1px solid #64748B40',
+                                      fontWeight: 600,
+                                      height: 20,
+                                      fontSize: '0.65rem',
+                                    }}
+                                  />
+                                </TableCell>
+
+                                {/* Breakdown By Column */}
+                                <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                                  {combination.breakdownBy.length > 0 ? (
+                                    <Tooltip
+                                      title={
+                                        <Box sx={{ maxWidth: 400 }}>
+                                          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                            Breakdown By ({combination.breakdownBy.length}):
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ display: 'block' }}>
+                                            {combination.breakdownBy.join(', ')}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      arrow
+                                      placement="top"
+                                    >
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Chip
+                                          label={`${combination.breakdownBy.length} field${combination.breakdownBy.length !== 1 ? 's' : ''}`}
+                                          size="small"
+                                          sx={{
+                                            backgroundColor: '#8B5CF620',
+                                            color: '#8B5CF6',
+                                            border: '1px solid #8B5CF640',
+                                            fontWeight: 600,
+                                            height: 20,
+                                            fontSize: '0.65rem',
+                                          }}
+                                        />
+                                        <Typography
+                                          variant="body2"
+                                          color="text.secondary"
+                                          sx={{
+                                            fontSize: '0.7rem',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {combination.breakdownBy.slice(0, 2).join(', ')}
+                                          {combination.breakdownBy.length > 2 ? '...' : ''}
+                                        </Typography>
+                                      </Box>
+                                    </Tooltip>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                      --
+                                    </Typography>
+                                  )}
+                                </TableCell>
+
+                                {/* Actions Column */}
                                 <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
                                   <IconButton
                                     size="small"
@@ -994,25 +1224,11 @@ const UniversalPullRequestPage: React.FC = () => {
                     </Box>
                   )}
                 </Box>
-              </Box>
             )}
 
             {activeStep === 1 && (
               <Box>
-                <OutputModule
-                  scheduleType={scheduleType}
-                  onScheduleTypeChange={setScheduleType}
-                  notificationWhen={notificationWhen}
-                  onNotificationWhenChange={setNotificationWhen}
-                  recipientEmail={recipientEmail}
-                  onRecipientEmailChange={setRecipientEmail}
-                  recurrence={recurrence}
-                  onRecurrenceChange={setRecurrence}
-                  startDate={startDate}
-                  onStartDateChange={setStartDate}
-                  endDate={endDate}
-                  onEndDateChange={setEndDate}
-                />
+                <OutputModule />
               </Box>
             )}
 

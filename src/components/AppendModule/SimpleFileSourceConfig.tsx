@@ -33,8 +33,10 @@ interface SimpleFileSourceConfigProps {
 }
 
 // Preconfigured sources
-const SFTP_SOURCES = ['BO3 SFTP', 'ZXDS SFTP', 'DC SFTP'];
-const AWS_SOURCES = ['ZXDS AWS', 'DC AWS'];
+// File sources will be fetched from API
+const SFTP_SOURCES = ['SFTP_SOURCE_1', 'SFTP_SOURCE_2', 'SFTP_SOURCE_3'];
+const AWS_SOURCES = ['AWS_S3_BUCKET_1', 'AWS_S3_BUCKET_2', 'AWS_S3_BUCKET_3'];
+
 const DELIMITERS = [
   { label: 'Comma (,)', value: ',' },
   { label: 'Pipe (|)', value: '|' },
@@ -103,12 +105,11 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
   const handleSaveCustomHeader = () => {
     const newHeaders = customHeader.split(delimiter).map(h => h.trim());
 
-    // Automatically append EMAIL_MD5 column for demo purposes (for file sources)
-    const headersWithEmailMD5 = [...newHeaders, 'EMAIL_MD5'];
+    const newHeadersOnly = [...newHeaders];
 
-    setHeaders(headersWithEmailMD5);
+    setHeaders(newHeadersOnly);
     setHeaderDialogOpen(false);
-    updateParentData({ headers: headersWithEmailMD5 });
+    updateParentData({ headers: newHeadersOnly });
   };
 
   const updateParentData = (updates: Partial<InputSource>) => {
@@ -151,7 +152,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
       {(fileSource === 'SFTP' || fileSource === 'AWS S3') && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-            Select Preconfigured Source
+            Select Preconfigured SourceS
           </Typography>
           <Select
             fullWidth
@@ -166,7 +167,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
             <MenuItem value="">
               <em>Select {fileSource} Source</em>
             </MenuItem>
-            {(fileSource === 'SFTP' ? SFTP_SOURCES : AWS_SOURCES).map((source) => (
+            {(fileSource === 'SFTP' ? SFTP_SOURCES : AWS_SOURCES).map((source: string) => (
               <MenuItem key={source} value={source}>
                 {source}
               </MenuItem>

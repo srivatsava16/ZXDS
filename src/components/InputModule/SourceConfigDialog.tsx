@@ -19,12 +19,16 @@ import { Close } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FileSourceConfig from './FileSourceConfig';
 import DatabaseSourceConfig from './DatabaseSourceConfig';
+import { type RequestInputsResponse } from '../../services/api';
 
 interface SourceConfigDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (source: InputSource, shouldClose: boolean) => void;
   initialSource: InputSource | null;
+  existingSources?: InputSource[];
+  apiSources?: RequestInputsResponse | null;
+  sourcesLoading?: boolean;
 }
 
 const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
@@ -32,21 +36,65 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   onClose,
   onSave,
   initialSource,
+  existingSources = [],
+  apiSources = null,
+  sourcesLoading = false,
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
+  const [sourceNameError, setSourceNameError] = useState('');
 
   useEffect(() => {
     if (initialSource) {
-      setSourceType(initialSource.sourceType);
+      // Only set source type if it's one of the supported dialog types
+      if (initialSource.sourceType === 'File' || initialSource.sourceType === 'Database') {
+        setSourceType(initialSource.sourceType);
+      }
       setSourceData(initialSource);
+      setSourceNameError('');
     } else {
       setSourceType('File');
       setSourceData({});
+      setSourceNameError('');
     }
   }, [initialSource, open]);
 
+  // Reset sourceData when sourceType changes (only when not in edit mode)
+  useEffect(() => {
+    // Don't reset if we're in edit mode (initialSource exists) or during initial load
+    if (!initialSource && sourceData && Object.keys(sourceData).length > 0) {
+      setSourceData({ sourceName: sourceData.sourceName }); // Keep only the source name
+      setSourceNameError('');
+    }
+  }, [sourceType, initialSource]);
+
+  // Validation function for source name
+  const validateSourceName = (name: string): string => {
+    if (!name.trim()) {
+      return 'Source Name is required';
+    }
+    
+    // Check for duplicates (case-insensitive)
+    const existingNames = existingSources
+      .filter(source => source.id !== initialSource?.id) // Exclude current source when editing
+      .map(source => source.sourceName.trim().toLowerCase());
+    
+    if (existingNames.includes(name.trim().toLowerCase())) {
+      return 'Source Name must be unique';
+    }
+    
+    return '';
+  };
+
   const handleSave = (shouldClose: boolean = true) => {
+    // Validate source name
+    const nameError = validateSourceName(sourceData.sourceName || '');
+    setSourceNameError(nameError);
+    
+    if (nameError) {
+      return;
+    }
+
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
       if (!sourceData.headers || sourceData.headers.length === 0) {
@@ -54,6 +102,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
         return;
       }
     }
+
 
     const source: InputSource = {
       id: initialSource?.id || Date.now().toString(),
@@ -64,16 +113,29 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       fileName: sourceData.fileName,
       delimiter: sourceData.delimiter,
       hasHeader: sourceData.hasHeader,
-      headers: sourceData.headers,
+      customHeaders: sourceData.customHeaders, // Add customHeaders field
+      headers: sourceData.selectedHeaders || sourceData.headers || [], // Use selected headers as primary headers for output
+      selectedHeaders: sourceData.selectedHeaders || sourceData.headers || [], // User's selected subset
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
+      fileSource: sourceData.fileSource,
+      fileSourceId: sourceData.fileSourceId,
+      filterQuery: sourceData.filterQuery,
+      filterConfig: sourceData.filterConfig,
+      database: sourceData.database,
+      schema: sourceData.schema,
+      table: sourceData.table,
+      customTableMetadata: sourceData.customTableMetadata,
+      originalTableName: sourceData.originalTableName // Save original table name for restoration
     };
+
     onSave(source, shouldClose);
 
     // If not closing, reset the form for a new entry
     if (!shouldClose) {
       setSourceData({});
       setSourceType('File');
+      setSourceNameError('');
     }
   };
 
@@ -147,12 +209,24 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
         {sourceType === 'File' ? (
           <FileSourceConfig
             data={sourceData}
-            onChange={setSourceData}
+            onChange={(data) => {
+              setSourceData(data);
+              // Clear source name error when user starts typing
+              if (sourceNameError && data.sourceName) {
+                const error = validateSourceName(data.sourceName);
+                setSourceNameError(error);
+              }
+            }}
+            sourceNameError={sourceNameError}
+            apiSources={apiSources}
+            sourcesLoading={sourcesLoading}
           />
         ) : (
           <DatabaseSourceConfig
             data={sourceData}
             onChange={setSourceData}
+            apiSources={apiSources}
+            sourcesLoading={sourcesLoading}
           />
         )}
       </DialogContent>

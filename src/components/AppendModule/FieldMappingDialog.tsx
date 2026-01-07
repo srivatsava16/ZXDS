@@ -16,7 +16,6 @@ import {
   OutlinedInput,
   Chip,
   FormControl,
-  InputLabel,
   Table,
   TableBody,
   TableCell,

@@ -7,8 +7,8 @@ import {
   Paper,
 } from '@mui/material';
 import { Settings } from '@mui/icons-material';
-import ActivityLog from '../../components/SystemSettings/ActivityLog';
-import DetailedLog from '../../components/SystemSettings/DetailedLog';
+import ActivityLog from '../../../components/SystemSettings/ActivityLog';
+import DetailedLog from '../../../components/SystemSettings/DetailedLog';
 
 const SystemSettingsPage = () => {
   const [activeTab, setActiveTab] = useState(0);

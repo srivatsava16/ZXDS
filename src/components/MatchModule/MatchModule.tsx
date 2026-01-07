@@ -24,64 +24,57 @@ import {
   FormControlLabel,
   FormGroup,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Menu,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, HistoryEdu } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility, List } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import MatchSourceDialog from './MatchSourceDialog';
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
+import VersionsModal from '../shared/VersionsModal';
 
-interface MatchConfig {
-  id: string;
-  inputSources: string[];
-  matchOnFields: string[];
-  matchSources: string[];
-  expand: boolean;
-  matchType: 'full' | 'any';
-  addFields?: string[]; // Fields to add when expand is true
-}
+// Extracted modules
+import type { MatchConfig, MatchModuleProps } from './types';
+import { getPredefinedSources, getMatchOnFields, getAddFieldsFromMatchSources } from './utils/matchHelpers';
+import { useMatchConfig } from './hooks/useMatchConfig';
+import { useCustomSources } from './hooks/useCustomSources';
+import MatchConfigHeader from './components/MatchConfigHeader';
+import ViewSourceDialog from './components/ViewSourceDialog';
 
-interface MatchModuleProps {
-  availableInputSources: InputSource[];
-  onCreateVersionedSource?: (
-    sourceModule: 'Match' | 'Append' | 'Suppress',
-    baseInputSources: string[],
-    operationSources: string[],
-    operationFields?: string[]
-  ) => void;
-  initialConfigs?: MatchConfig[];
-}
+export type { MatchConfig };
 
-// Predefined match sources
-const PREDEFINED_SOURCES = [
-  { id: 'master_customer_db', name: 'Master Customer Database' },
-  { id: 'crm_database', name: 'CRM Database' },
-  { id: 'product_catalog', name: 'Product Catalog' },
-];
+const MatchModule: React.FC<MatchModuleProps> = ({
+  availableInputSources,
+  onCreateVersionedSource,
+  initialConfigs,
+  apiSources,
+  sourcesLoading = false,
+  versionedSources = [],
+  getSourceNameById,
+  onUpdateVersionName
+}) => {
+  // Use custom hooks for state management
+  const matchConfig = useMatchConfig(initialConfigs);
+  const customSources = useCustomSources();
 
-const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCreateVersionedSource, initialConfigs }) => {
-  const [configs, setConfigs] = useState<MatchConfig[]>([]);
-  const [customMatchSources, setCustomMatchSources] = useState<InputSource[]>([]);
+  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
-  const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [versionsModalOpen, setVersionsModalOpen] = useState(false);
+
+  // Get predefined sources from API or use fallback
+  const predefinedSources = getPredefinedSources(apiSources);
 
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
     if (initialConfigs && initialConfigs.length > 0) {
-      setConfigs(initialConfigs);
+      matchConfig.setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
-
-  // Current working config state
-  const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
-  const [selectedMatchOnFields, setSelectedMatchOnFields] = useState<string[]>([]);
-  const [selectedMatchSources, setSelectedMatchSources] = useState<string[]>([]);
-  const [selectedAddFields, setSelectedAddFields] = useState<string[]>([]);
-
-  // Match options state
-  const [expand, setExpand] = useState<boolean>(false);
-  const [matchType, setMatchType] = useState<'full' | 'any'>('full');
 
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
@@ -89,153 +82,13 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
   const [matchSourcesSearch, setMatchSourcesSearch] = useState('');
   const [addFieldsSearch, setAddFieldsSearch] = useState('');
 
-  // Get common or all fields based on input source selection
-  const getMatchOnFields = (sourceIds: string[]): string[] => {
-    // Always include Decile1 and Decile2 for demo purposes
-    const demoFields = ['Decile1', 'Decile2'];
-
-    if (sourceIds.length === 0) return demoFields;
-
-    const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
-    if (selectedSources.length === 0) return demoFields;
-
-    // If only one source selected, return all its fields
-    if (selectedSources.length === 1) {
-      const headers = selectedSources[0].headers || [];
-      // Merge headers with demo fields, ensuring no duplicates
-      return [...new Set([...demoFields, ...headers])];
-    }
-
-    // If multiple sources, return common fields (intersection)
-    const firstSourceHeaders = selectedSources[0].headers || [];
-    const commonHeaders = firstSourceHeaders.filter(header =>
-      selectedSources.every(src => src.headers?.includes(header))
-    );
-    // Merge common headers with demo fields, ensuring no duplicates
-    return [...new Set([...demoFields, ...commonHeaders])];
-  };
-
-  // Get union of all fields from selected match sources
-  const getAddFieldsFromMatchSources = (matchSourceIds: string[]): string[] => {
-    const fieldsSet = new Set<string>();
-
-    matchSourceIds.forEach(id => {
-      // Check if it's a custom match source
-      const customSource = customMatchSources.find(src => src.id === id);
-      if (customSource?.headers) {
-        customSource.headers.forEach(field => fieldsSet.add(field));
-      } else {
-        // Check if it's a versioned source
-        const versionedSource = availableInputSources.find(src => src.id === id);
-        if (versionedSource?.headers) {
-          versionedSource.headers.forEach(field => fieldsSet.add(field));
-        } else {
-          // For predefined sources, use mock fields
-          // In a real app, these would come from the actual database schema
-          const mockFields = ['ID', 'NAME', 'EMAIL', 'PHONE', 'ADDRESS', 'CITY', 'STATE', 'ZIP'];
-          mockFields.forEach(field => fieldsSet.add(field));
-        }
-      }
-    });
-
-    return Array.from(fieldsSet);
-  };
-
-  const handleAddOrUpdateConfig = () => {
-    if (selectedInputSources.length === 0) {
-      alert('Please select at least one Input Source');
-      return;
-    }
-    if (selectedMatchOnFields.length === 0) {
-      alert('Please select at least one Match On field');
-      return;
-    }
-    if (selectedMatchSources.length === 0) {
-      alert('Please select at least one Match Source');
-      return;
-    }
-
-    if (editingConfigId) {
-      // Update existing config
-      setConfigs(configs.map(config =>
-        config.id === editingConfigId
-          ? {
-              ...config,
-              inputSources: selectedInputSources,
-              matchOnFields: selectedMatchOnFields,
-              matchSources: selectedMatchSources,
-              expand: expand,
-              matchType: matchType,
-              addFields: expand ? selectedAddFields : undefined,
-            }
-          : config
-      ));
-      setEditingConfigId(null);
-    } else {
-      // Add new config
-      const newConfig: MatchConfig = {
-        id: Date.now().toString(),
-        inputSources: selectedInputSources,
-        matchOnFields: selectedMatchOnFields,
-        matchSources: selectedMatchSources,
-        expand: expand,
-        matchType: matchType,
-        addFields: expand ? selectedAddFields : undefined,
-      };
-      setConfigs([...configs, newConfig]);
-    }
-
-    // Reset form
-    setSelectedInputSources([]);
-    setSelectedMatchOnFields([]);
-    setSelectedMatchSources([]);
-    setSelectedAddFields([]);
-    setExpand(false);
-    setMatchType('full');
-  };
-
-  const handleEditConfig = (config: MatchConfig) => {
-    setEditingConfigId(config.id);
-    setSelectedInputSources(config.inputSources);
-    setSelectedMatchOnFields(config.matchOnFields);
-    setSelectedMatchSources(config.matchSources);
-    setSelectedAddFields(config.addFields || []);
-    setExpand(config.expand);
-    setMatchType(config.matchType);
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingConfigId(null);
-    setSelectedInputSources([]);
-    setSelectedMatchOnFields([]);
-    setSelectedMatchSources([]);
-    setSelectedAddFields([]);
-    setExpand(false);
-    setMatchType('full');
-  };
-
-  const handleDeleteConfig = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this match configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
-      if (editingConfigId === id) {
-        handleCancelEdit();
-      }
-    }
-  };
-
-  const handleAddCustomSource = (source: InputSource) => {
-    setCustomMatchSources([...customMatchSources, { ...source, id: Date.now().toString() }]);
-  };
-
   const handleCreateVersion = () => {
     // Validation
-    if (selectedInputSources.length === 0) {
+    if (matchConfig.selectedInputSources.length === 0) {
       alert('Please select at least one Input Source before creating versions');
       return;
     }
-    if (selectedMatchSources.length === 0) {
+    if (matchConfig.selectedMatchSources.length === 0) {
       alert('Please select at least one Match Source before creating versions');
       return;
     }
@@ -244,43 +97,57 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
     if (onCreateVersionedSource) {
       onCreateVersionedSource(
         'Match',
-        selectedInputSources,
-        selectedMatchSources,
-        selectedMatchOnFields
+        matchConfig.selectedInputSources,
+        matchConfig.selectedMatchSources,
+        matchConfig.selectedMatchOnFields
       );
     }
+  };
+
+  const handleViewVersions = () => {
+    setVersionsModalOpen(true);
   };
 
   const getSourceName = (id: string): string => {
     const inputSource = availableInputSources.find(src => src.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const predefined = PREDEFINED_SOURCES.find(src => src.id === id);
+    const predefined = [...predefinedSources].find(src => src.id === id);
     if (predefined) return predefined.name;
 
-    const customSource = customMatchSources.find(src => src.id === id);
+    const customSource = customSources.customMatchSources.find(src => src.id === id);
     if (customSource) return customSource.sourceName;
 
     return id;
   };
 
-  const matchOnFields = getMatchOnFields(selectedInputSources);
+  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources);
 
   // Extract versioned sources from availableInputSources
-  const versionedSources = availableInputSources.filter(src =>
-    (src as any).isVersioned === true
+  const localVersionedSources = availableInputSources.filter(src =>
+    src.isVersioned === true
+  );
+
+  // Extract regular input sources (non-versioned)
+  const regularInputSources = availableInputSources.filter(src =>
+    !src.isVersioned
   );
 
   const allMatchSources = [
-    ...PREDEFINED_SOURCES.map(src => ({ id: src.id, name: src.name })),
-    ...customMatchSources.map(src => ({ id: src.id, name: src.sourceName })),
-    ...versionedSources.map(src => ({ id: src.id, name: src.sourceName })),
+    ...predefinedSources.map(src => ({ id: src.id, name: src.name })),
+    ...customSources.customMatchSources.map(src => ({ id: src.id, name: src.sourceName })),
+    ...localVersionedSources.map(src => ({ id: src.id, name: src.sourceName })),
+    ...regularInputSources.map(src => ({ id: src.id, name: src.sourceName })),
   ];
-  const availableAddFields = getAddFieldsFromMatchSources(selectedMatchSources);
+  const availableAddFields = getAddFieldsFromMatchSources(
+    matchConfig.selectedMatchSources,
+    customSources.customMatchSources,
+    availableInputSources
+  );
 
   // Filtered lists based on search queries
   const filteredInputSources = availableInputSources.filter(source =>
-    source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+    source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
   const filteredMatchOnFields = matchOnFields.filter(field =>
@@ -288,6 +155,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
   );
 
   const filteredMatchSources = allMatchSources.filter(source =>
+    source?.name && typeof source.name === 'string' && 
     source.name.toLowerCase().includes(matchSourcesSearch.toLowerCase())
   );
 
@@ -320,12 +188,23 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
   return (
     <Box>
       {/* Header */}
+      <MatchConfigHeader
+        editingConfigId={matchConfig.editingConfigId}
+        fieldMappings={fieldMappings}
+        onFieldMappingClick={() => setFieldMappingDialogOpen(true)}
+        onAddCustomSourceClick={() => setDialogOpen(true)}
+        onCreateVersion={handleCreateVersion}
+        onViewVersions={handleViewVersions}
+        canCreateVersion={!!onCreateVersionedSource}
+      />
+
+      {/* Original header for reference - can be removed
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-            {editingConfigId ? 'Edit Match Configuration' : 'Create Match Configuration'}
+            {matchConfig.editingConfigId ? 'Edit Match Configuration' : 'Create Match Configuration'}
           </Typography>
-          {editingConfigId && (
+          {matchConfig.editingConfigId && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
               Editing existing configuration - make changes and click Update
             </Typography>
@@ -390,11 +269,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
             >
               Add Custom Match Source
             </Button>
-            <Tooltip title="Create Version from Selected Inputs & Sources" arrow>
+            <Tooltip title="Version Actions" arrow>
               <IconButton
                 size="small"
-                onClick={handleCreateVersion}
-                disabled={!onCreateVersionedSource}
+                onClick={handleVersionMenuOpen}
                 sx={{
                   color: '#F59E0B',
                   border: '2px solid #F59E0B',
@@ -403,18 +281,44 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                     backgroundColor: 'rgba(245, 158, 11, 0.08)',
                     borderColor: '#D97706',
                   },
-                  '&.Mui-disabled': {
-                    borderColor: '#E5E7EB',
-                    color: '#9CA3AF',
-                  },
                 }}
               >
                 <AccountTree fontSize="small" />
               </IconButton>
             </Tooltip>
+            <Menu
+              anchorEl={versionMenuAnchorEl}
+              open={versionMenuOpen}
+              onClose={handleVersionMenuClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'left',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'left',
+              }}
+            >
+              <MenuItem 
+                onClick={handleCreateVersion}
+                disabled={!onCreateVersionedSource}
+              >
+                <AccountTree sx={{ fontSize: 16, mr: 1 }} />
+                Create Version
+              </MenuItem>
+              <MenuItem 
+                onClick={handleViewVersions}
+                disabled={!versionedSources || versionedSources.length === 0}
+              >
+                <List sx={{ fontSize: 16, mr: 1 }} />
+                View Versions
+              </MenuItem>
+            </Menu>
           </Box>
         </Box>
       </Box>
+
+
 
       {/* All Three Steps in One Row */}
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', mb: 3 }}>
@@ -453,19 +357,19 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
           <FormControl fullWidth size="small">
             <Select
               multiple
-              value={selectedInputSources}
+              value={matchConfig.selectedInputSources}
               onChange={(e) => {
                 const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                 if (value.includes('select-all-match-input-sources')) {
-                  if (selectedInputSources.length === filteredInputSources.length) {
-                    setSelectedInputSources([]);
-                    setSelectedMatchOnFields([]);
+                  if (matchConfig.selectedInputSources.length === filteredInputSources.length) {
+                    matchConfig.setSelectedInputSources([]);
+                    matchConfig.setSelectedMatchOnFields([]);
                   } else {
-                    setSelectedInputSources(filteredInputSources.map(s => s.id));
+                    matchConfig.setSelectedInputSources(filteredInputSources.map(s => s.id));
                   }
                 } else {
-                  setSelectedInputSources(value);
-                  setSelectedMatchOnFields([]);
+                  matchConfig.setSelectedInputSources(value);
+                  matchConfig.setSelectedMatchOnFields([]);
                 }
               }}
               onClose={() => setInputSourcesSearch('')}
@@ -539,8 +443,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                 sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
               >
                 <Checkbox
-                  checked={filteredInputSources.length > 0 && selectedInputSources.length === filteredInputSources.length}
-                  indeterminate={selectedInputSources.length > 0 && selectedInputSources.length < filteredInputSources.length}
+                  checked={filteredInputSources.length > 0 && matchConfig.selectedInputSources.length === filteredInputSources.length}
+                  indeterminate={matchConfig.selectedInputSources.length > 0 && matchConfig.selectedInputSources.length < filteredInputSources.length}
                   size="small"
                 />
                 <ListItemText primary="Select All" />
@@ -552,7 +456,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
               )}
               {filteredInputSources.map((source) => (
                 <MenuItem key={source.id} value={source.id}>
-                  <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} size="small" />
+                  <Checkbox checked={matchConfig.selectedInputSources.indexOf(source.id) > -1} size="small" />
                   <ListItemText primary={source.sourceName} />
                 </MenuItem>
               ))}
@@ -594,19 +498,19 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
           </Box>
           <FormControl fullWidth size="small">
             <Select
-              key={`match-on-fields-${[...selectedInputSources].sort().join('-') || 'none'}`}
+              key={`match-on-fields-${[...matchConfig.selectedInputSources].sort().join('-') || 'none'}`}
               multiple
-              value={selectedMatchOnFields.filter(field => matchOnFields.includes(field))}
+              value={matchConfig.selectedMatchOnFields.filter(field => matchOnFields.includes(field))}
               onChange={(e) => {
                 const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                 if (value.includes('select-all-match-keys')) {
-                  if (selectedMatchOnFields.length === filteredMatchOnFields.length) {
-                    setSelectedMatchOnFields([]);
+                  if (matchConfig.selectedMatchOnFields.length === filteredMatchOnFields.length) {
+                    matchConfig.setSelectedMatchOnFields([]);
                   } else {
-                    setSelectedMatchOnFields(filteredMatchOnFields);
+                    matchConfig.setSelectedMatchOnFields(filteredMatchOnFields);
                   }
                 } else {
-                  setSelectedMatchOnFields(value);
+                  matchConfig.setSelectedMatchOnFields(value);
                 }
               }}
               onClose={() => setMatchOnFieldsSearch('')}
@@ -695,8 +599,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                   sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                 >
                   <Checkbox
-                    checked={filteredMatchOnFields.length > 0 && selectedMatchOnFields.length === filteredMatchOnFields.length}
-                    indeterminate={selectedMatchOnFields.length > 0 && selectedMatchOnFields.length < filteredMatchOnFields.length}
+                    checked={filteredMatchOnFields.length > 0 && matchConfig.selectedMatchOnFields.length === filteredMatchOnFields.length}
+                    indeterminate={matchConfig.selectedMatchOnFields.length > 0 && matchConfig.selectedMatchOnFields.length < filteredMatchOnFields.length}
                     size="small"
                   />
                   <ListItemText primary="Select All" />
@@ -709,7 +613,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
               )}
               {filteredMatchOnFields.map((field) => (
                 <MenuItem key={field} value={field}>
-                  <Checkbox checked={selectedMatchOnFields.indexOf(field) > -1} size="small" />
+                  <Checkbox checked={matchConfig.selectedMatchOnFields.indexOf(field) > -1} size="small" />
                   <ListItemText primary={field} />
                 </MenuItem>
               ))}
@@ -760,8 +664,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                   control={
                     <Checkbox
                       size="small"
-                      checked={expand}
-                      onChange={(e) => setExpand(e.target.checked)}
+                      checked={matchConfig.expand}
+                      onChange={(e) => matchConfig.setExpand(e.target.checked)}
                       sx={{
                         padding: '2px',
                         '& .MuiSvgIcon-root': { fontSize: 18 }
@@ -781,8 +685,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
               <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
                 <RadioGroup
                   row
-                  value={matchType}
-                  onChange={(e) => setMatchType(e.target.value as 'full' | 'any')}
+                  value={matchConfig.matchType}
+                  onChange={(e) => matchConfig.setMatchType(e.target.value as 'full' | 'any')}
                   sx={{ gap: 1 }}
                 >
                   <FormControlLabel
@@ -828,17 +732,17 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
           <FormControl fullWidth size="small">
             <Select
               multiple
-              value={selectedMatchSources}
+              value={matchConfig.selectedMatchSources}
               onChange={(e) => {
                 const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                 if (value.includes('select-all-match-sources')) {
-                  if (selectedMatchSources.length === filteredMatchSources.length) {
-                    setSelectedMatchSources([]);
+                  if (matchConfig.selectedMatchSources.length === filteredMatchSources.length) {
+                    matchConfig.setSelectedMatchSources([]);
                   } else {
-                    setSelectedMatchSources(filteredMatchSources.map(s => s.id));
+                    matchConfig.setSelectedMatchSources(filteredMatchSources.map(s => s.id));
                   }
                 } else {
-                  setSelectedMatchSources(value);
+                  matchConfig.setSelectedMatchSources(value);
                 }
               }}
               onClose={() => setMatchSourcesSearch('')}
@@ -919,8 +823,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                 sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
               >
                 <Checkbox
-                  checked={filteredMatchSources.length > 0 && selectedMatchSources.length === filteredMatchSources.length}
-                  indeterminate={selectedMatchSources.length > 0 && selectedMatchSources.length < filteredMatchSources.length}
+                  checked={filteredMatchSources.length > 0 && matchConfig.selectedMatchSources.length === filteredMatchSources.length}
+                  indeterminate={matchConfig.selectedMatchSources.length > 0 && matchConfig.selectedMatchSources.length < filteredMatchSources.length}
                   size="small"
                 />
                 <ListItemText primary="Select All" />
@@ -930,18 +834,66 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                   <em>No items match your search</em>
                 </MenuItem>
               )}
-              {filteredMatchSources.map((source) => (
-                <MenuItem key={source.id} value={source.id}>
-                  <Checkbox checked={selectedMatchSources.indexOf(source.id) > -1} size="small" />
-                  <ListItemText primary={source.name} />
-                </MenuItem>
-              ))}
+              {filteredMatchSources.map((source) => {
+                const isCustomSource = customSources.customMatchSources.some(cs => cs.id === source.id);
+                return (
+                  <MenuItem key={source.id} value={source.id}>
+                    <Checkbox checked={matchConfig.selectedMatchSources.indexOf(source.id) > -1} size="small" />
+                    <ListItemText primary={source.name} />
+                    {isCustomSource && (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="View Details" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const customSource = customSources.customMatchSources.find(cs => cs.id === source.id);
+                              if (customSource) {
+                                customSources.setViewingSource(customSource);
+                              }
+                            }}
+                            sx={{
+                              color: '#296695',
+                              '&:hover': {
+                                backgroundColor: 'rgba(41, 102, 149, 0.08)',
+                              },
+                            }}
+                          >
+                            <Visibility fontSize="small" sx={{ fontSize: '0.8rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit Source" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const customSource = customSources.customMatchSources.find(cs => cs.id === source.id);
+                              if (customSource) {
+                                customSources.setEditingSource(customSource);
+                                setDialogOpen(true);
+                              }
+                            }}
+                            sx={{
+                              color: '#10B981',
+                              '&:hover': {
+                                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                              },
+                            }}
+                          >
+                            <Edit fontSize="small" sx={{ fontSize: '0.8rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    )}
+                  </MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
         </Box>
 
-        {/* Step 4: Add Fields (shown when expand is checked) */}
-        {expand && (
+        {/* Step 4: Add Fields (shown when matchConfig.expand is checked) */}
+        {matchConfig.expand && (
           <Box
             sx={{
               flex: 1,
@@ -973,17 +925,17 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
             <FormControl fullWidth size="small">
               <Select
                 multiple
-                value={selectedAddFields}
+                value={matchConfig.selectedAddFields}
                 onChange={(e) => {
                   const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                   if (value.includes('select-all-match-add-fields')) {
-                    if (selectedAddFields.length === filteredAddFields.length) {
-                      setSelectedAddFields([]);
+                    if (matchConfig.selectedAddFields.length === filteredAddFields.length) {
+                      matchConfig.setSelectedAddFields([]);
                     } else {
-                      setSelectedAddFields(filteredAddFields);
+                      matchConfig.setSelectedAddFields(filteredAddFields);
                     }
                   } else {
-                    setSelectedAddFields(value);
+                    matchConfig.setSelectedAddFields(value);
                   }
                 }}
                 onClose={() => setAddFieldsSearch('')}
@@ -1072,8 +1024,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
-                      checked={filteredAddFields.length > 0 && selectedAddFields.length === filteredAddFields.length}
-                      indeterminate={selectedAddFields.length > 0 && selectedAddFields.length < filteredAddFields.length}
+                      checked={filteredAddFields.length > 0 && matchConfig.selectedAddFields.length === filteredAddFields.length}
+                      indeterminate={matchConfig.selectedAddFields.length > 0 && matchConfig.selectedAddFields.length < filteredAddFields.length}
                       size="small"
                     />
                     <ListItemText primary="Select All" />
@@ -1086,7 +1038,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                 )}
                 {filteredAddFields.map((field) => (
                   <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAddFields.indexOf(field) > -1} size="small" />
+                    <Checkbox checked={matchConfig.selectedAddFields.indexOf(field) > -1} size="small" />
                     <ListItemText primary={field} />
                   </MenuItem>
                 ))}
@@ -1104,7 +1056,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
           }}
         >
           <IconButton
-            onClick={handleAddOrUpdateConfig}
+            onClick={matchConfig.handleAddOrUpdateConfig}
             sx={{
               width: 48,
               height: 48,
@@ -1123,11 +1075,11 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
       </Box>
 
       {/* Cancel Edit Button (shown when editing) */}
-      {editingConfigId && (
+      {matchConfig.editingConfigId && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
           <Button
             variant="outlined"
-            onClick={handleCancelEdit}
+            onClick={matchConfig.handleCancelEdit}
             sx={{
               textTransform: 'none',
               fontSize: '0.85rem',
@@ -1142,14 +1094,14 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
       )}
 
       {/* Configurations List */}
-      {configs.length > 0 && (
+      {matchConfig.configs.length > 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Match Operations
             </Typography>
             <Chip
-              label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
+              label={`${matchConfig.configs.length} configuration${matchConfig.configs.length !== 1 ? 's' : ''}`}
               size="small"
               sx={{
                 fontWeight: 600,
@@ -1183,14 +1135,14 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                 </TableRow>
               </TableHead>
               <TableBody>
-                {configs.map((config) => (
+                {matchConfig.configs.map((config) => (
                   <TableRow
                     key={config.id}
                     hover
                     sx={{
-                      backgroundColor: editingConfigId === config.id ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
+                      backgroundColor: matchConfig.editingConfigId === config.id ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
                       '&:hover': {
-                        backgroundColor: editingConfigId === config.id ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.04)',
+                        backgroundColor: matchConfig.editingConfigId === config.id ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.04)',
                       },
                     }}
                   >
@@ -1441,7 +1393,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                         <IconButton
                           size="small"
-                          onClick={() => handleEditConfig(config)}
+                          onClick={() => matchConfig.handleEditConfig(config)}
                           sx={{
                             color: 'info.main',
                             padding: '3px',
@@ -1455,7 +1407,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDeleteConfig(config.id)}
+                          onClick={() => matchConfig.handleDeleteConfig(config.id)}
                           sx={{
                             color: 'error.main',
                             padding: '3px',
@@ -1480,8 +1432,15 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
       {/* Custom Match Source Dialog */}
       <MatchSourceDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSave={handleAddCustomSource}
+        onClose={() => {
+          setDialogOpen(false);
+          customSources.setEditingSource(null);
+        }}
+        onSave={customSources.editingSource ? customSources.handleEditCustomSource : customSources.handleAddCustomSource}
+        existingSources={customSources.customMatchSources}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+        editingSource={customSources.editingSource}
       />
 
       {/* Field Mapping Dialog */}
@@ -1491,18 +1450,138 @@ const MatchModule: React.FC<MatchModuleProps> = ({ availableInputSources, onCrea
         onSave={(mappings) => setFieldMappings(mappings)}
         availableSources={[
           ...availableInputSources
-            .filter(src => selectedInputSources.includes(src.id))
+            .filter(src => matchConfig.selectedInputSources.includes(src.id))
             .map(src => ({ id: src.id, name: src.sourceName, type: 'input' as const })),
-          ...selectedMatchSources.map(srcId => {
-            const predefined = PREDEFINED_SOURCES.find(s => s.id === srcId);
+          ...matchConfig.selectedMatchSources.map(srcId => {
+            const predefined = [...predefinedSources].find(s => s.id === srcId);
             if (predefined) {
               return { id: srcId, name: predefined.name, type: 'append' as const };
             }
-            const custom = customMatchSources.find(s => s.id === srcId);
+            const custom = customSources.customMatchSources.find(s => s.id === srcId);
             return { id: srcId, name: custom?.sourceName || srcId, type: 'append' as const };
           }),
         ]}
         initialMappings={fieldMappings}
+      />
+
+      {/* View Source Details Dialog */}
+      {customSources.viewingSource && (
+        <Dialog
+          open={true}
+          onClose={() => customSources.setViewingSource(null)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#296695' }}>
+              Match Source Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Source Name
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {customSources.viewingSource.sourceName}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Source Type
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {customSources.viewingSource.sourceType}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Sub Source Type
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {customSources.viewingSource.subSourceType}
+                </Typography>
+              </Box>
+              {customSources.viewingSource.fileName && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    File Name
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {customSources.viewingSource.fileName}
+                  </Typography>
+                </Box>
+              )}
+              {customSources.viewingSource?.database && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Database
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {customSources.viewingSource.database}
+                  </Typography>
+                </Box>
+              )}
+              {customSources.viewingSource?.schema && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Schema
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {customSources.viewingSource.schema}
+                  </Typography>
+                </Box>
+              )}
+              {customSources.viewingSource?.table && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Table
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {customSources.viewingSource.table}
+                  </Typography>
+                </Box>
+              )}
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Columns ({customSources.viewingSource.headers?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {customSources.viewingSource.headers && customSources.viewingSource.headers.length > 0 ? (
+                    customSources.viewingSource.headers.map((header, index) => (
+                      <Chip
+                        key={index}
+                        label={header}
+                        size="small"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No columns available
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
+            <Button onClick={() => customSources.setViewingSource(null)} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Versions Modal */}
+      <VersionsModal
+        open={versionsModalOpen}
+        onClose={() => setVersionsModalOpen(false)}
+        versionedSources={versionedSources}
+        getSourceNameById={getSourceNameById || (() => 'Unknown')}
+        moduleType="Match"
+        onUpdateVersionName={onUpdateVersionName}
       />
     </Box>
   );

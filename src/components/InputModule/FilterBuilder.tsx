@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -36,7 +36,10 @@ interface FilterGroup {
 interface FilterBuilderProps {
   headers: string[];
   onFilterChange?: (query: string) => void;
+  onConfigChange?: (config: FilterGroup[]) => void; // New prop to emit config changes
   showDataType?: boolean;
+  initialValue?: string; // For edit mode - existing filter query
+  initialConfig?: FilterGroup[]; // For edit mode - existing filter configuration
 }
 
 const DATA_TYPES = [
@@ -66,8 +69,15 @@ const OPERATORS = [
   { value: 'NOT IN', label: 'Not In' },
 ];
 
-const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, showDataType = true }) => {
-  const [groups, setGroups] = useState<FilterGroup[]>([
+const FilterBuilder: React.FC<FilterBuilderProps> = ({ 
+  headers, 
+  onFilterChange, 
+  onConfigChange, 
+  showDataType = true, 
+  initialValue, 
+  initialConfig 
+}) => {
+  const [groups, setGroups] = useState<FilterGroup[]>(initialConfig || [
     {
       id: Date.now().toString(),
       conditions: [
@@ -83,9 +93,30 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
       groupOperator: 'OR', // Default operator between groups
     },
   ]);
+  
+  // Add state to track existing filter for display purposes
+  const [existingFilter, setExistingFilter] = useState<string>(initialValue || '');
+  const [showExistingFilter, setShowExistingFilter] = useState<boolean>(!!initialValue);
+
+  // Handle initial query when component mounts with existing filter
+  useEffect(() => {
+    if (initialValue && onFilterChange) {
+      onFilterChange(initialValue);
+    }
+  }, [initialValue]); // Removed onFilterChange from dependencies to prevent infinite loop
 
   const buildQuery = (groups: FilterGroup[]): string => {
-    if (groups.length === 0) return '';
+    // Check if we have any actual conditions
+    const hasActiveConditions = groups.some(group => 
+      group.conditions.some(cond => cond.field && cond.operator && (cond.value || cond.operator.includes('NULL')))
+    );
+    
+    // If no active conditions but we have an existing filter, return the existing filter
+    if (!hasActiveConditions && existingFilter && showExistingFilter) {
+      return existingFilter;
+    }
+    
+    if (groups.length === 0 || !hasActiveConditions) return '';
 
     const groupQueries = groups.map((group, index) => {
       const conditionQueries = group.conditions
@@ -115,20 +146,20 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
     if (validQueries.length === 0) return '';
     if (validQueries.length === 1) return validQueries[0].query;
 
-    // Build query with dynamic operators between groups
-    return validQueries
-      .map((item, index) => {
-        if (index === validQueries.length - 1) {
-          return item.query;
-        }
-        return `${item.query} ${item.operator}`;
-      })
-      .join(' ');
+    // Build query with progressive nested parentheses
+    let result = validQueries[0].query;
+    
+    for (let i = 1; i < validQueries.length; i++) {
+      const currentOperator = validQueries[i - 1].operator;
+      result = `(${result} ${currentOperator} ${validQueries[i].query})`;
+    }
+    
+    return result;
   };
 
   const handleAddCondition = (groupId: string) => {
-    setGroups((prevGroups) =>
-      prevGroups.map((group) =>
+    setGroups((prevGroups) => {
+      const newGroups = prevGroups.map((group) =>
         group.id === groupId
           ? {
               ...group,
@@ -144,46 +175,74 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
               ],
             }
           : group
-      )
-    );
+      );
+      
+      if (onConfigChange) {
+        onConfigChange(newGroups);
+      }
+      
+      return newGroups;
+    });
   };
 
   const handleRemoveCondition = (groupId: string, conditionId: string) => {
-    setGroups((prevGroups) =>
-      prevGroups.map((group) =>
+    setGroups((prevGroups) => {
+      const newGroups = prevGroups.map((group) =>
         group.id === groupId
           ? {
               ...group,
               conditions: group.conditions.filter((cond) => cond.id !== conditionId),
             }
           : group
-      )
-    );
+      );
+      
+      if (onConfigChange) {
+        onConfigChange(newGroups);
+      }
+      
+      return newGroups;
+    });
   };
 
   const handleAddGroup = () => {
-    setGroups((prevGroups) => [
-      ...prevGroups,
-      {
-        id: Date.now().toString(),
-        conditions: [
-          {
-            id: `${Date.now()}-1`,
-            field: '',
-            dataType: 'STRING',
-            operator: '=',
-            value: '',
-          },
-        ],
-        logicalOperator: 'AND',
-        groupOperator: 'OR', // Default operator for new groups
-      },
-    ]);
+    setGroups((prevGroups) => {
+      const newGroups = [
+        ...prevGroups,
+        {
+          id: Date.now().toString(),
+          conditions: [
+            {
+              id: `${Date.now()}-1`,
+              field: '',
+              dataType: 'STRING',
+              operator: '=',
+              value: '',
+            },
+          ],
+          logicalOperator: 'AND' as 'AND' | 'OR',
+          groupOperator: 'OR' as 'AND' | 'OR', // Default operator for new groups
+        },
+      ];
+      
+      if (onConfigChange) {
+        onConfigChange(newGroups);
+      }
+      
+      return newGroups;
+    });
   };
 
   const handleRemoveGroup = (groupId: string) => {
     if (groups.length > 1) {
-      setGroups((prevGroups) => prevGroups.filter((group) => group.id !== groupId));
+      setGroups((prevGroups) => {
+        const newGroups = prevGroups.filter((group) => group.id !== groupId);
+        
+        if (onConfigChange) {
+          onConfigChange(newGroups);
+        }
+        
+        return newGroups;
+      });
     }
   };
 
@@ -209,6 +268,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
       if (onFilterChange) {
         onFilterChange(query);
       }
+      if (onConfigChange) {
+        onConfigChange(newGroups);
+      }
 
       return newGroups;
     });
@@ -223,6 +285,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
       const query = buildQuery(newGroups);
       if (onFilterChange) {
         onFilterChange(query);
+      }
+      if (onConfigChange) {
+        onConfigChange(newGroups);
       }
 
       return newGroups;
@@ -239,6 +304,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
       if (onFilterChange) {
         onFilterChange(query);
       }
+      if (onConfigChange) {
+        onConfigChange(newGroups);
+      }
 
       return newGroups;
     });
@@ -248,6 +316,66 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
 
   return (
     <Box>
+      {/* Existing Filter Info */}
+      {existingFilter && showExistingFilter && (
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              Editing Existing Filter
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setShowExistingFilter(false);
+                setExistingFilter('');
+                // Reset to default empty filter
+                const defaultGroups = [{
+                  id: Date.now().toString(),
+                  conditions: [{
+                    id: `${Date.now()}-1`,
+                    field: '',
+                    dataType: 'STRING',
+                    operator: '=',
+                    value: '',
+                  }],
+                  logicalOperator: 'AND' as 'AND' | 'OR',
+                  groupOperator: 'OR' as 'AND' | 'OR',
+                }];
+                setGroups(defaultGroups);
+                if (onFilterChange) {
+                  onFilterChange('');
+                }
+                if (onConfigChange) {
+                  onConfigChange(defaultGroups);
+                }
+              }}
+              sx={{ textTransform: 'none', fontSize: '0.8rem' }}
+            >
+              Clear & Start Fresh
+            </Button>
+          </Box>
+          <Paper
+            sx={{
+              p: 2,
+              backgroundColor: '#E3F2FD',
+              borderRadius: 2,
+              border: '1px solid #BBDEFB',
+              fontFamily: 'monospace',
+              fontSize: '0.85rem',
+            }}
+          >
+            <Typography variant="caption" sx={{ display: 'block', mb: 1, color: '#1976D2', fontWeight: 600 }}>
+              Current Filter Query:
+            </Typography>
+            <Typography sx={{ color: '#0D47A1', wordBreak: 'break-word' }}>
+              {existingFilter}
+            </Typography>
+          </Paper>
+        </Box>
+      )}
+      
+      {/* Filter Builder - Always Visible */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
           Filters
@@ -520,6 +648,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ headers, onFilterChange, 
           {query}
         </Paper>
       )}
+
     </Box>
   );
 };

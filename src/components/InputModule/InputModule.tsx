@@ -16,27 +16,51 @@ import {
 } from '@mui/material';
 import {
   Add,
-  Visibility,
   Edit,
   Delete,
   Description,
+  List,
 } from '@mui/icons-material';
 import SourceConfigDialog from './SourceConfigDialog';
+import InputVersionModal from './InputVersionModal';
+import { type RequestInputsResponse } from '../../services/api';
 
 export interface InputSource {
   id: string;
-  sourceType: 'File' | 'Database' | 'Self';
+  sourceType: 'File' | 'Database' | 'Self' | 'Version';
   sourceName: string;
   subSourceType: string;
-  fileSource?: string; // The preconfigured source (BO3 SFTP, ZXDS SFTP, etc.)
+  fileSource?: string; // The preconfigured source name (BO3 SFTP, ZXDS SFTP, etc.)
+  fileSourceId?: number; // The preconfigured source ID for proper restoration
   filePath?: string;
   fileName?: string;
   delimiter?: string;
   hasHeader?: boolean;
-  headers?: string[];
+  isHeader?: 0 | 1; // For API payload: 0 = No header, 1 = Has header
+  customHeaders?: string; // Comma-separated string of header names for file type
+  headers?: string[]; // All available headers from the data source (never filtered)
+  selectedHeaders?: string[]; // User-selected subset of headers (for processing)
   dataTypes?: Record<string, string>;
   previewData?: any[];
+  filterQuery?: string; // Store the generated filter query
+  filterConfig?: any; // Store the filter configuration (groups, conditions, etc.)
   isVersioned?: boolean; // Indicates if this source was created through versioning
+  database?: string;
+  schema?: string;
+  table?: string;
+  originalTableName?: string; // For preconfigured tables: stores the original table name for restoration
+  customTableMetadata?: {
+    source: string;
+    database: string;
+    schema: string;
+    tableName: string;
+    tableSourceName: string;
+  };
+  versionConfig?: {
+    selectedSources: string[];
+    combineAs: 'merge' | 'union' | 'intersect';
+    fieldMappings: any[];
+  };
 }
 
 interface InputModuleProps {
@@ -44,17 +68,27 @@ interface InputModuleProps {
   onAddClick?: () => void;
   onSourcesChange?: (sources: InputSource[]) => void;
   initialSources?: InputSource[];
+  apiSources?: RequestInputsResponse | null;
+  sourcesLoading?: boolean;
+  versionCounters?: { Input: number; Match: number; Append: number; Suppress: number };
+  onUpdateVersionCounter?: (module: 'Input', increment: number) => void;
 }
 
 const InputModule: React.FC<InputModuleProps> = ({ 
   hideButton = false, 
   onAddClick, 
   onSourcesChange, 
-  initialSources = [] 
+  initialSources = [],
+  apiSources = null,
+  sourcesLoading = false,
+  versionCounters = { Input: 0, Match: 0, Append: 0, Suppress: 0 },
+  onUpdateVersionCounter
 }) => {
   const [sources, setSources] = useState<InputSource[]>(initialSources || []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<InputSource | null>(null);
+  const [versionModalOpen, setVersionModalOpen] = useState(false);
+  const [editingVersion, setEditingVersion] = useState<InputSource | null>(null);
 
   // Sync with prop changes
   useEffect(() => {
@@ -70,8 +104,15 @@ const InputModule: React.FC<InputModuleProps> = ({
   };
 
   const handleEditSource = (source: InputSource) => {
-    setEditingSource(source);
-    setDialogOpen(true);
+    if (source?.isVersioned) {
+      // Open version modal for versioned sources
+      setEditingVersion(source);
+      setVersionModalOpen(true);
+    } else {
+      // Open source config dialog for regular sources
+      setEditingSource(source);
+      setDialogOpen(true);
+    }
   };
 
   const handleDeleteSource = (id: string) => {
@@ -105,26 +146,82 @@ const InputModule: React.FC<InputModuleProps> = ({
     }
   };
 
-  const handleViewSource = (source: InputSource) => {
-    setEditingSource(source);
-    setDialogOpen(true);
+  const handleVersionSave = (versionData: any) => {
+    let newSources: InputSource[];
+    
+    if (editingVersion) {
+      // Update existing version
+      const updatedSource: InputSource = {
+        ...editingVersion,
+        sourceName: versionData.name,
+        headers: versionData.orderedHeaders,
+        versionConfig: {
+          selectedSources: versionData.selectedSources,
+          combineAs: versionData.combineAs,
+          fieldMappings: versionData.fieldMappings,
+        },
+      };
+
+      newSources = sources?.map(s => s?.id === editingVersion?.id ? updatedSource : s) ?? [];
+      setEditingVersion(null);
+    } else {
+      // Create a new versioned source with distinct naming
+      const inputVersionCount = (versionCounters?.Input || 0) + 1;
+      const distinctVersionName = `Input_${versionData.name}_v${inputVersionCount}`;
+      
+      const versionedSource: InputSource = {
+        id: `version_${Date.now()}`,
+        sourceType: 'Version',
+        sourceName: distinctVersionName,
+        subSourceType: '', // Empty for versions
+        fileSource: '', // Empty for versions
+        headers: versionData.orderedHeaders,
+        isVersioned: true,
+        versionConfig: {
+          selectedSources: versionData.selectedSources,
+          combineAs: versionData.combineAs,
+          fieldMappings: versionData.fieldMappings,
+        },
+      };
+
+      // Add the versioned source to existing sources
+      newSources = [...sources, versionedSource];
+      
+      // Update version counter
+      if (onUpdateVersionCounter) {
+        onUpdateVersionCounter('Input', 1);
+      }
+    }
+    
+    setSources(newSources);
+    if (onSourcesChange) {
+      onSourcesChange(newSources);
+    }
   };
 
   return (
     <Box>
       {/* Hidden trigger for external button */}
       {hideButton && (
-        <button
-          data-add-input-source
-          onClick={handleAddSource}
-          style={{ display: 'none' }}
-          aria-hidden="true"
-        />
+        <>
+          <button
+            data-add-input-source
+            onClick={handleAddSource}
+            style={{ display: 'none' }}
+            aria-hidden="true"
+          />
+          <button
+            data-create-input-version
+            onClick={() => setVersionModalOpen(true)}
+            style={{ display: 'none' }}
+            aria-hidden="true"
+          />
+        </>
       )}
 
       {/* Add Input Source Button */}
       {!hideButton && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1, mb: 2 }}>
           <Button
             variant="contained"
             size="small"
@@ -140,6 +237,25 @@ const InputModule: React.FC<InputModuleProps> = ({
           >
             Add Input Source
           </Button>
+          {sources.length >= 1 && (
+            <Tooltip title="Create Version" arrow>
+              <IconButton
+                size="small"
+                onClick={() => setVersionModalOpen(true)}
+                sx={{
+                  color: '#6366F1',
+                  border: '2px solid #6366F1',
+                  borderRadius: 1,
+                  '&:hover': {
+                    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                    borderColor: '#4F46E5',
+                  },
+                }}
+              >
+                <List fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       )}
 
@@ -187,9 +303,9 @@ const InputModule: React.FC<InputModuleProps> = ({
               </TableRow>
             </TableHead>
             <TableBody>
-              {sources.map((source) => {
-                const headerText = source.headers?.join(', ') || '--';
-                const headerCount = source.headers?.length || 0;
+              {sources?.map((source) => {
+                const headerText = source?.headers?.join(', ') || '--';
+                const headerCount = source?.headers?.length || 0;
                 return (
                   <TableRow
                     key={source.id}
@@ -205,25 +321,27 @@ const InputModule: React.FC<InputModuleProps> = ({
                         icon={<Description />}
                         label={source.sourceType}
                         size="small"
-                        color={source.sourceType === 'File' ? 'primary' : 'secondary'}
+                        color={source.sourceType === 'File' ? 'primary' : source.sourceType === 'Version' ? 'success' : 'secondary'}
                         sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
                       />
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                        {source.sourceName || '--'}
+                        {source?.sourceName || '--'}
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                        {source.sourceType === 'File'
-                          ? (source.fileName || source.filePath || '--')
-                          : (source.sourceName || '--')}
+                        {source?.sourceType === 'File'
+                          ? (source?.fileName || source?.filePath || '--')
+                          : source?.sourceType === 'Version'
+                          ? '--'
+                          : (source?.sourceName || '--')}
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                        {source.subSourceType}
+                        {source?.subSourceType || '--'}
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: '200px' }}>
@@ -260,7 +378,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {source.headers?.slice(0, 3).join(', ')}
+                              {source?.headers?.slice(0, 3).join(', ')}
                               {headerCount > 3 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -273,20 +391,6 @@ const InputModule: React.FC<InputModuleProps> = ({
                     </TableCell>
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
                       <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleViewSource(source)}
-                          sx={{
-                            color: 'primary.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(41, 102, 149, 0.12)',
-                            },
-                          }}
-                          title="View"
-                        >
-                          <Visibility sx={{ fontSize: 16 }} />
-                        </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => handleEditSource(source)}
@@ -303,7 +407,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDeleteSource(source.id)}
+                          onClick={() => handleDeleteSource(source?.id)}
                           sx={{
                             color: 'error.main',
                             padding: '3px',
@@ -331,6 +435,21 @@ const InputModule: React.FC<InputModuleProps> = ({
         onClose={() => setDialogOpen(false)}
         onSave={handleSaveSource}
         initialSource={editingSource}
+        existingSources={sources}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+      />
+
+      {/* Input Version Modal */}
+      <InputVersionModal
+        open={versionModalOpen}
+        onClose={() => {
+          setVersionModalOpen(false);
+          setEditingVersion(null);
+        }}
+        availableSources={sources}
+        onSave={handleVersionSave}
+        editingVersion={editingVersion}
       />
     </Box>
   );

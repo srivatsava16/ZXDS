@@ -9,34 +9,28 @@ import {
   Storage,
   Dashboard,
   Search,
-  Add,
 } from '@mui/icons-material';
 
 export const publicNavigation: NavigationItem[] = [
   {
     title: 'Universe Reports',
-    path: '/universeReports',
+    path: '/universal-pull',
     icon: Assessment,
   },
   {
     title: 'Data Pull Reports',
-    path: '/dataPullReports',
+    path: '/reports',
     icon: Dashboard,
   },
   {
     title: 'ZIP Radius Search',
-    path: '/zipRadiusSearch',
+    path: '/zip-radius',
     icon: Search,
   },
   {
     title: 'Data Streams',
-    path: '/dataStreams',
+    path: '/data-streams',
     icon: Storage,
-  },
-  {
-    title: 'Create Request',
-    path: '/dataPullRequests/new',
-    icon: Add,
   },
 ];
 

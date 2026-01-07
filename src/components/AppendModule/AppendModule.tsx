@@ -20,61 +20,85 @@ import {
   TableRow,
   Tooltip,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Menu,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, HistoryEdu } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility, List } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import AppendSourceDialog from './AppendSourceDialog';
 import DraggableAppendSources from './DraggableAppendSources';
 import AddColumnDialog from './AddColumnDialog';
 import FieldMappingDialog, { type FieldMapping } from './FieldMappingDialog';
+import VersionsModal from '../shared/VersionsModal';
 
-interface AppendConfig {
-  id: string;
-  inputSources: string[];
-  appendOnFields: string[];
-  appendSources: string[];
-  appendFields: string[];
-}
+// Extracted modules
+import type { AppendConfig, AppendModuleProps } from './types';
+import { getPredefinedSources } from './utils/appendHelpers';
+import { useAppendConfig } from './hooks/useAppendConfig';
+import { useCustomSources } from './hooks/useCustomSources';
 
-interface AppendModuleProps {
-  availableInputSources: InputSource[];
-  onCreateVersionedSource?: (
-    sourceModule: 'Match' | 'Append' | 'Suppress',
-    baseInputSources: string[],
-    operationSources: string[],
-    operationFields?: string[]
-  ) => void;
-  initialConfigs?: AppendConfig[];
-}
+export type { AppendConfig };
 
-// Predefined append sources
-const PREDEFINED_SOURCES = [
-  { id: 'postal_table', name: 'Postal Table', fields: ['ZIP', 'CITY', 'STATE', 'COUNTY', 'COUNTRY'] },
-  { id: 'best_postal_table', name: 'Best Postal Match Table', fields: ['ZIP_CODE', 'CITY_NAME', 'STATE_CODE', 'LATITUDE', 'LONGITUDE'] },
-];
+const AppendModule: React.FC<AppendModuleProps> = ({
+  availableInputSources,
+  onCreateVersionedSource,
+  initialConfigs,
+  apiSources,
+  sourcesLoading = false,
+  versionedSources = [],
+  getSourceNameById,
+  onUpdateVersionName
+}) => {
+  // Use custom hooks for state management
+  const {
+    configs,
+    editingConfigId,
+    selectedInputSources,
+    selectedAppendOnFields,
+    selectedAppendSources,
+    selectedAppendFields,
+    setConfigs,
+    setSelectedInputSources,
+    setSelectedAppendOnFields,
+    setSelectedAppendSources,
+    setSelectedAppendFields,
+    handleAddOrUpdateConfig,
+    handleEditConfig,
+    handleCancelEdit,
+    handleDeleteConfig,
+  } = useAppendConfig(initialConfigs);
 
-const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCreateVersionedSource, initialConfigs }) => {
-  const [configs, setConfigs] = useState<AppendConfig[]>([]);
-  const [customAppendSources, setCustomAppendSources] = useState<InputSource[]>([]);
+  const {
+    customAppendSources,
+    editingSource,
+    viewingSource,
+    setEditingSource,
+    setViewingSource,
+    handleAddCustomSource,
+    handleEditCustomSource,
+    handleDeleteCustomSource
+  } = useCustomSources();
+
+  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addColumnDialogOpen, setAddColumnDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
-  const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [versionsModalOpen, setVersionsModalOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [addedCustomColumns, setAddedCustomColumns] = useState<any[]>([]);
 
+  // Get predefined sources from API or use fallback
+  const PREDEFINED_SOURCES = getPredefinedSources(apiSources);
+
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
-    if (initialConfigs && initialConfigs.length > 0) {
+    if (initialConfigs && initialConfigs?.length > 0) {
       setConfigs(initialConfigs);
     }
-  }, [initialConfigs]);
-
-  // Current working config state
-  const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
-  const [selectedAppendOnFields, setSelectedAppendOnFields] = useState<string[]>([]);
-  const [selectedAppendSources, setSelectedAppendSources] = useState<string[]>([]);
-  const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
+  }, [initialConfigs, setConfigs]);
 
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
@@ -84,29 +108,24 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
 
   // Get common or all fields based on input source selection
   const getAppendOnFields = (sourceIds: string[]): string[] => {
-    // Always include Decile1 and Decile2 for demo purposes
-    const demoFields = ['Decile1', 'Decile2'];
-
-    if (sourceIds.length === 0) return demoFields;
+    if (sourceIds.length === 0) return [];
 
     const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
 
-    if (selectedSources.length === 0) return demoFields;
+    if (selectedSources.length === 0) return [];
 
     // If only one source selected, return all its fields
     if (selectedSources.length === 1) {
-      const headers = selectedSources[0]?.headers || [];
-      // Merge headers with demo fields, ensuring no duplicates
-      return [...new Set([...demoFields, ...headers])];
+      const headers = selectedSources[0]?.selectedHeaders || selectedSources[0]?.headers || [];
+      return headers;
     }
 
     // If multiple sources, return common fields (intersection)
-    const firstSourceHeaders = selectedSources[0]?.headers || [];
+    const firstSourceHeaders = selectedSources[0]?.selectedHeaders || selectedSources[0]?.headers || [];
     const commonHeaders = firstSourceHeaders.filter(header =>
-      selectedSources.every(src => src?.headers?.includes(header))
+      selectedSources.every(src => (src?.selectedHeaders || src?.headers)?.includes(header))
     );
-    // Merge common headers with demo fields, ensuring no duplicates
-    return [...new Set([...demoFields, ...commonHeaders])];
+    return commonHeaders;
   };
 
   // Get union of all append fields
@@ -119,13 +138,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
         predefined.fields.forEach(field => fieldsSet.add(field));
       } else {
         const customSource = customAppendSources.find(src => src.id === id);
-        if (customSource?.headers) {
-          customSource.headers.forEach(field => fieldsSet.add(field));
+        if (customSource?.selectedHeaders || customSource?.headers) {
+          (customSource.selectedHeaders || customSource.headers || []).forEach(field => fieldsSet.add(field));
         } else {
           // Check if it's a versioned source
           const versionedSource = availableInputSources.find(src => src.id === id);
-          if (versionedSource?.headers) {
-            versionedSource.headers.forEach(field => fieldsSet.add(field));
+          if (versionedSource?.selectedHeaders || versionedSource?.headers) {
+            (versionedSource.selectedHeaders || versionedSource.headers || []).forEach(field => fieldsSet.add(field));
           }
         }
       }
@@ -139,90 +158,14 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
     setSelectedAppendSources(newOrder);
   };
 
-  const handleAddOrUpdateConfig = () => {
-    if (selectedInputSources.length === 0) {
-      alert('Please select at least one Input Source');
-      return;
-    }
-    if (selectedAppendOnFields.length === 0) {
-      alert('Please select at least one Append On field');
-      return;
-    }
-    if (selectedAppendSources.length === 0) {
-      alert('Please select at least one Append Source');
-      return;
-    }
-    if (selectedAppendFields.length === 0) {
-      alert('Please select at least one Append Field');
-      return;
-    }
-
-    if (editingConfigId) {
-      // Update existing config
-      setConfigs(configs.map(config =>
-        config.id === editingConfigId
-          ? {
-              ...config,
-              inputSources: selectedInputSources,
-              appendOnFields: selectedAppendOnFields,
-              appendSources: selectedAppendSources,
-              appendFields: selectedAppendFields,
-            }
-          : config
-      ));
-      setEditingConfigId(null);
-    } else {
-      // Add new config
-      const newConfig: AppendConfig = {
-        id: Date.now().toString(),
-        inputSources: selectedInputSources,
-        appendOnFields: selectedAppendOnFields,
-        appendSources: selectedAppendSources,
-        appendFields: selectedAppendFields,
-      };
-      setConfigs([...configs, newConfig]);
-    }
-
-    // Reset form
-    setSelectedInputSources([]);
-    setSelectedAppendOnFields([]);
-    setSelectedAppendSources([]);
-    setSelectedAppendFields([]);
-  };
-
-  const handleEditConfig = (config: AppendConfig) => {
-    setEditingConfigId(config.id);
-    setSelectedInputSources(config.inputSources);
-    setSelectedAppendOnFields(config.appendOnFields);
-    setSelectedAppendSources(config.appendSources);
-    setSelectedAppendFields(config.appendFields);
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingConfigId(null);
-    setSelectedInputSources([]);
-    setSelectedAppendOnFields([]);
-    setSelectedAppendSources([]);
-    setSelectedAppendFields([]);
-  };
-
-  const handleDeleteConfig = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this append configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
-      if (editingConfigId === id) {
-        handleCancelEdit();
-      }
-    }
-  };
-
-  const handleAddCustomSource = (source: InputSource) => {
-    const newSource = { ...source, id: Date.now().toString() };
-    setCustomAppendSources(prev => [...prev, newSource]);
-  };
+  // Version menu state
+  const [versionMenuAnchorEl, setVersionMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const versionMenuOpen = Boolean(versionMenuAnchorEl);
 
   const handleCreateVersion = () => {
+    // Close menu first
+    setVersionMenuAnchorEl(null);
+    
     // Validation
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source before creating versions');
@@ -243,6 +186,21 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
       );
     }
   };
+
+  const handleVersionMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setVersionMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleVersionMenuClose = () => {
+    setVersionMenuAnchorEl(null);
+  };
+
+  const handleViewVersions = () => {
+    setVersionMenuAnchorEl(null);
+    setVersionsModalOpen(true);
+  };
+
+
 
   const handleAddColumns = (columns: any[]) => {
     console.log('New columns added:', columns);
@@ -266,19 +224,25 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
   const availableAppendFields = getAppendFields(selectedAppendSources);
 
   // Extract versioned sources from availableInputSources
-  const versionedSources = availableInputSources.filter(src =>
-    (src as any).isVersioned === true
+  const localVersionedSources = availableInputSources.filter(src =>
+    src.isVersioned === true
+  );
+
+  // Extract regular input sources (non-versioned)
+  const regularInputSources = availableInputSources.filter(src =>
+    !src.isVersioned
   );
 
   const allAppendSources = [
-    ...PREDEFINED_SOURCES.map(src => ({ id: src.id, name: src.name })),
-    ...customAppendSources.map(src => ({ id: src.id, name: src.sourceName })),
-    ...versionedSources.map(src => ({ id: src.id, name: src.sourceName })),
+    ...PREDEFINED_SOURCES.map(src => ({ id: src?.id, name: src?.name })),
+    ...customAppendSources.map(src => ({ id: src?.id, name: src?.sourceName })),
+    ...localVersionedSources.map(src => ({ id: src?.id, name: src?.sourceName })),
+    ...regularInputSources.map(src => ({ id: src?.id, name: src?.sourceName })),
   ];
 
   // Filtered lists based on search queries
   const filteredInputSources = availableInputSources.filter(source =>
-    source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+    source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
   const filteredAppendOnFields = appendOnFields.filter(field =>
@@ -286,6 +250,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
   );
 
   const filteredAppendSources = allAppendSources.filter(source =>
+    source?.name && typeof source.name === 'string' && 
     source.name.toLowerCase().includes(appendSourcesSearch.toLowerCase())
   );
 
@@ -422,11 +387,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
             >
               Add Append Source
             </Button>
-            <Tooltip title="Create Version from Selected Inputs & Sources" arrow>
+            <Tooltip title="Version Actions" arrow>
               <IconButton
                 size="small"
-                onClick={handleCreateVersion}
-                disabled={!onCreateVersionedSource}
+                onClick={handleVersionMenuOpen}
                 sx={{
                   color: '#296695',
                   border: '2px solid #296695',
@@ -435,18 +399,44 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
                     backgroundColor: 'rgba(41, 102, 149, 0.08)',
                     borderColor: '#1e4d6f',
                   },
-                  '&.Mui-disabled': {
-                    borderColor: '#E5E7EB',
-                    color: '#9CA3AF',
-                  },
                 }}
               >
                 <AccountTree fontSize="small" />
               </IconButton>
             </Tooltip>
+            <Menu
+              anchorEl={versionMenuAnchorEl}
+              open={versionMenuOpen}
+              onClose={handleVersionMenuClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'left',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'left',
+              }}
+            >
+              <MenuItem 
+                onClick={handleCreateVersion}
+                disabled={!onCreateVersionedSource}
+              >
+                <AccountTree sx={{ fontSize: 16, mr: 1 }} />
+                Create Version
+              </MenuItem>
+              <MenuItem 
+                onClick={handleViewVersions}
+                disabled={!versionedSources || versionedSources.length === 0}
+              >
+                <List sx={{ fontSize: 16, mr: 1 }} />
+                View Versions
+              </MenuItem>
+            </Menu>
           </Box>
         </Box>
       </Box>
+
+
 
       {/* All Four Steps in One Row */}
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', mb: 3 }}>
@@ -904,12 +894,60 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
                     <ListItemText primary="Select All" />
                   </MenuItem>
                 )}
-                {filteredAppendSources.map((source) => (
-                  <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedAppendSources.indexOf(source.id) > -1} size="small" />
-                    <ListItemText primary={source.name} />
-                  </MenuItem>
-                ))}
+                {filteredAppendSources.map((source) => {
+                  const isCustomSource = customAppendSources.some(cs => cs.id === source.id);
+                  return (
+                    <MenuItem key={source.id} value={source.id}>
+                      <Checkbox checked={selectedAppendSources.indexOf(source.id) > -1} size="small" />
+                      <ListItemText primary={source.name} />
+                      {isCustomSource && (
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Tooltip title="View Details" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const customSource = customAppendSources.find(cs => cs.id === source.id);
+                                if (customSource) {
+                                  setViewingSource(customSource);
+                                }
+                              }}
+                              sx={{
+                                color: '#296695',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(41, 102, 149, 0.08)',
+                                },
+                              }}
+                            >
+                              <Visibility fontSize="small" sx={{ fontSize: '0.8rem' }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit Source" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const customSource = customAppendSources.find(cs => cs.id === source.id);
+                                if (customSource) {
+                                  setEditingSource(customSource);
+                                  setDialogOpen(true);
+                                }
+                              }}
+                              sx={{
+                                color: '#10B981',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                                },
+                              }}
+                            >
+                              <Edit fontSize="small" sx={{ fontSize: '0.8rem' }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      )}
+                    </MenuItem>
+                  );
+                })}
                 {filteredAppendSources.length === 0 && (
                   <MenuItem disabled>
                     <em>No sources match your search</em>
@@ -1430,9 +1468,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
       {/* Custom Append Source Dialog */}
       <AppendSourceDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSave={handleAddCustomSource}
+        onClose={() => {
+          setDialogOpen(false);
+          setEditingSource(null);
+        }}
+        onSave={editingSource ? handleEditCustomSource : handleAddCustomSource}
         availableInputSources={availableInputSources}
+        apiSources={apiSources}
+        sourcesLoading={sourcesLoading}
+        editingSource={editingSource}
       />
 
       {/* Add Field Dialog */}
@@ -1463,6 +1507,128 @@ const AppendModule: React.FC<AppendModuleProps> = ({ availableInputSources, onCr
         ]}
         initialMappings={fieldMappings}
       />
+
+      {/* View Source Details Dialog */}
+      {viewingSource && (
+        <Dialog
+          open={true}
+          onClose={() => setViewingSource(null)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#296695' }}>
+              Append Source Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Source Name
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingSource.sourceName}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Source Type
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingSource.sourceType}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Sub Source Type
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingSource.subSourceType}
+                </Typography>
+              </Box>
+              {viewingSource.fileName && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    File Name
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {viewingSource.fileName}
+                  </Typography>
+                </Box>
+              )}
+              {viewingSource?.database && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Database
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {viewingSource.database}
+                  </Typography>
+                </Box>
+              )}
+              {viewingSource?.schema && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Schema
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {viewingSource.schema}
+                  </Typography>
+                </Box>
+              )}
+              {viewingSource?.table && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Table
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {viewingSource.table}
+                  </Typography>
+                </Box>
+              )}
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Columns ({viewingSource.headers?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingSource.headers && viewingSource.headers.length > 0 ? (
+                    viewingSource.headers.map((header, index) => (
+                      <Chip
+                        key={index}
+                        label={header}
+                        size="small"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No columns available
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
+            <Button onClick={() => setViewingSource(null)} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Versions Modal */}
+      {getSourceNameById && (
+        <VersionsModal
+          open={versionsModalOpen}
+          onClose={() => setVersionsModalOpen(false)}
+          moduleType="Append"
+          versionedSources={versionedSources}
+          getSourceNameById={getSourceNameById}
+          onUpdateVersionName={onUpdateVersionName}
+        />
+      )}
     </Box>
   );
 };

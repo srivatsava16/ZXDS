@@ -127,12 +127,10 @@ const DivisionManagementPage: React.FC = () => {
   };
 
   const handleEdit = () => {
-    console.log('Edit division:', selectedDivision);
     handleMenuClose();
   };
 
   const handleDelete = () => {
-    console.log('Delete division:', selectedDivision);
     handleMenuClose();
   };
 

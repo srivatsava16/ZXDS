@@ -75,12 +75,10 @@ const UserManagementPage: React.FC = () => {
   };
 
   const handleEdit = () => {
-    console.log('Edit user:', selectedUser);
     handleMenuClose();
   };
 
   const handleDelete = () => {
-    console.log('Delete user:', selectedUser);
     handleMenuClose();
   };
 

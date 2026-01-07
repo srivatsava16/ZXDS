@@ -7,6 +7,10 @@ export const APP_CONFIG = {
   tokenRefreshInterval: 15 * 60 * 1000, // 15 minutes
 } as const
 
+// API Constants
+export const REQUEST_HEADER_AUTH_KEY = 'Authorization';
+export const TOKEN_TYPE = 'Bearer ';
+
 // Route Constants
 export const ROUTES = {
   // Auth Routes
