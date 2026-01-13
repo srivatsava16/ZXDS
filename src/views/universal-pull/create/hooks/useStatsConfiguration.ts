@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { StatsConfiguration } from '../types';
+import type { StatsConfiguration, CountOnField } from '../types';
 import { nanoid } from 'nanoid';
 
 export const useStatsConfiguration = () => {
   const [statsConfigurations, setStatsConfigurations] = useState<StatsConfiguration[]>([]);
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
-  const [selectedCountsOn, setSelectedCountsOn] = useState<string[]>([]);
-  const [isDistinct, setIsDistinct] = useState(false);
+  const [selectedCountsOn, setSelectedCountsOn] = useState<CountOnField[]>([]);
   const [selectedBreakdownBy, setSelectedBreakdownBy] = useState<string[]>([]);
   const [editingStatsId, setEditingStatsId] = useState<string | null>(null);
 
@@ -25,7 +24,6 @@ export const useStatsConfiguration = () => {
       id: nanoid(),
       inputSources: selectedInputSources,
       countsOn: selectedCountsOn,
-      isDistinct,
       breakdownBy: selectedBreakdownBy,
     };
 
@@ -41,15 +39,13 @@ export const useStatsConfiguration = () => {
     // Reset form
     setSelectedInputSources([]);
     setSelectedCountsOn([]);
-    setIsDistinct(false);
     setSelectedBreakdownBy([]);
-  }, [selectedInputSources, selectedCountsOn, isDistinct, selectedBreakdownBy, editingStatsId]);
+  }, [selectedInputSources, selectedCountsOn, selectedBreakdownBy, editingStatsId]);
 
   const handleEditStatsConfig = useCallback((config: StatsConfiguration) => {
     setEditingStatsId(config.id);
     setSelectedInputSources(config.inputSources);
     setSelectedCountsOn(config.countsOn);
-    setIsDistinct(config.isDistinct);
     setSelectedBreakdownBy(config.breakdownBy);
   }, []);
 
@@ -60,7 +56,6 @@ export const useStatsConfiguration = () => {
   const resetStatsForm = useCallback(() => {
     setSelectedInputSources([]);
     setSelectedCountsOn([]);
-    setIsDistinct(false);
     setSelectedBreakdownBy([]);
     setEditingStatsId(null);
   }, []);
@@ -70,7 +65,6 @@ export const useStatsConfiguration = () => {
     statsConfigurations,
     selectedInputSources,
     selectedCountsOn,
-    isDistinct,
     selectedBreakdownBy,
     editingStatsId,
 
@@ -78,7 +72,6 @@ export const useStatsConfiguration = () => {
     setStatsConfigurations,
     setSelectedInputSources,
     setSelectedCountsOn,
-    setIsDistinct,
     setSelectedBreakdownBy,
 
     // Handlers

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -20,6 +20,7 @@ import type { InputSource } from './InputModule';
 import FileSourceConfig from './FileSourceConfig';
 import DatabaseSourceConfig from './DatabaseSourceConfig';
 import { type RequestInputsResponse } from '../../services/api';
+import { validateUniqueSourceName } from '../../utils/sourceValidation';
 
 interface SourceConfigDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ interface SourceConfigDialogProps {
   onSave: (source: InputSource, shouldClose: boolean) => void;
   initialSource: InputSource | null;
   existingSources?: InputSource[];
+  allExistingSources?: InputSource[]; // All sources from all modules for validation
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
 }
@@ -37,6 +39,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   onSave,
   initialSource,
   existingSources = [],
+  allExistingSources = [],
   apiSources = null,
   sourcesLoading = false,
 }) => {
@@ -44,46 +47,160 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
   const [sourceNameError, setSourceNameError] = useState('');
 
+  // Track the initial sourceType from edit mode to avoid clearing on first load
+  const initialSourceTypeRef = useRef<'File' | 'Database' | 'Self' | null>(null);
+  const prevSourceTypeRef = useRef<'File' | 'Database' | 'Self'>('File');
+  const isLoadingInitialDataRef = useRef<boolean>(false);
+
   useEffect(() => {
     if (initialSource) {
-      // Only set source type if it's one of the supported dialog types
-      if (initialSource.sourceType === 'File' || initialSource.sourceType === 'Database') {
-        setSourceType(initialSource.sourceType);
+      isLoadingInitialDataRef.current = true; // Set flag before loading
+
+      // Check if this is API format (sourceType: "F") and transform it
+      let sourceToLoad = initialSource;
+      if ((initialSource as any).sourceType === 'F') {
+        sourceToLoad = transformFileSourceFromAPI(initialSource) as InputSource;
       }
-      setSourceData(initialSource);
+
+      // Only set source type if it's one of the supported dialog types
+      if (sourceToLoad.sourceType === 'File' || sourceToLoad.sourceType === 'Database') {
+        setSourceType(sourceToLoad.sourceType);
+        prevSourceTypeRef.current = sourceToLoad.sourceType;
+        initialSourceTypeRef.current = sourceToLoad.sourceType; // Track initial type
+      }
+      setSourceData(sourceToLoad);
       setSourceNameError('');
+
+      // Clear flag after a short delay to ensure all state updates are processed
+      setTimeout(() => {
+        isLoadingInitialDataRef.current = false;
+      }, 100);
     } else {
       setSourceType('File');
       setSourceData({});
       setSourceNameError('');
+      prevSourceTypeRef.current = 'File';
+      initialSourceTypeRef.current = null;
+      isLoadingInitialDataRef.current = false;
     }
   }, [initialSource, open]);
 
-  // Reset sourceData when sourceType changes (only when not in edit mode)
+  // Reset sourceData when sourceType changes (but not during initial load)
   useEffect(() => {
-    // Don't reset if we're in edit mode (initialSource exists) or during initial load
-    if (!initialSource && sourceData && Object.keys(sourceData).length > 0) {
-      setSourceData({ sourceName: sourceData.sourceName }); // Keep only the source name
+    // Skip clearing if we're loading initial data
+    if (isLoadingInitialDataRef.current) {
+      prevSourceTypeRef.current = sourceType;
+      return;
+    }
+
+    // Skip clearing if this is the initial sourceType being set from initialSource
+    if (initialSourceTypeRef.current !== null && initialSourceTypeRef.current === sourceType) {
+      // This is the initial load, reset the ref and don't clear
+      initialSourceTypeRef.current = null;
+      prevSourceTypeRef.current = sourceType;
+      return;
+    }
+
+    // Only clear if sourceType actually changed (user clicked a different radio button)
+    if (prevSourceTypeRef.current !== sourceType && Object.keys(sourceData).length > 0) {
+      setSourceData({}); // Clear all data including source name
       setSourceNameError('');
     }
-  }, [sourceType, initialSource]);
 
-  // Validation function for source name
+    prevSourceTypeRef.current = sourceType;
+  }, [sourceType]); // Only depend on sourceType, not sourceData
+
+  // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    if (!name.trim()) {
-      return 'Source Name is required';
+    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : existingSources;
+
+    return validateUniqueSourceName({
+      sourceName: name,
+      allExistingSources: sourcesToCheck,
+      editingSourceId: initialSource?.id,
+      moduleName: 'Input'
+    });
+  };
+
+  // Helper function to get file format from filename
+  const getFileFormat = (fileName: string | undefined): string => {
+    if (!fileName) return 'CSV';
+    const extension = fileName.split('.').pop()?.toUpperCase();
+    return extension || 'CSV';
+  };
+
+  // Helper function to transform File source from API format to UI format (for edit mode)
+  const transformFileSourceFromAPI = (apiSource: any) => {
+    // Ensure both fileName and filePath are set, using either as fallback
+    const filePathValue = apiSource.filePath || apiSource.fileName || '';
+    const fileNameValue = apiSource.fileName || apiSource.filePath || '';
+
+    // Check if this is already in UI format
+    if (apiSource.sourceType === 'File' || !apiSource.sourceType || apiSource.sourceType !== 'F') {
+      // Already in UI format, but ensure fileName/filePath are both set
+      return {
+        ...apiSource,
+        filePath: filePathValue,
+        fileName: fileNameValue
+      };
     }
-    
-    // Check for duplicates (case-insensitive)
-    const existingNames = existingSources
-      .filter(source => source.id !== initialSource?.id) // Exclude current source when editing
-      .map(source => source.sourceName.trim().toLowerCase());
-    
-    if (existingNames.includes(name.trim().toLowerCase())) {
-      return 'Source Name must be unique';
-    }
-    
-    return '';
+
+    // Parse selectedColumns string back to array
+    const selectedColumnsFromAPI = apiSource.selectedColumns
+      ? apiSource.selectedColumns.split(',').map((col: string) => col.trim()).filter((col: string) => col.length > 0)
+      : apiSource.columns || [];
+
+    return {
+      id: apiSource.id || Date.now().toString(),
+      sourceType: 'File',
+      sourceName: apiSource.sourceName,
+      filePath: filePathValue,
+      fileName: fileNameValue, // Ensure fileName is always populated
+      delimiter: apiSource.delimiter,
+      hasHeader: apiSource.isHeader === 1,
+      headers: apiSource.columns || [],
+      selectedHeaders: selectedColumnsFromAPI, // Use as-is (already in correct format - custom names if custom headers exist)
+      previewData: [], // Cannot be restored from API format
+      fileSourceId: apiSource.dataSourceId,
+      filterQuery: apiSource.filters || '',
+      //extras
+      filterConfig: apiSource?.filterConfig || null, // Use as-is (field names already in correct format)
+      customHeaders: apiSource?.customHeaders || '',
+      subSourceType: apiSource?.subSourceType || ''
+    };
+  };
+
+  // Helper function to transform File source to API format
+  const transformFileSourceToAPI = (source: any) => {
+    const headers = source.headers || [];
+    const selectedHeaders = source.selectedHeaders || source.headers || [];
+
+    // Determine columnSelectionType: "A" if all headers selected, "S" if subset
+    const columnSelectionType = selectedHeaders.length === headers.length ? 'A' : 'S';
+
+    // Determine inputType: "P" for preconfigured (has fileSourceId), "M" for manual
+    const inputType = source.fileSourceId ? 'I' : 'M';
+
+
+    return {
+      sourceName: source.sourceName,
+      sourceType: 'F', // File -> "F"
+      
+      dataSourceId: source.fileSourceId || null,
+      filePath: source.fileName || source.filePath || '', // Use fileName as filePath
+      delimiter: source.delimiter || ',',
+      fileFormat: getFileFormat(source.fileName),
+      isHeader: source.hasHeader ? 1 : 0,
+      columnSelectionType: columnSelectionType,
+      columns: headers,
+      selectedColumns: selectedHeaders.join(','), // Send as-is (custom names if custom headers exist, original names otherwise)
+      inputType: inputType,
+      filters: source.filterQuery || '',
+      //extras
+      customHeaders : source.customHeaders || '',
+      filterConfig: source.filterConfig || null, // Send as-is (field names are custom if custom headers exist)
+      subSourceType: source.subSourceType
+    };
   };
 
   const handleSave = (shouldClose: boolean = true) => {
@@ -114,7 +231,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       delimiter: sourceData.delimiter,
       hasHeader: sourceData.hasHeader,
       customHeaders: sourceData.customHeaders, // Add customHeaders field
-      headers: sourceData.selectedHeaders || sourceData.headers || [], // Use selected headers as primary headers for output
+      headers: sourceData.headers || [], // Keep full list of headers to preserve dropdown options
       selectedHeaders: sourceData.selectedHeaders || sourceData.headers || [], // User's selected subset
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
@@ -129,7 +246,21 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       originalTableName: sourceData.originalTableName // Save original table name for restoration
     };
 
-    onSave(source, shouldClose);
+
+    // DON'T transform File source to API format yet - keep it in UI format for local state
+    // The transformation to API format should happen only when submitting to the actual backend
+    // This ensures Stats module and other components can access headers/selectedHeaders
+
+    // Store the API transformation function for reference, but save UI format
+    if (sourceType === 'File') {
+      const apiFormat = transformFileSourceToAPI(source);
+
+      // Store the API format on the source for later use during submission
+      source.apiFormat = apiFormat;
+    }
+
+
+    onSave(source, shouldClose); // Save UI format, not API format
 
     // If not closing, reset the form for a new entry
     if (!shouldClose) {

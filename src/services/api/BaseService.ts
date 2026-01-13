@@ -38,7 +38,6 @@ BaseService.interceptors.response.use(
         // Handle unauthorized responses
         if (response && unauthorizedCode.includes(error?.response?.status)) {
             // You can dispatch a logout action here if needed
-            console.warn('Unauthorized access detected');
         }
 
         return Promise.reject(error);

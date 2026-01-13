@@ -384,7 +384,9 @@ export async function getAllReports(): Promise<ApiResponse> {
         url: '/report.php',
         method: 'get',
     });
-    return ApiService.transform<ApiResponse>(response?.data);
+    // Return the full response data structure with success, data, and Counts
+    // Don't use transform() as it strips away the success and Counts properties
+    return response?.data as ApiResponse;
 }
 
 // Export mock data function for fallback use in components
@@ -400,7 +402,6 @@ export async function getReportById(id: string): Promise<Report | null> {
         });
         return ApiService.transform<Report>(response?.data?.data);
     } catch (error) {
-        console.error(`Error fetching report ${id}:`, error);
         // Return fallback mock data
         const mockReports = getMockReports();
         return mockReports.find((report: Report) => report.id === id) || null;
@@ -416,7 +417,6 @@ export async function createReport(payload: ReportCreateRequest): Promise<Report
         });
         return ApiService.transform<Report>(response?.data?.data);
     } catch (error) {
-        console.error('Error creating report:', error);
         throw error;
     }
 }
@@ -430,7 +430,6 @@ export async function updateReport(id: string, payload: Partial<ReportCreateRequ
         });
         return ApiService.transform<Report>(response?.data?.data);
     } catch (error) {
-        console.error(`Error updating report ${id}:`, error);
         throw error;
     }
 }

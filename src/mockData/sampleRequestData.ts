@@ -219,22 +219,29 @@ const sampleStatsConfigs = [
   {
     id: 'stats_1',
     inputSources: ['input_1', 'input_2'],
-    countsOn: ['EMAIL_ID', 'PROFILE_ID', 'Decile1'],
-    isDistinct: true,
+    countsOn: [
+      { field: 'EMAIL_ID', isDistinct: true },
+      { field: 'PROFILE_ID', isDistinct: true },
+      { field: 'Decile1', isDistinct: false },
+    ],
     breakdownBy: ['STATE', 'ZIP'],
   },
   {
     id: 'stats_2',
     inputSources: ['input_3'],
-    countsOn: ['TRANSACTION_ID', 'PROFILE_ID'],
-    isDistinct: false,
+    countsOn: [
+      { field: 'TRANSACTION_ID', isDistinct: false },
+      { field: 'PROFILE_ID', isDistinct: false },
+    ],
     breakdownBy: ['PRODUCT_ID', 'DATE'],
   },
   {
     id: 'stats_3',
     inputSources: ['input_1', 'input_4'],
-    countsOn: ['PROFILE_ID', 'Decile2'],
-    isDistinct: true,
+    countsOn: [
+      { field: 'PROFILE_ID', isDistinct: true },
+      { field: 'Decile2', isDistinct: false },
+    ],
     breakdownBy: ['CREDIT_SCORE', 'INCOME', 'MA1566'],
   },
 ];

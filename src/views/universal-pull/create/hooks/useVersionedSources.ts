@@ -55,15 +55,14 @@ export const useVersionedSources = () => {
       operationSources.forEach(operationSourceId => {
         const operationSourceName = getSourceNameById(operationSourceId, allAvailableInputSources);
 
-        // Build distinct version name with module prefix
-        const moduleVersionCount = versionCounters[sourceModule] + 1;
+        // Build distinct version name with format: {inputSource}_{operationSource}_version
         let versionName: string;
         if (inputSource.isVersioned) {
-          // Input is already versioned, append the operation module
-          versionName = `${inputSource.sourceName}_${sourceModule}_v${moduleVersionCount}`;
+          // Input is already versioned, append the operation source
+          versionName = `${inputSource.sourceName}_${operationSourceName}_version`;
         } else {
           // Input is a regular source
-          versionName = `${sourceModule}_${inputSource.sourceName}_${operationSourceName}_v${moduleVersionCount}`;
+          versionName = `${inputSource.sourceName}_${operationSourceName}_version`;
         }
 
         // Get headers from input source

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -22,7 +22,7 @@ import {
   Paper,
   Button,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import type { RequestInputsResponse } from '../../services/api';
 import DraggableOutputSources from './DraggableOutputSources';
@@ -30,8 +30,9 @@ import OutputDestinationDialog, { type OutputDestination } from './OutputDestina
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
 import { generateId } from '../../utils/idGenerator';
 import { useNotification } from '../../contexts/NotificationContext';
+import { transformOutputConfigurationsToAPI, type OutputAPIPayload } from './outputTransformers';
 
-interface OutputConfig {
+export interface OutputConfig {
   id: string;
   inputSources: string[];
   outputFields: string[];
@@ -42,7 +43,12 @@ interface OutputConfig {
   limitation: boolean;
   limitCount?: number;
   random: boolean;
-  destinations: string[];
+  destinations: string[]; // Legacy: destination names for backward compatibility
+  destinationId?: number; // Destination ID from API
+  destinationName?: string; // Destination name for display
+  destinationType?: string; // SFTP, NFS, AWS S3
+  isCustomDestination?: boolean; // true = user-created, false/undefined = preconfigured
+  fieldMappings?: FieldMapping[];
 }
 
 interface OutputModuleProps {
@@ -50,20 +56,26 @@ interface OutputModuleProps {
   onOutputChange?: (outputSource: string) => void;
   initialConfigs?: OutputConfig[];
   apiSources?: RequestInputsResponse | null;
+  sourcesLoading?: boolean;
   onConfigurationsChange?: (configurations: OutputConfig[]) => void;
+  onTransformedDataChange?: (transformedData: OutputAPIPayload | null) => void;
 }
 
 const OutputModule: React.FC<OutputModuleProps> = ({
   availableInputSources = [],
   initialConfigs,
   apiSources,
+  sourcesLoading = false,
   onConfigurationsChange,
+  onTransformedDataChange,
 }) => {
   const { showAlert } = useNotification();
   const [configs, setConfigs] = useState<OutputConfig[]>([]);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
   const [customDestinations, setCustomDestinations] = useState<OutputDestination[]>([]);
   const [destinationDialogOpen, setDestinationDialogOpen] = useState(false);
+  const [destinationDialogMode, setDestinationDialogMode] = useState<'add' | 'edit' | 'view'>('add');
+  const [editingDestination, setEditingDestination] = useState<OutputDestination | null>(null);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
 
@@ -79,12 +91,32 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     if (onConfigurationsChange) {
       onConfigurationsChange(configs);
     }
-  }, [configs, onConfigurationsChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configs]);
+
+  // Memoize transformed data to prevent infinite loops
+  const transformedData = useMemo(() => {
+    return transformOutputConfigurationsToAPI(
+      configs,
+      availableInputSources,
+      customDestinations,
+      fieldMappings,  // Pass module-level field mappings
+      apiSources  // Pass API sources for destination details
+    );
+  }, [configs, availableInputSources, customDestinations, fieldMappings, apiSources]);
+
+  // Notify parent component of transformed data changes
+  useEffect(() => {
+    if (onTransformedDataChange) {
+      onTransformedDataChange(transformedData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transformedData]);
 
   // Current working config state
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedOutputFields, setSelectedOutputFields] = useState<string[]>([]);
-  const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
   const [combineSources, setCombineSources] = useState<boolean>(false);
   const [combineSourcesList, setCombineSourcesList] = useState<string[]>([]);
   const [priorityOrder, setPriorityOrder] = useState<string[]>([]);
@@ -98,44 +130,116 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   const [outputFieldsSearch, setOutputFieldsSearch] = useState('');
   const [outputDestinationsSearch, setOutputDestinationsSearch] = useState('');
 
-  // Get all unique output fields from selected input sources
-  const getOutputFields = (sourceIds: string[]): string[] => {
-    const fieldsSet = new Set<string>();
+  // Memoize available output fields to prevent infinite re-renders
+  const availableOutputFields = useMemo(() => {
+    const fieldsMap = new Map<string, string>(); // originalField -> mappedField or originalField
 
-    sourceIds.forEach(id => {
+    selectedInputSources.forEach(id => {
       const source = availableInputSources.find(src => src.id === id);
       if (source?.headers) {
-        source?.headers?.forEach(field => fieldsSet.add(field));
+        source.headers.forEach(field => {
+          // Check if this field has a mapping
+          const mapping = fieldMappings.find(m => {
+            // Check if any of the selected columns in this mapping matches this source and field
+            return m.selectedColumns.some(col => {
+              const [colSourceId, colFieldName] = col.split('::');
+              return colSourceId === id && colFieldName === field;
+            });
+          });
+
+          if (mapping) {
+            // Use the mapped field name
+            fieldsMap.set(`${id}::${field}`, mapping.fieldName);
+          } else {
+            // Use the original field name
+            fieldsMap.set(`${id}::${field}`, field);
+          }
+        });
       }
     });
 
-    return Array.from(fieldsSet);
-  };
+    // Return unique field names (mapped or original)
+    const uniqueFields = new Set(Array.from(fieldsMap.values()));
+    return Array.from(uniqueFields);
+  }, [selectedInputSources, availableInputSources, fieldMappings]);
 
-  const availableOutputFields = getOutputFields(selectedInputSources);
+  // Memoize flattened destinations to prevent infinite re-renders
+  const allOutputDestinations = useMemo(() => {
+    const destinations: Array<{ id: number; name: string; type: string; path?: string; bucket?: string; isCustom: boolean }> = [];
 
-  // Get output destinations from API or use fallback
-  const getDefaultDestinations = () => {
-    return apiSources?.dbSource?.preconfiguredTables?.output || ['DC SFTP', 'ZXDS S3', 'AWS S3', 'NFS'];
-  };
+    if (apiSources?.fileSource) {
+      // Add SFTP sources as destinations (preconfigured)
+      if (apiSources.fileSource.sftpSources) {
+        apiSources.fileSource.sftpSources.forEach(source => {
+          destinations.push({
+            id: source.id,
+            name: source.name,
+            type: 'SFTP',
+            isCustom: false
+          });
+        });
+      }
 
-  // Get all available destinations (default + custom)
-  const allOutputDestinations = [
-    ...getDefaultDestinations(),
-    ...customDestinations.map(dest => dest.name),
-  ];
+      // Add NFS sources as destinations (preconfigured)
+      if (apiSources.fileSource.nfsSources) {
+        apiSources.fileSource.nfsSources.forEach(source => {
+          destinations.push({
+            id: source.id,
+            name: source.name,
+            type: 'NFS',
+            isCustom: false
+          });
+        });
+      }
 
-  // Filtered lists based on search queries
-  const filteredInputSources = availableInputSources.filter(source =>
-    source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+      // Add AWS S3 sources as destinations (preconfigured)
+      if (apiSources.fileSource.awsSources) {
+        apiSources.fileSource.awsSources.forEach(source => {
+          destinations.push({
+            id: source.id,
+            name: source.name,
+            type: 'AWS S3',
+            isCustom: false
+          });
+        });
+      }
+    }
+
+    // Add custom destinations (user-created)
+    customDestinations.forEach(dest => {
+      destinations.push({
+        id: parseInt(dest.id),
+        name: dest.name,
+        type: dest.type,
+        path: dest.path,
+        bucket: dest.bucket,
+        isCustom: true
+      });
+    });
+
+    return destinations;
+  }, [apiSources, customDestinations]);
+
+  // Memoize filtered lists to prevent infinite re-renders
+  const filteredInputSources = useMemo(() =>
+    availableInputSources.filter(source =>
+      source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+    ),
+    [availableInputSources, inputSourcesSearch]
   );
 
-  const filteredOutputFields = availableOutputFields.filter(field =>
-    field.toLowerCase().includes(outputFieldsSearch.toLowerCase())
+  const filteredOutputFields = useMemo(() =>
+    availableOutputFields.filter(field =>
+      field.toLowerCase().includes(outputFieldsSearch.toLowerCase())
+    ),
+    [availableOutputFields, outputFieldsSearch]
   );
 
-  const filteredOutputDestinations = allOutputDestinations.filter(dest =>
-    dest.toLowerCase().includes(outputDestinationsSearch.toLowerCase())
+  const filteredOutputDestinations = useMemo(() =>
+    allOutputDestinations.filter(dest =>
+      dest.name.toLowerCase().includes(outputDestinationsSearch.toLowerCase())
+    ),
+    [allOutputDestinations, outputDestinationsSearch]
   );
 
   // When Combine Sources is selected, initialize combine sources list
@@ -154,6 +258,58 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setCustomDestinations([...customDestinations, destination]);
   };
 
+  const handleUpdateDestination = (destination: OutputDestination) => {
+    setCustomDestinations(customDestinations.map(dest =>
+      dest.id === destination.id ? destination : dest
+    ));
+  };
+
+  const handleViewDestination = (destination: OutputDestination, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingDestination(destination);
+    setDestinationDialogMode('view');
+    setDestinationDialogOpen(true);
+  };
+
+  const handleEditDestination = (destination: OutputDestination, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingDestination(destination);
+    setDestinationDialogMode('edit');
+    setDestinationDialogOpen(true);
+  };
+
+  const handleDeleteDestination = (destination: OutputDestination, event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (window.confirm(`Are you sure you want to delete the destination "${destination.name}"?`)) {
+      setCustomDestinations(customDestinations.filter(dest => dest.id !== destination.id));
+      // If any config uses this destination, clear it
+      setConfigs(configs.map(config => {
+        if (config.destinationId === parseInt(destination.id)) {
+          return {
+            ...config,
+            destinationId: undefined,
+            destinationName: undefined,
+            destinationType: undefined,
+            isCustomDestination: undefined,
+          };
+        }
+        return config;
+      }));
+    }
+  };
+
+  const handleOpenAddDestinationDialog = () => {
+    setEditingDestination(null);
+    setDestinationDialogMode('add');
+    setDestinationDialogOpen(true);
+  };
+
+  const handleCloseDestinationDialog = () => {
+    setDestinationDialogOpen(false);
+    setEditingDestination(null);
+    setDestinationDialogMode('add');
+  };
+
   const handleReorderPriority = (newOrder: string[]) => {
     setPriorityOrder(newOrder);
   };
@@ -167,20 +323,31 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       showAlert('Please select at least one Output Field', 'warning');
       return;
     }
-    if (selectedDestinations.length === 0) {
-      showAlert('Please select at least one Output Destination', 'warning');
+    if (!selectedDestinationId) {
+      showAlert('Please select an Output Destination', 'warning');
+      return;
+    }
+
+    // Get destination details
+    const selectedDest = allOutputDestinations.find(d => d.id === selectedDestinationId);
+    if (!selectedDest) {
+      showAlert('Invalid destination selected', 'error');
       return;
     }
 
     if (editingConfigId) {
-      // Update existing config
+      // Update existing config (without field mappings - they're module-level)
       setConfigs(configs.map(config =>
         config.id === editingConfigId
           ? {
               ...config,
               inputSources: selectedInputSources,
               outputFields: selectedOutputFields,
-              destinations: selectedDestinations,
+              destinations: [selectedDest.name],
+              destinationId: selectedDest.id,
+              destinationName: selectedDest.name,
+              destinationType: selectedDest.type,
+              isCustomDestination: selectedDest.isCustom,
               combineSources,
               combineSourcesList,
               priorityOrder,
@@ -193,12 +360,16 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       ));
       setEditingConfigId(null);
     } else {
-      // Add new config
+      // Add new config (without field mappings - they're module-level)
       const newConfig: OutputConfig = {
         id: generateId(),
         inputSources: selectedInputSources,
         outputFields: selectedOutputFields,
-        destinations: selectedDestinations,
+        destinations: [selectedDest.name],
+        destinationId: selectedDest.id,
+        destinationName: selectedDest.name,
+        destinationType: selectedDest.type,
+        isCustomDestination: selectedDest.isCustom,
         combineSources,
         combineSourcesList,
         priorityOrder,
@@ -210,10 +381,10 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       setConfigs([...configs, newConfig]);
     }
 
-    // Reset form
+    // Reset form (but NOT field mappings - they're shared across all configs)
     setSelectedInputSources([]);
     setSelectedOutputFields([]);
-    setSelectedDestinations([]);
+    setSelectedDestinationId(null);
     setCombineSources(false);
     setCombineSourcesList([]);
     setPriorityOrder([]);
@@ -227,7 +398,18 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setEditingConfigId(config?.id);
     setSelectedInputSources(config?.inputSources);
     setSelectedOutputFields(config?.outputFields);
-    setSelectedDestinations(config?.destinations);
+
+    // Handle destination ID - look it up from name if needed
+    let destinationId = config?.destinationId || null;
+    if (!destinationId && config?.destinationName) {
+      // Look up destination ID from name
+      const destination = allOutputDestinations.find(d => d.name === config.destinationName);
+      if (destination) {
+        destinationId = destination.id;
+      }
+    }
+    setSelectedDestinationId(destinationId);
+
     setCombineSources(config?.combineSources);
     setCombineSourcesList(config?.combineSourcesList || []);
     setPriorityOrder(config?.priorityOrder || []);
@@ -235,6 +417,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setLimitation(config?.limitation);
     setLimitCount(config?.limitCount);
     setRandom(config?.random);
+    // Note: Field mappings are NOT loaded from config - they're shared at module level
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -243,7 +426,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setEditingConfigId(null);
     setSelectedInputSources([]);
     setSelectedOutputFields([]);
-    setSelectedDestinations([]);
+    setSelectedDestinationId(null);
     setCombineSources(false);
     setCombineSourcesList([]);
     setPriorityOrder([]);
@@ -251,6 +434,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setLimitation(false);
     setLimitCount(undefined);
     setRandom(false);
+    // Note: Field mappings are NOT reset - they're shared at module level
   };
 
   const handleDeleteConfig = (id: string) => {
@@ -288,47 +472,53 @@ const OutputModule: React.FC<OutputModuleProps> = ({
               </Typography>
             )}
           </Box>
-          <Box sx={{ display: 'flex', gap: 1.5 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<AccountTree />}
-              onClick={() => setFieldMappingDialogOpen(true)}
-              sx={{
-                textTransform: 'none',
-                fontSize: '0.875rem',
-                px: 2,
-                py: 0.5,
-                fontWeight: 600,
-                borderColor: '#3B82F6',
-                color: '#3B82F6',
-                '&:hover': {
-                  borderColor: '#2563EB',
-                  backgroundColor: 'rgba(59, 130, 246, 0.04)',
-                },
-              }}
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+            <Tooltip
+              title="Field mappings are shared across all output configurations"
+              placement="top"
+              arrow
             >
-              Field Mapping
-              {fieldMappings.length > 0 && (
-                <Chip
-                  label={fieldMappings.length}
-                  size="small"
-                  sx={{
-                    ml: 1,
-                    height: 18,
-                    fontSize: '0.65rem',
-                    backgroundColor: '#3B82F6',
-                    color: 'white',
-                    fontWeight: 700,
-                  }}
-                />
-              )}
-            </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AccountTree />}
+                onClick={() => setFieldMappingDialogOpen(true)}
+                sx={{
+                  textTransform: 'none',
+                  fontSize: '0.875rem',
+                  px: 2,
+                  py: 0.5,
+                  fontWeight: 600,
+                  borderColor: '#3B82F6',
+                  color: '#3B82F6',
+                  '&:hover': {
+                    borderColor: '#2563EB',
+                    backgroundColor: 'rgba(59, 130, 246, 0.04)',
+                  },
+                }}
+              >
+                Field Mapping
+                {fieldMappings.length > 0 && (
+                  <Chip
+                    label={fieldMappings.length}
+                    size="small"
+                    sx={{
+                      ml: 1,
+                      height: 18,
+                      fontSize: '0.65rem',
+                      backgroundColor: '#3B82F6',
+                      color: 'white',
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+              </Button>
+            </Tooltip>
             <Button
               variant="contained"
               size="small"
               startIcon={<Add />}
-              onClick={() => setDestinationDialogOpen(true)}
+              onClick={handleOpenAddDestinationDialog}
               sx={{
                 textTransform: 'none',
                 fontSize: '0.875rem',
@@ -1053,45 +1243,42 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 </Box>
                 <FormControl fullWidth size="small">
                   <Select
-                    multiple
-                    value={selectedDestinations}
-                    onChange={(e) => {
-                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                      if (value.includes('select-all-destinations')) {
-                        if (selectedDestinations.length === filteredOutputDestinations.length) {
-                          setSelectedDestinations([]);
-                        } else {
-                          setSelectedDestinations(filteredOutputDestinations);
-                        }
-                      } else {
-                        setSelectedDestinations(value);
-                      }
-                    }}
+                    value={selectedDestinationId || ''}
+                    onChange={(e) => setSelectedDestinationId(Number(e.target.value))}
+                    displayEmpty
+                    disabled={sourcesLoading}
                     onClose={() => setOutputDestinationsSearch('')}
                     input={<OutlinedInput />}
                     renderValue={(selected) => {
-                      if (selected.length === 0) {
+                      if (!selected) {
                         return (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                            Select
+                            Select Destination...
                           </Typography>
                         );
                       }
-                      return (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, py: 0.4 }}>
-                          {selected.map((value) => (
-                            <Chip
-                              key={value}
-                              label={value}
-                              size="small"
-                              color="success"
-                              sx={{ height: 18, fontSize: '0.65rem' }}
-                            />
-                          ))}
+                      const dest = allOutputDestinations.find(d => d.id === selected);
+                      return dest ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{dest.name}</Typography>
+                          <Chip
+                            label={dest.type}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: '0.6rem',
+                              backgroundColor: dest.type === 'SFTP' ? '#3B82F620' : dest.type === 'NFS' ? '#10B98120' : '#F59E0B20',
+                              color: dest.type === 'SFTP' ? '#3B82F6' : dest.type === 'NFS' ? '#10B981' : '#F59E0B',
+                              fontWeight: 600
+                            }}
+                          />
                         </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Select Destination...
+                        </Typography>
                       );
                     }}
-                    displayEmpty
                     MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
                     sx={{
                       backgroundColor: 'white',
@@ -1101,7 +1288,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     }}
                   >
                     <MenuItem disabled value="">
-                      <em>Select Output Destinations</em>
+                      <em>Select Output Destination</em>
                     </MenuItem>
                     {/* Search TextField */}
                     <MenuItem
@@ -1120,7 +1307,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     >
                       <TextField
                         size="small"
-                        placeholder="Search..."
+                        placeholder="Search destinations..."
                         fullWidth
                         value={outputDestinationsSearch}
                         onChange={(e) => setOutputDestinationsSearch(e.target.value)}
@@ -1133,32 +1320,115 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         }}
                       />
                     </MenuItem>
-                    <MenuItem
-                      value="select-all-destinations"
-                      sx={{
-                        backgroundColor: '#f0f0f0',
-                        fontWeight: 600,
-                        borderBottom: '1px solid #ddd',
-                      }}
-                    >
-                      <Checkbox
-                        checked={filteredOutputDestinations.length > 0 && selectedDestinations.length === filteredOutputDestinations.length}
-                        indeterminate={selectedDestinations.length > 0 && selectedDestinations.length < filteredOutputDestinations.length}
-                        size="small"
-                      />
-                      <ListItemText primary="Select All" />
-                    </MenuItem>
                     {filteredOutputDestinations.length === 0 && (
                       <MenuItem disabled>
-                        <em>No items match your search</em>
+                        <em>No destinations match your search</em>
                       </MenuItem>
                     )}
-                    {filteredOutputDestinations.map((dest) => (
-                      <MenuItem key={dest} value={dest}>
-                        <Checkbox checked={selectedDestinations.indexOf(dest) > -1} size="small" />
-                        <ListItemText primary={dest} />
-                      </MenuItem>
-                    ))}
+                    {filteredOutputDestinations.map((dest) => {
+                      // Find the custom destination object if this is a custom destination
+                      const customDest = dest.isCustom ? customDestinations.find(d => d.id === dest.id.toString()) : null;
+
+                      return (
+                        <MenuItem key={dest.id} value={dest.id}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                              <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                                {dest.name}
+                              </Typography>
+                              <Chip
+                                label={dest.type}
+                                size="small"
+                                sx={{
+                                  height: 18,
+                                  fontSize: '0.6rem',
+                                  backgroundColor: dest.type === 'SFTP' ? '#3B82F620' : dest.type === 'NFS' ? '#10B98120' : '#F59E0B20',
+                                  color: dest.type === 'SFTP' ? '#3B82F6' : dest.type === 'NFS' ? '#10B981' : '#F59E0B',
+                                  fontWeight: 600
+                                }}
+                              />
+                              {dest.path && (
+                                <Chip
+                                  label={dest.path}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '0.55rem',
+                                    backgroundColor: '#E5E7EB',
+                                    color: '#6B7280',
+                                    fontWeight: 500
+                                  }}
+                                />
+                              )}
+                              {dest.bucket && (
+                                <Chip
+                                  label={dest.bucket}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '0.55rem',
+                                    backgroundColor: '#E5E7EB',
+                                    color: '#6B7280',
+                                    fontWeight: 500
+                                  }}
+                                />
+                              )}
+                            </Box>
+
+                            {/* Show action buttons only for custom destinations */}
+                            {dest.isCustom && customDest && (
+                              <Box sx={{ display: 'flex', gap: 0.3, ml: 1 }} onClick={(e) => e.stopPropagation()}>
+                                <Tooltip title="View Details" placement="top">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleViewDestination(customDest, e)}
+                                    sx={{
+                                      padding: '2px',
+                                      color: '#3B82F6',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                      },
+                                    }}
+                                  >
+                                    <Visibility sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Edit" placement="top">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleEditDestination(customDest, e)}
+                                    sx={{
+                                      padding: '2px',
+                                      color: '#10B981',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                      },
+                                    }}
+                                  >
+                                    <Edit sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete" placement="top">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleDeleteDestination(customDest, e)}
+                                    sx={{
+                                      padding: '2px',
+                                      color: '#EF4444',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                      },
+                                    }}
+                                  >
+                                    <Delete sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            )}
+                          </Box>
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
               </Box>
@@ -1517,8 +1787,11 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       {/* Output Destination Dialog */}
       <OutputDestinationDialog
         open={destinationDialogOpen}
-        onClose={() => setDestinationDialogOpen(false)}
+        onClose={handleCloseDestinationDialog}
         onSave={handleAddDestination}
+        onUpdate={handleUpdateDestination}
+        mode={destinationDialogMode}
+        editingDestination={editingDestination}
       />
 
       {/* Field Mapping Dialog */}
@@ -1526,11 +1799,14 @@ const OutputModule: React.FC<OutputModuleProps> = ({
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
         onSave={(mappings) => setFieldMappings(mappings)}
-        availableSources={[
-          ...availableInputSources
-            .filter(src => selectedInputSources.includes(src.id))
-            .map(src => ({ id: src.id, name: src.sourceName, type: 'input' as const })),
-        ]}
+        availableSources={
+          availableInputSources.map(src => ({
+            id: src.id,
+            name: src.sourceName,
+            type: 'input' as const,
+            headers: src.headers || []
+          }))
+        }
         initialMappings={fieldMappings}
       />
     </Box>
@@ -1538,3 +1814,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 };
 
 export default OutputModule;
+
+// Re-export transformation utilities and types
+export { transformOutputToAPIFormat, transformOutputConfigurationsToAPI } from './outputTransformers';
+export type { OutputAPIPayload } from './outputTransformers';

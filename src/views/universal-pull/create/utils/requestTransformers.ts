@@ -7,8 +7,7 @@ import type { StatsConfiguration, OutputConfig, SuppressConfig } from '../types'
 export const transformInputSourcesToAPI = (inputSources: InputSource[]) => {
   return inputSources.map((source, index) => {
     const baseTransform = {
-      source_id: parseInt(source.fileSourceId?.toString() || source.id) || (index + 1),
-      source_name: source.sourceName,
+      source_id: source.sourceName,
       source_type: source.sourceType,
       sub_source_type: source.subSourceType,
     };
@@ -64,12 +63,21 @@ export const transformStatsToAPI = (statsConfigurations: StatsConfiguration[]) =
     return null;
   }
 
-  return statsConfigurations.map(config => ({
-    input_sources: config.inputSources,
-    count_on: config.countsOn,
-    is_distinct: config.isDistinct,
-    breakdown_by: config.breakdownBy,
-  }));
+  return statsConfigurations.map(config => {
+    // Create counts array with per-field distinct configuration
+    const counts = config.countsOn.map(countOn => ({
+      field: countOn.field,
+      is_distinct: countOn.isDistinct
+    }));
+
+    return {
+      input_sources: config.inputSources,
+      generate_counts_config: {
+        counts: counts
+      },
+      breakdown_by: config.breakdownBy,
+    };
+  });
 };
 
 /**
@@ -94,21 +102,19 @@ export const transformOutputToAPI = (
       }
 
       if (!source) {
-        console.warn(`Source "${sourceName}" not found in available sources:`,
-          allAvailableInputSources.map(s => s.sourceName));
         return null;
       }
 
-      const sourceId = source?.fileSourceId || parseInt(source?.id || '0') || (index + 1);
-      const isAllColumns = !source?.selectedHeaders || source?.selectedHeaders?.length === (source?.headers || [])?.length;
+      // Get the columns for this source
+      const columns = source?.selectedHeaders || source?.headers || [];
 
       return {
-        source_id: sourceId,
-        columns: isAllColumns ? "all" as const : "limited" as const,
+        source_id: source.sourceName,
+        columns: columns,
         priority: index + 1,
       };
     })
-    .filter((item: any): item is { source_id: number; columns: "all" | "limited"; priority: number } => item !== null);
+    .filter((item: any): item is { source_id: string; columns: string[]; priority: number } => item !== null);
 
   return {
     input_sources: outputInputSources,
@@ -139,22 +145,23 @@ export const transformSuppressToAPI = (
       const source = allAvailableInputSources.find(s => s?.id === sourceId);
 
       if (!source) {
-        console.warn(`Source ${sourceId} not found in available sources`);
         return null;
       }
 
+      // Get the columns for this source
+      const columns = source?.selectedHeaders || source?.headers || [];
+
       return {
-        source_id: parseInt(source?.id || '0', 10),
-        columns: "all"
+        source_id: source.sourceName,
+        columns: columns
       };
     }).filter(Boolean),
     suppress_on_fields: config?.suppressOnFields || [],
     suppress_sources: (config?.suppressSources || []).map((sourceId: string) => {
-      if (sourceId.startsWith('suppress_')) {
-        return parseInt(sourceId.replace('suppress_', ''), 10);
-      }
-      return parseInt(sourceId, 10);
-    })
+      // Find the source and return its name
+      const source = allAvailableInputSources.find(s => s?.id === sourceId);
+      return source?.sourceName || '';
+    }).filter(Boolean) // Remove any empty strings
   }));
 };
 

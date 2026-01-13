@@ -24,16 +24,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Menu,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, Visibility, List } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import type { RequestInputsResponse } from '../../services/api';
 import SuppressSourceDialog from './SuppressSourceDialog';
-import VersionsModal from '../shared/VersionsModal';
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
+import SuppressVersionModal from './SuppressVersionModal';
 
-interface SuppressConfig {
+export interface SuppressConfig {
   id: string;
   inputSources: string[];
   suppressOnFields: string[];
@@ -54,7 +53,13 @@ interface SuppressModuleProps {
   versionedSources?: any[]; // Versioned sources for display
   getSourceNameById?: (sourceId: string) => string; // Helper function to get source names
   onUpdateVersionName?: (versionId: string, newName: string) => void;
+  onUpdateVersion?: (versionId: string, updatedVersion: any) => void; // Update full version configuration
   onConfigurationsChange?: (configs: SuppressConfig[]) => void; // Callback to report configuration changes
+  // Shared custom sources across all modules
+  sharedCustomSources?: InputSource[];
+  onAddSharedCustomSource?: (source: InputSource, moduleId?: string) => void;
+  onEditSharedCustomSource?: (source: InputSource) => void;
+  onDeleteSharedCustomSource?: (id: string) => void;
 }
 
 // Get predefined suppress sources from API or fallback to default
@@ -71,25 +76,74 @@ const getPredefinedSources = (apiSources?: RequestInputsResponse | null) => {
 
 const SuppressModule: React.FC<SuppressModuleProps> = ({
   availableInputSources,
-  onCreateVersionedSource, 
+  onCreateVersionedSource,
   initialConfigs,
   apiSources,
   sourcesLoading = false,
   versionedSources = [],
   getSourceNameById,
   onUpdateVersionName,
-  onConfigurationsChange
+  onUpdateVersion,
+  onConfigurationsChange,
+  sharedCustomSources = [],
+  onAddSharedCustomSource,
+  onEditSharedCustomSource,
+  onDeleteSharedCustomSource
 }) => {
   const [configs, setConfigs] = useState<SuppressConfig[]>([]);
-  const [customSuppressSources, setCustomSuppressSources] = useState<InputSource[]>([]);
-  const [versionsModalOpen, setVersionsModalOpen] = useState(false);
-  const [versionMenuAnchorEl, setVersionMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const versionMenuOpen = Boolean(versionMenuAnchorEl);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [viewingSource, setViewingSource] = useState<InputSource | null>(null);
   const [editingSource, setEditingSource] = useState<InputSource | null>(null);
+
+  // Version edit states
+  const [editingVersion, setEditingVersion] = useState<any | null>(null);
+  const [viewingVersion, setViewingVersion] = useState<any | null>(null);
+  const [versionEditDialogOpen, setVersionEditDialogOpen] = useState(false);
+  const [versionViewDialogOpen, setVersionViewDialogOpen] = useState(false);
+
+  // Handlers for viewing and editing versions
+  const handleViewVersion = (version: any) => {
+    setViewingVersion(version);
+    setVersionViewDialogOpen(true);
+  };
+
+  const handleEditVersion = (version: any) => {
+    setEditingVersion(version);
+    setVersionEditDialogOpen(true);
+  };
+
+  const handleSaveVersion = (updatedVersion: any) => {
+    if (onUpdateVersion) {
+      onUpdateVersion(updatedVersion.id, updatedVersion);
+    }
+    setVersionEditDialogOpen(false);
+    setEditingVersion(null);
+  };
+
+  // Handlers for custom sources using shared state
+  const handleAddCustomSource = (source: InputSource) => {
+    if (onAddSharedCustomSource) {
+      onAddSharedCustomSource(source);
+    }
+  };
+
+  const handleEditCustomSource = (source: InputSource) => {
+    if (onEditSharedCustomSource && editingSource) {
+      onEditSharedCustomSource({ ...source, id: editingSource.id });
+    }
+    setEditingSource(null);
+  };
+
+  const handleDeleteCustomSource = (id: string) => {
+    if (onDeleteSharedCustomSource) {
+      onDeleteSharedCustomSource(id);
+    }
+  };
+
+  // Use shared custom sources from props
+  const customSuppressSources = sharedCustomSources;
 
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);
@@ -119,25 +173,69 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   const [suppressOnFieldsSearch, setSuppressOnFieldsSearch] = useState('');
   const [suppressSourcesSearch, setSuppressSourcesSearch] = useState('');
 
-  // Get common or all fields based on input source selection
+  // Get common or all fields based on input source selection, with field mappings applied
   const getSuppressOnFields = (sourceIds: string[]): string[] => {
-    if (sourceIds.length === 0) return [];
+    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) return [];
 
     const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
     if (selectedSources.length === 0) return [];
 
-    // If only one source selected, return all its fields
+    // Build a map of original field -> mapped field name (or original if no mapping)
+    const fieldsMap = new Map<string, string>();
+
+    selectedSources.forEach(source => {
+      const headers = source.selectedHeaders || source.headers || [];
+
+      headers.forEach(field => {
+        const sourceFieldKey = `${source.id}::${field}`;
+
+        // Check if this field has a mapping
+        const mapping = fieldMappings.find(m => {
+          return m.selectedColumns.some(col => {
+            const [colSourceId, colFieldName] = col.split('::');
+            return colSourceId === source.id && colFieldName === field;
+          });
+        });
+
+        if (mapping) {
+          // Use the mapped field name
+          fieldsMap.set(sourceFieldKey, mapping.fieldName);
+        } else {
+          // Use the original field name
+          fieldsMap.set(sourceFieldKey, field);
+        }
+      });
+    });
+
+    // If only one source selected, return all its fields (mapped or original)
     if (selectedSources.length === 1) {
-      const headers = selectedSources[0].selectedHeaders || selectedSources[0].headers || [];
-      return headers;
+      return Array.from(fieldsMap.values());
     }
 
-    // If multiple sources, return common fields (intersection)
-    const firstSourceHeaders = selectedSources[0].selectedHeaders || selectedSources[0].headers || [];
-    const commonHeaders = firstSourceHeaders.filter(header =>
-      selectedSources.every(src => (src.selectedHeaders || src.headers)?.includes(header))
-    );
-    return commonHeaders;
+    // If multiple sources, return common fields (intersection) - considering mapped names (case-insensitive)
+    // Group fields by their display name (mapped or original), using lowercase for comparison
+    const fieldNameOccurrences = new Map<string, number>();
+    const fieldNameCasing = new Map<string, string>(); // Track original casing
+
+    fieldsMap.forEach((displayName) => {
+      const displayNameLower = displayName.toLowerCase();
+      fieldNameOccurrences.set(displayNameLower, (fieldNameOccurrences.get(displayNameLower) || 0) + 1);
+
+      // Preserve the casing from the first occurrence
+      if (!fieldNameCasing.has(displayNameLower)) {
+        fieldNameCasing.set(displayNameLower, displayName);
+      }
+    });
+
+    // Return fields that appear in all sources (case-insensitive), preserving original casing
+    const commonFields: string[] = [];
+    fieldNameOccurrences.forEach((count, fieldNameLower) => {
+      if (count === selectedSources.length) {
+        commonFields.push(fieldNameCasing.get(fieldNameLower) || fieldNameLower);
+      }
+    });
+
+    return commonFields;
   };
 
   const handleAddOrUpdateConfig = () => {
@@ -209,22 +307,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     }
   };
 
-  const handleAddCustomSource = (source: InputSource) => {
-    setCustomSuppressSources([...customSuppressSources, { ...source, id: Date.now().toString() }]);
-  };
-
-  const handleEditCustomSource = (source: InputSource) => {
-    if (editingSource) {
-      setCustomSuppressSources(prev => 
-        prev.map(s => s.id === editingSource.id ? { ...source, id: editingSource.id } : s)
-      );
-    }
-  };
-
   const handleCreateVersion = () => {
-    // Close menu first
-    setVersionMenuAnchorEl(null);
-    
     // Validation
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source before creating versions');
@@ -245,20 +328,6 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       );
     }
   };
-
-  const handleVersionMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setVersionMenuAnchorEl(event.currentTarget);
-  };
-
-  const handleVersionMenuClose = () => {
-    setVersionMenuAnchorEl(null);
-  };
-
-  const handleViewVersions = () => {
-    setVersionMenuAnchorEl(null);
-    setVersionsModalOpen(true);
-  };
-
 
 
   const getSourceName = (id: string): string => {
@@ -402,51 +471,30 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             >
               Add Custom Suppress Source
             </Button>
-            <Tooltip title="Version Actions" arrow>
-              <IconButton
-                size="small"
-                onClick={handleVersionMenuOpen}
-                sx={{
-                  color: '#EF4444',
-                  border: '2px solid #EF4444',
-                  borderRadius: 1,
-                  '&:hover': {
-                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                    borderColor: '#DC2626',
-                  },
-                }}
-              >
-                <AccountTree fontSize="small" />
-              </IconButton>
+            <Tooltip title="Create Version" arrow>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleCreateVersion}
+                  disabled={!onCreateVersionedSource}
+                  sx={{
+                    color: '#EF4444',
+                    border: '2px solid #EF4444',
+                    borderRadius: 1,
+                    '&:hover': {
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      borderColor: '#DC2626',
+                    },
+                    '&:disabled': {
+                      color: 'rgba(239, 68, 68, 0.4)',
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                    },
+                  }}
+                >
+                  <AccountTree fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
-            <Menu
-              anchorEl={versionMenuAnchorEl}
-              open={versionMenuOpen}
-              onClose={handleVersionMenuClose}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'left',
-              }}
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'left',
-              }}
-            >
-              <MenuItem 
-                onClick={handleCreateVersion}
-                disabled={!onCreateVersionedSource}
-              >
-                <AccountTree sx={{ fontSize: 16, mr: 1 }} />
-                Create Version
-              </MenuItem>
-              <MenuItem 
-                onClick={handleViewVersions}
-                disabled={!versionedSources || versionedSources.length === 0}
-              >
-                <List sx={{ fontSize: 16, mr: 1 }} />
-                View Versions
-              </MenuItem>
-            </Menu>
           </Box>
         </Box>
       </Box>
@@ -1031,25 +1079,32 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       )}
 
       {/* Configurations List */}
-      {configs.length > 0 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-              Configured Suppress Operations
-            </Typography>
-            <Chip
-              label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
-              size="small"
-              sx={{
-                fontWeight: 600,
-                backgroundColor: '#FCA5A5',
-                color: '#fff',
-                '&:hover': {
-                  backgroundColor: '#F87171',
-                }
-              }}
-            />
-          </Box>
+      {(() => {
+        // Combine configurations and versions for unified display
+        const combinedItems = [
+          ...configs.map(config => ({ type: 'config' as const, data: config })),
+          ...versionedSources.map(version => ({ type: 'version' as const, data: version }))
+        ];
+
+        return combinedItems.length > 0 && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
+                Configured Suppress Operations
+              </Typography>
+              <Chip
+                label={`${combinedItems.length} item${combinedItems.length !== 1 ? 's' : ''}`}
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  backgroundColor: '#FCA5A5',
+                  color: '#fff',
+                  '&:hover': {
+                    backgroundColor: '#F87171',
+                  }
+                }}
+              />
+            </Box>
           <TableContainer
             component={Paper}
             sx={{
@@ -1062,6 +1117,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Name / Details</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Input Sources</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Suppress On Fields</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Suppress Sources</TableCell>
@@ -1069,20 +1126,84 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {configs.map((config) => (
+                {combinedItems.map((item) => {
+                  const isVersion = item.type === 'version';
+                  const config = item.type === 'config' ? item.data : null;
+                  const version = item.type === 'version' ? item.data : null;
+
+                  return (
                   <TableRow
-                    key={config.id}
+                    key={isVersion ? version?.id : config?.id}
                     hover
                     sx={{
-                      backgroundColor: editingConfigId === config.id ? 'rgba(248, 113, 113, 0.04)' : 'transparent',
+                      backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(248, 113, 113, 0.04)' :
+                                       isVersion ? 'rgba(16, 185, 129, 0.02)' : 'transparent',
                       '&:hover': {
-                        backgroundColor: editingConfigId === config.id ? 'rgba(248, 113, 113, 0.08)' : 'rgba(248, 113, 113, 0.04)',
+                        backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(248, 113, 113, 0.08)' :
+                                         isVersion ? 'rgba(16, 185, 129, 0.06)' : 'rgba(248, 113, 113, 0.04)',
                       },
                     }}
                   >
+                    {/* Type Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Chip
+                        label={isVersion ? 'Version' : 'Config'}
+                        size="small"
+                        color={isVersion ? 'success' : 'primary'}
+                        sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+
+                    {/* Name / Details Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {isVersion ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                          {version?.versionLabel || version?.sourceName || '--'}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Configuration #{configs.indexOf(config!) + 1}
+                        </Typography>
+                      )}
+                    </TableCell>
+
                     {/* Input Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.inputSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.baseInputSources && version.baseInputSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#29669520',
+                                color: '#296695',
+                                border: '1px solid #29669540',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.baseInputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.baseInputSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.inputSources && config.inputSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1090,7 +1211,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 Input Sources ({config.inputSources.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.inputSources.map(id => getSourceName(id)).join(', ')}
+                                {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1120,8 +1241,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config?.inputSources?.slice(0, 2).map(id => getSourceName(id)).join(', ')}
-                              {(config?.inputSources?.length ?? 0) > 2 ? ', ...' : ''}
+                              {config.inputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {config.inputSources.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1134,7 +1255,11 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
                     {/* Suppress On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.suppressOnFields.length > 0 ? (
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : config && config.suppressOnFields && config.suppressOnFields.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1186,7 +1311,41 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
                     {/* Suppress Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.suppressSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.operationSources && version.operationSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#F8717120',
+                                color: '#F87171',
+                                border: '1px solid #F8717140',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.operationSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.operationSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.suppressSources && config.suppressSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1194,7 +1353,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 Suppress Sources ({config.suppressSources.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.suppressSources.map(id => getSourceName(id)).join(', ')}
+                                {config.suppressSources.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1224,7 +1383,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config.suppressSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
+                              {config.suppressSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
                               {config.suppressSources.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -1238,44 +1397,81 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
                     {/* Actions Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditConfig(config)}
-                          sx={{
-                            color: 'info.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                            },
-                          }}
-                          title="Edit"
-                        >
-                          <Edit sx={{ fontSize: 16 }} />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteConfig(config.id)}
-                          sx={{
-                            color: '#F87171',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(248, 113, 113, 0.12)',
-                            },
-                          }}
-                          title="Delete"
-                        >
-                          <Delete sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Box>
+                      {isVersion ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <Tooltip title="View Details" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewVersion(version)}
+                              sx={{
+                                color: '#296695',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(41, 102, 149, 0.12)',
+                                },
+                              }}
+                            >
+                              <Visibility sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditVersion(version)}
+                              sx={{
+                                color: 'info.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                },
+                              }}
+                            >
+                              <Edit sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditConfig(config!)}
+                            sx={{
+                              color: 'info.main',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                              },
+                            }}
+                            title="Edit"
+                          >
+                            <Edit sx={{ fontSize: 16 }} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteConfig(config!.id)}
+                            sx={{
+                              color: '#F87171',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(248, 113, 113, 0.12)',
+                              },
+                            }}
+                            title="Delete"
+                          >
+                            <Delete sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Box>
+                      )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
         </Box>
-      )}
+        );
+      })()}
 
       {/* Custom Suppress Source Dialog */}
       <SuppressSourceDialog
@@ -1286,6 +1482,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         }}
         onSave={editingSource ? handleEditCustomSource : handleAddCustomSource}
         existingSources={customSuppressSources}
+        allExistingSources={[...availableInputSources, ...sharedCustomSources]}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={editingSource}
@@ -1295,20 +1492,55 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={(mappings) => setFieldMappings(mappings)}
-        availableSources={[
-          ...availableInputSources
-            .filter(src => selectedInputSources.includes(src.id))
-            .map(src => ({ id: src.id, name: src.sourceName, type: 'input' as const })),
-          ...selectedSuppressSources.map(srcId => {
-            const predefined = predefinedSources.find(s => s.id === srcId);
-            if (predefined) {
-              return { id: srcId, name: predefined.name, type: 'append' as const };
+        onSave={setFieldMappings}
+        availableSources={(() => {
+          // Helper function to extract all headers including nested fields
+          const getAllHeaders = (src: any) => {
+            const regularHeaders = src.headers || [];
+            const nestedFieldNames: string[] = [];
+
+            // Extract nested fields from configJson.added_fields if they exist
+            if (src.configJson?.added_fields) {
+              const addedFields = src.configJson.added_fields;
+              addedFields.forEach((sourceFields: any) => {
+                if (sourceFields.source_name === src.sourceName && sourceFields.fields) {
+                  sourceFields.fields.forEach((field: any) => {
+                    nestedFieldNames.push(field.field_name);
+                  });
+                }
+              });
             }
-            const custom = customSuppressSources.find(s => s.id === srcId);
-            return { id: srcId, name: custom?.sourceName || srcId, type: 'append' as const };
-          }),
-        ]}
+
+            return [...regularHeaders, ...nestedFieldNames];
+          };
+
+          // Include sources from earlier workflow steps:
+          // 1. All input sources from Input module (Step 1)
+          // 2. Custom sources created in Append module (Step 2 - panel2)
+          const sources = [
+            // All input sources (regular + versioned) - include nested fields
+            ...availableInputSources.map(src => ({
+              id: src.id,
+              name: src.sourceName,
+              type: 'input' as const,
+              headers: getAllHeaders(src)
+            })),
+            // Custom sources from Append module (panel2) - include nested fields
+            ...sharedCustomSources
+              .filter(src => {
+                const createdBy = src.createdByModuleId;
+                return createdBy && (createdBy === 'panel2' || createdBy.startsWith('panel2_'));
+              })
+              .map(src => ({
+                id: src.id,
+                name: src.sourceName,
+                type: 'append' as const,
+                headers: getAllHeaders(src)
+              })),
+          ];
+
+          return sources;
+        })()}
         initialMappings={fieldMappings}
       />
 
@@ -1422,17 +1654,129 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         </Dialog>
       )}
 
-      {/* Versions Modal */}
-      {getSourceNameById && (
-        <VersionsModal
-          open={versionsModalOpen}
-          onClose={() => setVersionsModalOpen(false)}
-          moduleType="Suppress"
-          versionedSources={versionedSources}
-          getSourceNameById={getSourceNameById}
-          onUpdateVersionName={onUpdateVersionName}
-        />
+      {/* View Version Details Dialog */}
+      {viewingVersion && (
+        <Dialog
+          open={versionViewDialogOpen}
+          onClose={() => {
+            setVersionViewDialogOpen(false);
+            setViewingVersion(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#10B981' }}>
+              Version Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Version Name
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingVersion.sourceName || viewingVersion.versionLabel}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Module
+                </Typography>
+                <Chip
+                  label={viewingVersion.sourceModule}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 600 }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Input Sources ({viewingVersion.baseInputSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources.length > 0 ? (
+                    viewingVersion.baseInputSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceNameById?.(sourceId) || sourceId}
+                        size="small"
+                        color="primary"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No input sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  {viewingVersion.sourceModule} Sources ({viewingVersion.operationSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.operationSources && viewingVersion.operationSources.length > 0 ? (
+                    viewingVersion.operationSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceNameById?.(sourceId) || sourceId}
+                        size="small"
+                        color="success"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No operation sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              {viewingVersion.headers && viewingVersion.headers.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Headers ({viewingVersion.headers.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflowY: 'auto' }}>
+                    {viewingVersion.headers.map((header: string, index: number) => (
+                      <Chip
+                        key={index}
+                        label={header}
+                        size="small"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
+            <Button onClick={() => {
+              setVersionViewDialogOpen(false);
+              setViewingVersion(null);
+            }} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
+
+      {/* Edit Version Modal */}
+      <SuppressVersionModal
+        open={versionEditDialogOpen}
+        onClose={() => {
+          setVersionEditDialogOpen(false);
+          setEditingVersion(null);
+        }}
+        version={editingVersion}
+        availableInputSources={availableInputSources}
+        availableSuppressSources={[...predefinedSources.map(s => ({ id: s.id, name: s.name })), ...sharedCustomSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        onSave={handleSaveVersion}
+      />
     </Box>
   );
 };

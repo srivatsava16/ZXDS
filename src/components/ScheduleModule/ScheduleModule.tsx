@@ -5,7 +5,9 @@ import {
   RadioGroup,
   FormControlLabel,
   TextField,
+  Chip,
 } from '@mui/material';
+import { Info } from '@mui/icons-material';
 
 interface ScheduleModuleProps {
   scheduleType?: 'adhoc' | 'scheduled_at';
@@ -120,11 +122,27 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
           <Box>
             {/* Date-Time Picker */}
             <Box sx={{ mb: 2.5 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1.5 }}>
-                Scheduled Date & Time <span style={{ color: '#EF4444' }}>*</span>
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
+                  Scheduled Date & Time <span style={{ color: '#EF4444' }}>*</span>
+                </Typography>
+                <Chip
+                  label="EST"
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    backgroundColor: '#DBEAFE',
+                    color: '#1E40AF',
+                    '& .MuiChip-label': {
+                      px: 1,
+                    },
+                  }}
+                />
+              </Box>
               <TextField
-                label="Basic date time picker"
+                label="Select date and time (EST)"
                 type="datetime-local"
                 size="small"
                 value={scheduledDateTime}
@@ -140,6 +158,12 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
                   shrink: true,
                 }}
               />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
+                <Info sx={{ fontSize: 16, color: '#6B7280' }} />
+                <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
+                  All times are displayed in Eastern Standard Time (EST)
+                </Typography>
+              </Box>
             </Box>
 
             {/* Send Notifications When - Standard and Error Only options */}

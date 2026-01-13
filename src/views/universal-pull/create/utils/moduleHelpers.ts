@@ -119,3 +119,97 @@ export const getDraggableIds = (modules: ModuleConfig[]): string[] => {
     .filter(module => module.isDraggable)
     .map(module => module.id);
 };
+
+/**
+ * Check if a module can be moved based on custom source dependencies
+ */
+export const validateCustomSourceDependencies = (
+  fromIndex: number,
+  toIndex: number,
+  modules: ModuleConfig[],
+  sharedCustomSources: any[], // InputSource[] with createdByModuleId
+  moduleConfigurations: {
+    appendConfigs?: any[];
+    matchConfigs?: any[];
+    suppressConfigs?: any[];
+  }
+): { canMove: boolean; error?: string } => {
+  const sourceModule = modules[fromIndex];
+
+  // Only validate when moving a module up (to an earlier position)
+  if (fromIndex <= toIndex) {
+    return { canMove: true };
+  }
+
+  // Get custom sources created by the source module
+  const customSourcesFromModule = sharedCustomSources.filter(
+    source => source.createdByModuleId === sourceModule.id
+  );
+
+  if (customSourcesFromModule.length === 0) {
+    return { canMove: true };
+  }
+
+  const customSourceIds = customSourcesFromModule.map(s => s.id);
+
+  // Track all dependencies found
+  const dependencies: { sourceName: string; usingModule: string }[] = [];
+
+  // Check modules that would come BEFORE the source module in the new order
+  // These are the modules between toIndex and fromIndex
+  for (let i = toIndex; i < fromIndex; i++) {
+    const moduleToCheck = modules[i];
+    const moduleType = getModuleType(moduleToCheck.id);
+    const moduleName = getModuleTypeName(moduleToCheck.id);
+
+    // Get configurations for this module
+    let configs: any[] = [];
+    if (moduleType === 'Append') {
+      configs = moduleConfigurations.appendConfigs || [];
+    } else if (moduleType === 'Match') {
+      configs = moduleConfigurations.matchConfigs || [];
+    } else if (moduleType === 'Suppress') {
+      configs = moduleConfigurations.suppressConfigs || [];
+    }
+
+    // Check if any config uses custom sources from the source module
+    for (const config of configs) {
+      const sourcesUsed = config.appendSources || config.matchSources || config.suppressSources || [];
+
+      for (const sourceId of sourcesUsed) {
+        if (customSourceIds.includes(sourceId)) {
+          const customSource = customSourcesFromModule.find(s => s.id === sourceId);
+          if (customSource && !dependencies.find(d => d.sourceName === customSource.sourceName)) {
+            dependencies.push({
+              sourceName: customSource.sourceName,
+              usingModule: moduleName
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (dependencies.length > 0) {
+    const sourceModuleName = getModuleTypeName(sourceModule.id);
+
+    if (dependencies.length === 1) {
+      const dep = dependencies[0];
+      return {
+        canMove: false,
+        error: `Cannot move ${sourceModuleName} module to this position.\n\nThe custom source "${dep.sourceName}" was created in the ${sourceModuleName} module and is being used in the ${dep.usingModule} module.\n\nCustom sources must be created before they can be used by other modules.`
+      };
+    } else {
+      const dependencyList = dependencies.map(dep =>
+        `• "${dep.sourceName}" → used in ${dep.usingModule} module`
+      ).join('\n');
+
+      return {
+        canMove: false,
+        error: `Cannot move ${sourceModuleName} module to this position.\n\nMultiple custom source dependencies detected:\n\n${dependencyList}\n\nCustom sources must be created before they can be used by other modules.`
+      };
+    }
+  }
+
+  return { canMove: true };
+};

@@ -16,7 +16,6 @@ export const useDataLoading = () => {
         const response = await getRequestInputs();
         setApiSources(response);
       } catch (error) {
-        console.warn('Failed to load API sources:', error);
         // Fallback to default sources if API call fails
         setApiSources({
           fileSource: {

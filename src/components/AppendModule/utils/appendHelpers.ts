@@ -33,11 +33,25 @@ export const getAppendOnFields = (sourceIds: string[], availableInputSources: In
     return headers;
   }
 
-  // If multiple sources, return common fields (intersection)
+  // If multiple sources, return common fields (intersection - case-insensitive)
   const firstSourceHeaders = selectedSources[0]?.selectedHeaders || selectedSources[0]?.headers || [];
-  const commonHeaders = firstSourceHeaders.filter(header =>
-    selectedSources.every(src => (src?.selectedHeaders || src?.headers)?.includes(header))
-  );
+
+  // Create case-insensitive maps for each source (lowercase -> original casing)
+  const sourceHeaderMaps = selectedSources.map(src => {
+    const headers = src?.selectedHeaders || src?.headers || [];
+    const headerMap = new Map<string, string>();
+    headers.forEach(header => {
+      headerMap.set(header.toLowerCase(), header);
+    });
+    return headerMap;
+  });
+
+  // Filter headers that exist in all sources (case-insensitive), preserving first source's casing
+  const commonHeaders = firstSourceHeaders.filter(header => {
+    const headerLower = header.toLowerCase();
+    return sourceHeaderMaps.every(map => map.has(headerLower));
+  });
+
   return commonHeaders;
 };
 

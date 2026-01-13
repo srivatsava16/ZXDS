@@ -21,12 +21,14 @@ import FileSourceConfig from '../InputModule/FileSourceConfig';
 import DatabaseSourceConfig from '../InputModule/DatabaseSourceConfig';
 import SelfSourceConfig from './SelfSourceConfig';
 import { type RequestInputsResponse } from '../../services/api';
+import { validateUniqueSourceName } from '../../utils/sourceValidation';
 
 interface AppendSourceDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (source: InputSource) => void;
   availableInputSources?: InputSource[];
+  allExistingSources?: InputSource[]; // All sources from all modules for validation
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
   editingSource?: InputSource | null;
@@ -37,6 +39,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
   onClose,
   onSave,
   availableInputSources = [],
+  allExistingSources = [],
   apiSources = null,
   sourcesLoading = false,
   editingSource = null,
@@ -62,30 +65,23 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
     }
   }, [editingSource, open]);
 
-  // Validation function for source name
+  // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    if (!name.trim()) {
-      return 'Source Name is required';
-    }
-    
-    // Check for duplicates (case-insensitive) within available input sources
-    // Exclude current source when editing
-    const existingNames = availableInputSources
-      .filter(source => editingSource ? source.id !== editingSource.id : true)
-      .map(source => source.sourceName.trim().toLowerCase());
-    
-    if (existingNames.includes(name.trim().toLowerCase())) {
-      return 'Source Name must be unique';
-    }
-    
-    return '';
+    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+
+    return validateUniqueSourceName({
+      sourceName: name,
+      allExistingSources: sourcesToCheck,
+      editingSourceId: editingSource?.id,
+      moduleName: 'Append'
+    });
   };
 
   const handleSave = () => {
     // Validate source name
     const nameError = validateSourceName(sourceData.sourceName || '');
     setSourceNameError(nameError);
-    
+
     if (nameError) {
       return;
     }
@@ -106,6 +102,26 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       }
     }
 
+    // Validation: For Self type sources, ensure required fields
+    if (sourceType === 'Self') {
+      if (!sourceData.sourceName) {
+        alert('Please provide a source name.');
+        return;
+      }
+      if (!sourceData.selfConfig?.input_source_names || sourceData.selfConfig.input_source_names.length === 0) {
+        alert('Please select at least one input source.');
+        return;
+      }
+      if (!sourceData.selfConfig?.generated_column) {
+        alert('Please provide a generated column name.');
+        return;
+      }
+      if (!sourceData.selfConfig?.assignment_sets || sourceData.selfConfig.assignment_sets.length === 0) {
+        alert('Please add at least one assignment condition.');
+        return;
+      }
+    }
+
     const source: InputSource = {
       id: editingSource?.id || Date.now().toString(),
       sourceType,
@@ -117,8 +133,8 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       fileName: sourceData.fileName,
       delimiter: sourceData.delimiter,
       hasHeader: sourceData.hasHeader,
-      headers: sourceData.selectedHeaders || sourceData.headers || [],
-      selectedHeaders: sourceData.selectedHeaders || sourceData.headers || [],
+      headers: sourceData.headers || [], // Always keep ALL available columns
+      selectedHeaders: sourceData.selectedHeaders || sourceData.headers || [], // Selected subset
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
       filterQuery: sourceData.filterQuery,
@@ -128,8 +144,12 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       schema: sourceData.schema,
       table: sourceData.table,
       originalTableName: sourceData.originalTableName,
-      customTableMetadata: sourceData.customTableMetadata
+      customTableMetadata: sourceData.customTableMetadata,
+      // Self source specific fields
+      selfConfig: sourceData.selfConfig,
+      isSelfSource: sourceData.isSelfSource
     };
+
 
     onSave(source);
     onClose();
@@ -238,7 +258,14 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
         ) : (
           <SelfSourceConfig
             data={sourceData}
-            onChange={setSourceData}
+            onChange={(data) => {
+              setSourceData(data);
+              // Clear source name error when user starts typing
+              if (sourceNameError && data.sourceName) {
+                const error = validateSourceName(data.sourceName);
+                setSourceNameError(error);
+              }
+            }}
             availableInputSources={availableInputSources}
           />
         )}

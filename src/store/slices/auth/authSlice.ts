@@ -48,7 +48,6 @@ export const logoutAsync = createAsyncThunk(
       await apiService.post('/auth/logout')
     } catch (error) {
       // Continue with logout even if API call fails
-      console.warn('Logout API call failed:', error)
     } finally {
       localStorage.removeItem('authToken')
       localStorage.removeItem('refreshToken')

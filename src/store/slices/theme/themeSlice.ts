@@ -17,7 +17,7 @@ const getInitialTheme = (): ThemeState => {
     try {
       return JSON.parse(savedTheme)
     } catch (error) {
-      console.warn('Failed to parse saved theme:', error)
+      // Failed to parse saved theme, will use default
     }
   }
 

@@ -20,12 +20,14 @@ import type { InputSource } from '../InputModule/InputModule';
 import FileSourceConfig from '../InputModule/FileSourceConfig';
 import DatabaseSourceConfig from '../InputModule/DatabaseSourceConfig';
 import { type RequestInputsResponse } from '../../services/api';
+import { validateUniqueSourceName } from '../../utils/sourceValidation';
 
 interface MatchSourceDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (source: InputSource) => void;
   existingSources?: InputSource[];
+  allExistingSources?: InputSource[]; // All sources from all modules for validation
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
   editingSource?: InputSource | null;
@@ -36,6 +38,7 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
   onClose,
   onSave,
   existingSources = [],
+  allExistingSources = [],
   apiSources = null,
   sourcesLoading = false,
   editingSource = null,
@@ -61,23 +64,16 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
     }
   }, [editingSource, open]);
 
-  // Validation function for source name
+  // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    if (!name.trim()) {
-      return 'Source Name is required';
-    }
-    
-    // Check for duplicates (case-insensitive) within existing sources
-    // Exclude current source when editing
-    const existingNames = existingSources
-      .filter(source => editingSource ? source.id !== editingSource.id : true)
-      .map(source => source.sourceName.trim().toLowerCase());
-    
-    if (existingNames.includes(name.trim().toLowerCase())) {
-      return 'Source Name must be unique';
-    }
-    
-    return '';
+    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : existingSources;
+
+    return validateUniqueSourceName({
+      sourceName: name,
+      allExistingSources: sourcesToCheck,
+      editingSourceId: editingSource?.id,
+      moduleName: 'Match'
+    });
   };
 
   const handleSave = () => {

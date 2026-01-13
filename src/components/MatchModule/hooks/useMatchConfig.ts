@@ -1,10 +1,17 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { MatchConfig } from '../types';
 import { nanoid } from 'nanoid';
 
 export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
   const [configs, setConfigs] = useState<MatchConfig[]>(initialConfigs || []);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+
+  // Sync configs when initialConfigs changes (for edit mode data loading)
+  useEffect(() => {
+    if (initialConfigs && initialConfigs.length > 0) {
+      setConfigs(initialConfigs);
+    }
+  }, [initialConfigs]);
 
   // Current working config state
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);

@@ -26,19 +26,18 @@ import {
   DialogActions,
   Menu,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, Visibility, List } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import AppendSourceDialog from './AppendSourceDialog';
 import DraggableAppendSources from './DraggableAppendSources';
 import AddColumnDialog from './AddColumnDialog';
 import FieldMappingDialog, { type FieldMapping } from './FieldMappingDialog';
-import VersionsModal from '../shared/VersionsModal';
+import AppendVersionModal from './AppendVersionModal';
 
 // Extracted modules
 import type { AppendConfig, AppendModuleProps } from './types';
 import { getPredefinedSources } from './utils/appendHelpers';
 import { useAppendConfig } from './hooks/useAppendConfig';
-import { useCustomSources } from './hooks/useCustomSources';
 
 export type { AppendConfig };
 
@@ -50,7 +49,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   sourcesLoading = false,
   versionedSources = [],
   getSourceNameById,
-  onUpdateVersionName
+  onUpdateVersionName,
+  onUpdateVersion,
+  sharedCustomSources = [],
+  onAddSharedCustomSource,
+  onEditSharedCustomSource,
+  onDeleteSharedCustomSource,
+  onConfigurationsChange
 }) => {
   // Use custom hooks for state management
   const {
@@ -71,22 +76,65 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     handleDeleteConfig,
   } = useAppendConfig(initialConfigs);
 
-  const {
-    customAppendSources,
-    editingSource,
-    viewingSource,
-    setEditingSource,
-    setViewingSource,
-    handleAddCustomSource,
-    handleEditCustomSource,
-    handleDeleteCustomSource
-  } = useCustomSources();
+  // Use shared custom sources from props instead of local state
+  const [editingSource, setEditingSource] = useState<InputSource | null>(null);
+  const [viewingSource, setViewingSource] = useState<InputSource | null>(null);
+
+  // Version edit states
+  const [editingVersion, setEditingVersion] = useState<any | null>(null);
+  const [viewingVersion, setViewingVersion] = useState<any | null>(null);
+  const [versionEditDialogOpen, setVersionEditDialogOpen] = useState(false);
+  const [versionViewDialogOpen, setVersionViewDialogOpen] = useState(false);
+
+  // Handlers for viewing and editing versions
+  const handleViewVersion = (version: any) => {
+    setViewingVersion(version);
+    setVersionViewDialogOpen(true);
+  };
+
+  const handleEditVersion = (version: any) => {
+    setEditingVersion(version);
+    setVersionEditDialogOpen(true);
+  };
+
+  const handleSaveVersion = (updatedVersion: any) => {
+    if (onUpdateVersion) {
+      onUpdateVersion(updatedVersion.id, updatedVersion);
+    }
+    setVersionEditDialogOpen(false);
+    setEditingVersion(null);
+  };
+
+  // Handlers for custom sources using shared state
+  const handleAddCustomSource = (source: InputSource) => {
+    if (onAddSharedCustomSource) {
+      onAddSharedCustomSource(source);
+    }
+  };
+
+  const handleEditCustomSource = (source: InputSource) => {
+    if (onEditSharedCustomSource && editingSource) {
+      const updatedSource = { ...source, id: editingSource.id };
+      onEditSharedCustomSource(updatedSource);
+    }
+    setEditingSource(null);
+  };
+
+  // Note: handleDeleteCustomSource is available but not currently wired to UI
+  // Uncomment when delete UI is implemented
+  // const handleDeleteCustomSource = (id: string) => {
+  //   if (onDeleteSharedCustomSource) {
+  //     onDeleteSharedCustomSource(id);
+  //   }
+  // };
+
+  // Use shared custom sources from props
+  const customAppendSources = sharedCustomSources;
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addColumnDialogOpen, setAddColumnDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
-  const [versionsModalOpen, setVersionsModalOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [addedCustomColumns, setAddedCustomColumns] = useState<any[]>([]);
 
@@ -100,57 +148,120 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     }
   }, [initialConfigs, setConfigs]);
 
+  // Notify parent component when configurations change (for dependency validation)
+  useEffect(() => {
+    if (onConfigurationsChange) {
+      onConfigurationsChange(configs);
+    }
+  }, [configs, onConfigurationsChange]);
+
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
   const [appendOnFieldsSearch, setAppendOnFieldsSearch] = useState('');
   const [appendSourcesSearch, setAppendSourcesSearch] = useState('');
   const [appendFieldsSearch, setAppendFieldsSearch] = useState('');
 
-  // Get common or all fields based on input source selection
+  // Get common or all fields based on input source selection, with field mappings applied
   const getAppendOnFields = (sourceIds: string[]): string[] => {
-    if (sourceIds.length === 0) return [];
+    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) return [];
 
     const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
 
     if (selectedSources.length === 0) return [];
 
-    // If only one source selected, return all its fields
+    // Build a map of original field -> mapped field name (or original if no mapping)
+    const fieldsMap = new Map<string, string>();
+
+    selectedSources.forEach(source => {
+      const headers = source?.selectedHeaders || source?.headers || [];
+
+      headers.forEach(field => {
+        const sourceFieldKey = `${source.id}::${field}`;
+
+        // Check if this field has a mapping
+        const mapping = fieldMappings.find(m => {
+          return m.selectedColumns.some(col => {
+            const [colSourceId, colFieldName] = col.split('::');
+            return colSourceId === source.id && colFieldName === field;
+          });
+        });
+
+        if (mapping) {
+          // Use the mapped field name
+          fieldsMap.set(sourceFieldKey, mapping.fieldName);
+        } else {
+          // Use the original field name
+          fieldsMap.set(sourceFieldKey, field);
+        }
+      });
+    });
+
+    // If only one source selected, return all its fields (mapped or original)
     if (selectedSources.length === 1) {
-      const headers = selectedSources[0]?.selectedHeaders || selectedSources[0]?.headers || [];
-      return headers;
+      return Array.from(fieldsMap.values());
     }
 
-    // If multiple sources, return common fields (intersection)
-    const firstSourceHeaders = selectedSources[0]?.selectedHeaders || selectedSources[0]?.headers || [];
-    const commonHeaders = firstSourceHeaders.filter(header =>
-      selectedSources.every(src => (src?.selectedHeaders || src?.headers)?.includes(header))
-    );
-    return commonHeaders;
-  };
+    // If multiple sources, return common fields (intersection) - considering mapped names
+    // Group fields by their display name (mapped or original)
+    const fieldNameOccurrences = new Map<string, number>();
 
-  // Get union of all append fields
-  const getAppendFields = (appendSourceIds: string[]): string[] => {
-    const fieldsSet = new Set<string>();
+    fieldsMap.forEach((displayName) => {
+      fieldNameOccurrences.set(displayName, (fieldNameOccurrences.get(displayName) || 0) + 1);
+    });
 
-    appendSourceIds.forEach(id => {
-      const predefined = PREDEFINED_SOURCES.find(src => src.id === id);
-      if (predefined) {
-        predefined.fields.forEach(field => fieldsSet.add(field));
-      } else {
-        const customSource = customAppendSources.find(src => src.id === id);
-        if (customSource?.selectedHeaders || customSource?.headers) {
-          (customSource.selectedHeaders || customSource.headers || []).forEach(field => fieldsSet.add(field));
-        } else {
-          // Check if it's a versioned source
-          const versionedSource = availableInputSources.find(src => src.id === id);
-          if (versionedSource?.selectedHeaders || versionedSource?.headers) {
-            (versionedSource.selectedHeaders || versionedSource.headers || []).forEach(field => fieldsSet.add(field));
-          }
-        }
+    // Return fields that appear in all sources
+    const commonFields: string[] = [];
+    fieldNameOccurrences.forEach((count, fieldName) => {
+      if (count === selectedSources.length) {
+        commonFields.push(fieldName);
       }
     });
 
-    return Array.from(fieldsSet);
+    return commonFields;
+  };
+
+  // Get common fields (intersection) from all append sources
+  const getAppendFields = (appendSourceIds: string[]): string[] => {
+    if (appendSourceIds.length === 0) return [];
+
+    // Helper function to get fields from a source
+    const getFieldsFromSource = (sourceId: string): string[] => {
+      const predefined = PREDEFINED_SOURCES.find(src => src.id === sourceId);
+      if (predefined) {
+        return predefined.fields;
+      }
+
+      const customSource = customAppendSources.find(src => src.id === sourceId);
+      if (customSource?.selectedHeaders || customSource?.headers) {
+        return customSource.selectedHeaders || customSource.headers || [];
+      }
+
+      const versionedSource = availableInputSources.find(src => src.id === sourceId);
+      if (versionedSource?.selectedHeaders || versionedSource?.headers) {
+        return versionedSource.selectedHeaders || versionedSource.headers || [];
+      }
+
+      return [];
+    };
+
+    // Get fields from the first source
+    const firstSourceFields = getFieldsFromSource(appendSourceIds[0]);
+
+    // If only one source, return all its fields
+    if (appendSourceIds.length === 1) {
+      return firstSourceFields;
+    }
+
+    // For multiple sources, return only common fields (intersection)
+    const commonFields = firstSourceFields.filter(field => {
+      // Check if this field exists in all other sources
+      return appendSourceIds.slice(1).every(sourceId => {
+        const sourceFields = getFieldsFromSource(sourceId);
+        return sourceFields.includes(field);
+      });
+    });
+
+    return commonFields;
   };
 
   // Handle reordering of append sources via drag-and-drop
@@ -182,7 +293,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         'Append',
         selectedInputSources,
         selectedAppendSources,
-        selectedAppendOnFields
+        selectedAppendOnFields,
+        fieldMappings
       );
     }
   };
@@ -195,15 +307,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     setVersionMenuAnchorEl(null);
   };
 
-  const handleViewVersions = () => {
-    setVersionMenuAnchorEl(null);
-    setVersionsModalOpen(true);
-  };
+  // Combine configurations and versions for unified display
+  const combinedItems = [
+    ...configs.map(config => ({ type: 'config' as const, data: config })),
+    ...versionedSources.map(version => ({ type: 'version' as const, data: version }))
+  ];
 
 
 
   const handleAddColumns = (columns: any[]) => {
-    console.log('New columns added:', columns);
     setAddedCustomColumns(columns);
   };
 
@@ -244,6 +356,17 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   const filteredInputSources = availableInputSources.filter(source =>
     source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
+
+  // Debug logging
+  if (editingConfigId) {
+    console.log('[AppendModule] Dropdown state:', {
+      editingConfigId,
+      selectedInputSources,
+      availableInputSourcesCount: availableInputSources.length,
+      availableInputSourcesIds: availableInputSources.map(s => ({ id: s.id, name: s.sourceName })),
+      filteredInputSourcesCount: filteredInputSources.length
+    });
+  }
 
   const filteredAppendOnFields = appendOnFields.filter(field =>
     field.toLowerCase().includes(appendOnFieldsSearch.toLowerCase())
@@ -330,41 +453,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               />
             )}
           </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<Add />}
-            onClick={() => setAddColumnDialogOpen(true)}
-            sx={{
-              textTransform: 'none',
-              fontSize: '0.875rem',
-              px: 2,
-              py: 0.5,
-              fontWeight: 600,
-              borderColor: '#296695',
-              color: '#296695',
-              '&:hover': {
-                borderColor: '#1e4d6f',
-                backgroundColor: 'rgba(41, 102, 149, 0.04)',
-              },
-            }}
-          >
-            Add Field
-            {addedCustomColumns.length > 0 && (
-              <Chip
-                label={addedCustomColumns.length}
-                size="small"
-                sx={{
-                  ml: 1,
-                  height: 18,
-                  fontSize: '0.65rem',
-                  backgroundColor: '#296695',
-                  color: 'white',
-                  fontWeight: 700,
-                }}
-              />
-            )}
-          </Button>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <Button
               variant="contained"
@@ -423,13 +511,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               >
                 <AccountTree sx={{ fontSize: 16, mr: 1 }} />
                 Create Version
-              </MenuItem>
-              <MenuItem 
-                onClick={handleViewVersions}
-                disabled={!versionedSources || versionedSources.length === 0}
-              >
-                <List sx={{ fontSize: 16, mr: 1 }} />
-                View Versions
               </MenuItem>
             </Menu>
           </Box>
@@ -1134,7 +1215,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             }}
           >
             <IconButton
-              onClick={handleAddOrUpdateConfig}
+              onClick={() => handleAddOrUpdateConfig(fieldMappings)}
               sx={{
                 width: 48,
                 height: 48,
@@ -1171,19 +1252,29 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         </Box>
       )}
 
-      {/* Configurations List */}
-      {configs.length > 0 && (
+      {/* Configurations and Versions List */}
+      {combinedItems.length > 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-              Configured Append Operations
+              Configured Append Operations & Versions
             </Typography>
-            <Chip
-              label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
-              size="small"
-              color="primary"
-              sx={{ fontWeight: 600 }}
-            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Chip
+                label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
+                size="small"
+                color="primary"
+                sx={{ fontWeight: 600 }}
+              />
+              {versionedSources.length > 0 && (
+                <Chip
+                  label={`${versionedSources.length} version${versionedSources.length !== 1 ? 's' : ''}`}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 600 }}
+                />
+              )}
+            </Box>
           </Box>
           <TableContainer
             component={Paper}
@@ -1197,28 +1288,93 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Name / Details</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Input Sources</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Append On Fields</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Append Sources</TableCell>
-                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Append Fields</TableCell>
                   <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {configs.map((config) => (
+                {combinedItems.map((item) => {
+                  const isVersion = item.type === 'version';
+                  const config = item.type === 'config' ? item.data : null;
+                  const version = item.type === 'version' ? item.data : null;
+
+                  return (
                   <TableRow
-                    key={config.id}
+                    key={isVersion ? version?.id : config?.id}
                     hover
                     sx={{
-                      backgroundColor: editingConfigId === config.id ? 'rgba(41, 102, 149, 0.04)' : 'transparent',
+                      backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.04)' :
+                                       isVersion ? 'rgba(16, 185, 129, 0.02)' : 'transparent',
                       '&:hover': {
-                        backgroundColor: editingConfigId === config.id ? 'rgba(41, 102, 149, 0.08)' : 'rgba(41, 102, 149, 0.04)',
+                        backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.08)' :
+                                         isVersion ? 'rgba(16, 185, 129, 0.06)' : 'rgba(41, 102, 149, 0.04)',
                       },
                     }}
                   >
+                    {/* Type Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Chip
+                        label={isVersion ? 'Version' : 'Config'}
+                        size="small"
+                        color={isVersion ? 'success' : 'primary'}
+                        sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+
+                    {/* Name / Details Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {isVersion ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                          {version?.versionLabel || version?.sourceName || '--'}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Configuration #{configs.indexOf(config!) + 1}
+                        </Typography>
+                      )}
+                    </TableCell>
+
                     {/* Input Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.inputSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.baseInputSources && version.baseInputSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#29669520',
+                                color: '#296695',
+                                border: '1px solid #29669540',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.baseInputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.baseInputSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.inputSources && config.inputSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1226,7 +1382,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 Input Sources ({config.inputSources.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.inputSources.map(id => getSourceName(id)).join(', ')}
+                                {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1256,7 +1412,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config.inputSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
+                              {config.inputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
                               {config.inputSources.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -1270,7 +1426,11 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
                     {/* Append On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.appendOnFields.length > 0 ? (
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : config && config.appendOnFields && config.appendOnFields.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1322,7 +1482,41 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
                     {/* Append Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.appendSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.operationSources && version.operationSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#10B98120',
+                                color: '#10B981',
+                                border: '1px solid #10B98140',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.operationSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.operationSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.appendSources && config.appendSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1330,7 +1524,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 Append Sources (Priority Order):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.appendSources.map((id, idx) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
+                                {config.appendSources.map((id: string, idx: number) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1360,60 +1554,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config.appendSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
+                              {config.appendSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
                               {config.appendSources.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
-                        </Tooltip>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
-                      )}
-                    </TableCell>
-
-                    {/* Append Fields Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.appendFields.length > 0 ? (
-                        <Tooltip
-                          title={
-                            <Box sx={{ maxWidth: 400 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Append Fields ({config.appendFields.length}):
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.appendFields.join(', ')}
-                              </Typography>
-                            </Box>
-                          }
-                          arrow
-                          placement="top"
-                        >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${config.appendFields.length} field${config.appendFields.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#F59E0B20',
-                                color: '#F59E0B',
-                                border: '1px solid #F59E0B40',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {config.appendFields.slice(0, 2).join(', ')}
-                              {config.appendFields.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1426,39 +1568,75 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
                     {/* Actions Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditConfig(config)}
-                          sx={{
-                            color: 'info.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                            },
-                          }}
-                          title="Edit"
-                        >
-                          <Edit sx={{ fontSize: 16 }} />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteConfig(config.id)}
-                          sx={{
-                            color: 'error.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                            },
-                          }}
-                          title="Delete"
-                        >
-                          <Delete sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Box>
+                      {isVersion ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <Tooltip title="View Details" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewVersion(version)}
+                              sx={{
+                                color: '#296695',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(41, 102, 149, 0.12)',
+                                },
+                              }}
+                            >
+                              <Visibility sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditVersion(version)}
+                              sx={{
+                                color: 'info.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                },
+                              }}
+                            >
+                              <Edit sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditConfig(config!)}
+                            sx={{
+                              color: 'info.main',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                              },
+                            }}
+                            title="Edit"
+                          >
+                            <Edit sx={{ fontSize: 16 }} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteConfig(config!.id)}
+                            sx={{
+                              color: 'error.main',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                              },
+                            }}
+                            title="Delete"
+                          >
+                            <Delete sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Box>
+                      )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1474,6 +1652,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         }}
         onSave={editingSource ? handleEditCustomSource : handleAddCustomSource}
         availableInputSources={availableInputSources}
+        allExistingSources={[...availableInputSources, ...(sharedCustomSources || [])]}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={editingSource}
@@ -1491,20 +1670,41 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={(mappings) => setFieldMappings(mappings)}
-        availableSources={[
-          ...availableInputSources
-            .filter(src => selectedInputSources.includes(src.id))
-            .map(src => ({ id: src.id, name: src.sourceName, type: 'input' as const })),
-          ...selectedAppendSources.map(srcId => {
-            const predefined = PREDEFINED_SOURCES.find(s => s.id === srcId);
-            if (predefined) {
-              return { id: srcId, name: predefined.name, type: 'append' as const };
+        onSave={setFieldMappings}
+        availableSources={(() => {
+          // Only include input sources from Input module (regular + versioned)
+          // Do NOT include append sources, predefined sources, or custom append sources
+          const sources = availableInputSources.map(src => {
+            // Get regular headers
+            const regularHeaders = src.headers || [];
+
+            // Extract nested fields from configJson.added_fields if they exist
+            const nestedFieldNames: string[] = [];
+            if ((src as any).configJson?.added_fields) {
+              const addedFields = (src as any).configJson.added_fields;
+              addedFields.forEach((sourceFields: any) => {
+                // Only include nested fields for this specific source
+                if (sourceFields.source_name === src.sourceName && sourceFields.fields) {
+                  sourceFields.fields.forEach((field: any) => {
+                    nestedFieldNames.push(field.field_name);
+                  });
+                }
+              });
             }
-            const custom = customAppendSources.find(s => s.id === srcId);
-            return { id: srcId, name: custom?.sourceName || srcId, type: 'append' as const };
-          }),
-        ]}
+
+            // Combine regular headers with nested field names
+            const allHeaders = [...regularHeaders, ...nestedFieldNames];
+
+            return {
+              id: src.id,
+              name: src.sourceName,
+              type: 'input' as const,
+              headers: allHeaders
+            };
+          });
+
+          return sources;
+        })()}
         initialMappings={fieldMappings}
       />
 
@@ -1618,17 +1818,130 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         </Dialog>
       )}
 
-      {/* Versions Modal */}
-      {getSourceNameById && (
-        <VersionsModal
-          open={versionsModalOpen}
-          onClose={() => setVersionsModalOpen(false)}
-          moduleType="Append"
-          versionedSources={versionedSources}
-          getSourceNameById={getSourceNameById}
-          onUpdateVersionName={onUpdateVersionName}
-        />
+      {/* View Version Details Dialog */}
+      {viewingVersion && (
+        <Dialog
+          open={versionViewDialogOpen}
+          onClose={() => {
+            setVersionViewDialogOpen(false);
+            setViewingVersion(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#10B981' }}>
+              Version Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Version Name
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingVersion.sourceName || viewingVersion.versionLabel}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Module
+                </Typography>
+                <Chip
+                  label={viewingVersion.sourceModule}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 600 }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Input Sources ({viewingVersion.baseInputSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources.length > 0 ? (
+                    viewingVersion.baseInputSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceName(sourceId)}
+                        size="small"
+                        color="primary"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No input sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  {viewingVersion.sourceModule} Sources ({viewingVersion.operationSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.operationSources && viewingVersion.operationSources.length > 0 ? (
+                    viewingVersion.operationSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceName(sourceId)}
+                        size="small"
+                        color="success"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No operation sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              {viewingVersion.headers && viewingVersion.headers.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Headers ({viewingVersion.headers.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflowY: 'auto' }}>
+                    {viewingVersion.headers.map((header: string, index: number) => (
+                      <Chip
+                        key={index}
+                        label={header}
+                        size="small"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
+            <Button onClick={() => {
+              setVersionViewDialogOpen(false);
+              setViewingVersion(null);
+            }} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
+
+      {/* Edit Version Modal */}
+      <AppendVersionModal
+        open={versionEditDialogOpen}
+        onClose={() => {
+          setVersionEditDialogOpen(false);
+          setEditingVersion(null);
+        }}
+        version={editingVersion}
+        availableInputSources={availableInputSources}
+        availableAppendSources={[...PREDEFINED_SOURCES, ...customAppendSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        onSave={handleSaveVersion}
+      />
+
     </Box>
   );
 };

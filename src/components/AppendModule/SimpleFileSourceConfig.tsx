@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -57,6 +57,34 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
   const [headerDialogOpen, setHeaderDialogOpen] = useState(false);
   const [customHeader, setCustomHeader] = useState<string>('');
   const [customDelimiter, setCustomDelimiter] = useState<string>('');
+
+  // Initialize state from data prop when editing
+  useEffect(() => {
+    if (data.subSourceType) {
+      setFileSource(data.subSourceType);
+    }
+    if (data.fileSource) {
+      setSelectedSource(data.fileSource);
+    }
+    if (data.filePath) {
+      setFilePath(data.filePath);
+    }
+    if (data.fileName) {
+      setFileName(data.fileName);
+    }
+    if (data.delimiter) {
+      setDelimiter(data.delimiter);
+    }
+    if (data.hasHeader !== undefined) {
+      setHasHeader(data.hasHeader);
+    }
+    if (data.previewData) {
+      setPreviewData(data.previewData);
+    }
+    if (data.headers) {
+      setHeaders(data.headers);
+    }
+  }, [data]);
 
   const handleFileSourceChange = (value: string) => {
     setFileSource(value);

@@ -127,12 +127,10 @@ const BusinessUnitManagementPage: React.FC = () => {
   };
 
   const handleEdit = () => {
-    console.log('Edit Business Unit:', selectedBU);
     handleMenuClose();
   };
 
   const handleDelete = () => {
-    console.log('Delete Business Unit:', selectedBU);
     handleMenuClose();
   };
 

@@ -50,7 +50,6 @@ const DEFAULT_SOURCES = {
 const DELIMITERS = [
   { label: 'Comma (,)', value: ',' },
   { label: 'Pipe (|)', value: '|' },
-  { label: 'Tab', value: '\t' },
   { label: 'Semicolon (;)', value: ';' },
   { label: 'Custom', value: 'custom' },
 ];
@@ -62,12 +61,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   apiSources = null,
   sourcesLoading = false 
 }) => {
-  console.log('FileSourceConfig: Component mounted with data:', {
-    dataId: data.id,
-    dataHeaders: data.headers,
-    dataSelectedHeaders: data.selectedHeaders,
-    areHeadersAndSelectedSame: JSON.stringify(data.headers) === JSON.stringify(data.selectedHeaders)
-  });
   
   const [fileSource, setFileSource] = useState<string>(data.subSourceType || 'SFTP');
   // Initialize selectedSource - will be properly set in useEffect when data/apiSources are available
@@ -75,8 +68,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
   // Track if we've properly initialized the selectedSource from props
   const [isSourceInitialized, setIsSourceInitialized] = useState<boolean>(false);
-  const [filePath, setFilePath] = useState<string>(data.filePath || '');
-  const [fileName, setFileName] = useState<string>(data.fileName || '');
+  // Initialize filePath and fileName with fallback to each other
+  const [filePath, setFilePath] = useState<string>(data.filePath || data.fileName || '');
+  const [fileName, setFileName] = useState<string>(data.fileName || data.filePath || '');
   const [delimiter, setDelimiter] = useState<string>(data.delimiter || ',');
   const [hasHeader, setHasHeader] = useState<boolean>(data.hasHeader ?? true);
   const [previewData, setPreviewData] = useState<any[]>(data.previewData || []);
@@ -170,36 +164,28 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
   // Sync local state with incoming data prop changes (for edit mode)
   useEffect(() => {
-    console.error('🚨 EDIT MODE DEBUG - FileSourceConfig data change:', {
-      hasData: !!data && Object.keys(data).length > 0,
-      dataHeaders: data?.headers,
-      dataSelectedHeaders: data?.selectedHeaders,
-      headersLength: data?.headers?.length,
-      selectedHeadersLength: data?.selectedHeaders?.length
-    });
-    
     if (data && Object.keys(data).length > 0) {
       setFileSource(data.subSourceType || 'SFTP');
-      
+
       // Only initialize selectedSource once to avoid resetting user selections
       if (!isSourceInitialized) {
         // Restore selected source by ID if available, fallback to name
         if (data.fileSourceId) {
           const sourceName = getSourceName(data.fileSourceId);
-          console.log('FileSourceConfig: Initial restore by ID:', data.fileSourceId, '->', sourceName);
           setSelectedSource(sourceName || data.fileSource || '');
         } else if (data.fileSource) {
-          console.log('FileSourceConfig: Initial restore by name:', data.fileSource);
           setSelectedSource(data.fileSource);
         } else {
-          console.log('FileSourceConfig: No source data found');
           setSelectedSource('');
         }
         setIsSourceInitialized(true);
       }
-      
-      setFilePath(data.filePath || '');
-      setFileName(data.fileName || '');
+
+      // Ensure both fileName and filePath are set, using either as fallback
+      const filePathValue = data.filePath || data.fileName || '';
+      const fileNameValue = data.fileName || data.filePath || ''; // Use filePath as fallback
+      setFilePath(filePathValue);
+      setFileName(fileNameValue);
       setDelimiter(data.delimiter || ',');
       setHasHeader(data.hasHeader ?? true);
       setPreviewData(data.previewData || []);
@@ -208,7 +194,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Always set allAvailableHeaders to the full headers list from data
       // This ensures all headers are visible in edit mode
       setAllAvailableHeaders(data.headers || []);
-      
+
       // Restore selectedHeaders from data.selectedHeaders if available, otherwise use all headers
       if (data.selectedHeaders && data.selectedHeaders.length > 0) {
         setSelectedHeaders(data.selectedHeaders);
@@ -228,13 +214,13 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     if (data && data.fileSourceId && !selectedSource && apiSources && isSourceInitialized) {
       const sourceName = getSourceName(data.fileSourceId);
       if (sourceName) {
-        console.log('FileSourceConfig: Restored source after API sources loaded:', data.fileSourceId, '->', sourceName);
+
         setSelectedSource(sourceName);
       } else {
-        console.warn('FileSourceConfig: Could not find source name for ID:', data.fileSourceId, 'in available sources');
+
         // Fallback to the fileSource name if ID lookup fails
         if (data.fileSource) {
-          console.log('FileSourceConfig: Falling back to fileSource name:', data.fileSource);
+
           setSelectedSource(data.fileSource);
         }
       }
@@ -248,6 +234,44 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     }
   }, [data]);
 
+  // Auto-fetch preview data in edit mode if not already loaded
+  useEffect(() => {
+    // Skip if:
+    // 1. Already loading records
+    // 2. Preview data already exists
+    // 3. Source not initialized yet (still loading/restoring)
+    if (isLoadingRecords || (previewData && previewData.length > 0) || !isSourceInitialized) {
+      return;
+    }
+
+    // Check if we're in edit mode with valid data
+    const isEditMode = data && data.id && Object.keys(data).length > 0;
+
+    if (!isEditMode) {
+      return;
+    }
+
+    // Check if we have the necessary fields to fetch preview
+    const canFetchPreview = fileName && selectedSource;
+
+    if (canFetchPreview) {
+
+      // Small delay to ensure all restoration state is settled
+      const timer = setTimeout(() => {
+        handleGetTop10Records();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    isLoadingRecords,
+    previewData,
+    isSourceInitialized,
+    data.id,
+    fileName,
+    selectedSource
+  ]);
+
   const handleFileSourceChange = (value: string) => {
     setFileSource(value);
     setSelectedSource('');
@@ -258,7 +282,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
   const handleGetTop10Records = async () => {
     if (!fileName || !selectedSource) {
-      console.warn('Please provide file name and source before fetching records');
+
       return;
     }
 
@@ -268,7 +292,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Get the source ID instead of using the name
       const sourceId = getSourceId(selectedSource);
       if (!sourceId) {
-        console.warn('Could not find source ID for:', selectedSource);
+
         setIsLoadingRecords(false);
         return;
       }
@@ -277,32 +301,65 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       const payload: Top10RecordsRequest = {
         fileSource: fileSource,
         inputFilePath: fileName,
-        sourceOption: sourceId.toString(), // Send ID instead of name
+        sourceOption: sourceId, // Send ID as number
         sourceType: 'file'
       };
 
       // Make the API call
-      const response: Top10RecordsResponse = await getTop10Records(payload);
-      
-      // Process the response
-      const { columns, data: responseData } = response;
-      
+      const response: Top10RecordsResponse | any[] = await getTop10Records(payload);
+
+
+      // Handle both response formats:
+      // 1. Expected format: { columns: string[], data: object[] }
+      // 2. Actual format from API: object[] (plain array)
+      let columns: string[];
+      let responseData: Record<string, any>[];
+
+      if (Array.isArray(response)) {
+        // Response is a plain array - extract columns from first object
+        if (response.length === 0) {
+          alert('No data found in the file. Please check the file format.');
+          setIsLoadingRecords(false);
+          return;
+        }
+        columns = Object.keys(response[0]);
+        responseData = response;
+      } else if (response && response.columns && response.data) {
+        // Response has the expected format
+        columns = response.columns;
+        responseData = response.data;
+      } else {
+        // Invalid format
+        alert('Received invalid data from server. Please try again.');
+        setIsLoadingRecords(false);
+        return;
+      }
+
+      // Validate that we have data
+      if (!Array.isArray(columns) || columns.length === 0) {
+
+        alert('No columns found in the file. Please check the file format.');
+        setIsLoadingRecords(false);
+        return;
+      }
+
+      if (!Array.isArray(responseData)) {
+
+        alert('Invalid data format received. Please try again.');
+        setIsLoadingRecords(false);
+        return;
+      }
+
       setPreviewData(responseData);
       setHeaders(columns);
       setAllAvailableHeaders(columns);
       setSelectedHeaders(columns); // Initially select all headers
       setHeadersFetched(true);
-      
-      console.log('FileSourceConfig: After API fetch - setting headers', {
-        allAvailableHeaders: columns,
-        selectedHeaders: columns,
-        headersFetched: true
-      }); // Mark that we've fetched headers from data source
 
-      // Initialize datatypes as string
+      // Initialize data types for all columns (default to 'String')
       const initialDataTypes: Record<string, string> = {};
-      columns.forEach(column => {
-        initialDataTypes[column] = 'String';
+      columns.forEach(header => {
+        initialDataTypes[header] = 'String';
       });
       setDataTypes(initialDataTypes);
 
@@ -316,48 +373,29 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         dataTypes: initialDataTypes,
         sourceName: autoSourceName,
       });
-    } catch (error) {
-      console.error('Error fetching top 10 records:', error);
-      
-      // Show mock data if API fails
-      const mockData = [
-        { EMAIL_ID: 'john@example.com', PROFILE_ID: '12345', LIST_ID: 'L001', EMAIL_MD5: '5c5e3e9f8f9c2d6b8e3a1f7c9d4e2b1a' },
-        { EMAIL_ID: 'jane@example.com', PROFILE_ID: '12346', LIST_ID: 'L002', EMAIL_MD5: '8f7d6e5c4b3a2e1f9d8c7b6a5e4d3c2b' },
-        { EMAIL_ID: 'bob@example.com', PROFILE_ID: '12347', LIST_ID: 'L003', EMAIL_MD5: '3a2b1c9d8e7f6a5b4c3d2e1f9a8b7c6d' },
-        { EMAIL_ID: 'alice@example.com', PROFILE_ID: '12348', LIST_ID: 'L004', EMAIL_MD5: '7c6d5e4f3a2b1c9d8e7f6a5b4c3d2e1f' },
-        { EMAIL_ID: 'charlie@example.com', PROFILE_ID: '12349', LIST_ID: 'L005', EMAIL_MD5: '2e1f9a8b7c6d5e4f3a2b1c9d8e7f6a5b' },
-        { EMAIL_ID: 'david@example.com', PROFILE_ID: '12350', LIST_ID: 'L006', EMAIL_MD5: '6a5b4c3d2e1f9a8b7c6d5e4f3a2b1c9d' },
-        { EMAIL_ID: 'emma@example.com', PROFILE_ID: '12351', LIST_ID: 'L007', EMAIL_MD5: '1c9d8e7f6a5b4c3d2e1f9a8b7c6d5e4f' },
-        { EMAIL_ID: 'frank@example.com', PROFILE_ID: '12352', LIST_ID: 'L008', EMAIL_MD5: '9a8b7c6d5e4f3a2b1c9d8e7f6a5b4c3d' },
-        { EMAIL_ID: 'grace@example.com', PROFILE_ID: '12353', LIST_ID: 'L009', EMAIL_MD5: '4c3d2e1f9a8b7c6d5e4f3a2b1c9d8e7f' },
-        { EMAIL_ID: 'henry@example.com', PROFILE_ID: '12354', LIST_ID: 'L010', EMAIL_MD5: '8e7f6a5b4c3d2e1f9a8b7c6d5e4f3a2b' },
-      ];
 
-      const mockHeaders = Object.keys(mockData[0]);
+    } catch (error: any) {
 
-      setPreviewData(mockData);
-      setHeaders(mockHeaders);
-      setAllAvailableHeaders(mockHeaders);
-      setSelectedHeaders(mockHeaders); // Initially select all headers
-      setHeadersFetched(true); // Mark that we've fetched headers from data source
 
-      // Initialize datatypes as string for mock data
-      const mockDataTypes: Record<string, string> = {};
-      mockHeaders.forEach(column => {
-        mockDataTypes[column] = 'String';
-      });
-      setDataTypes(mockDataTypes);
+      // Provide more specific error message
+      let errorMessage = 'Failed to load data. ';
+      if (error?.message) {
+        errorMessage += error.message;
+      } else if (error?.response?.data?.message) {
+        errorMessage += error.response.data.message;
+      } else {
+        errorMessage += 'Please check the file name and source, then try again.';
+      }
 
-      // Auto-populate source name from filename (without extension)
-      const autoSourceName = fileName.split('/').pop()?.split('\\').pop()?.replace(/\.[^/.]+$/, '') || '';
+      alert(errorMessage);
 
-      updateParentData({
-        previewData: mockData,
-        headers: mockHeaders, // Save full headers initially
-        selectedHeaders: mockHeaders, // Initially all headers are selected
-        dataTypes: mockDataTypes,
-        sourceName: autoSourceName,
-      });
+      // Reset state on error
+      setPreviewData([]);
+      setHeaders([]);
+      setAllAvailableHeaders([]);
+      setSelectedHeaders([]);
+      setHeadersFetched(false);
+      setDataTypes({});
     } finally {
       setIsLoadingRecords(false);
     }
@@ -400,11 +438,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   };
 
   const handleHeaderSelectionChange = (newSelectedHeaders: string[]) => {
-    console.log('FileSourceConfig: handleHeaderSelectionChange called', {
-      newSelectedHeaders,
-      currentAllAvailableHeaders: allAvailableHeaders,
-      currentSelectedHeaders: selectedHeaders
-    });
     
     setSelectedHeaders(newSelectedHeaders);
     // Don't update headers state - keep it as the original full list for data processing
@@ -443,14 +476,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       ...updates, // Apply updates last to ensure they override local state
     };
     
-    console.log('FileSourceConfig: updateParentData called with:', {
-      fileSource: finalData.fileSource,
-      fileSourceId: finalData.fileSourceId,
-      selectedSource,
-      headers: finalData.headers,
-      selectedHeaders: finalData.selectedHeaders,
-      updates
-    });
     
     onChange(finalData);
   };
@@ -559,8 +584,10 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               placeholder="/data/input/data.csv or C:\Data\Input\data.csv"
               value={fileName}
               onChange={(e) => {
-                setFileName(e.target.value);
-                updateParentData({ fileName: e.target.value });
+                const newValue = e.target.value;
+                setFileName(newValue);
+                setFilePath(newValue);
+                updateParentData({ fileName: newValue, filePath: newValue });
               }}
               sx={{ flex: '0 0 75%' }}
             />
@@ -584,12 +611,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       {/* Header Selection */}
       {allAvailableHeaders.length > 0 && (
         <>
-          {console.log('FileSourceConfig: Rendering HeaderSelector with', {
-            allAvailableHeaders,
-            selectedHeaders,
-            allAvailableHeadersLength: allAvailableHeaders.length,
-            selectedHeadersLength: selectedHeaders.length
-          })}
           <HeaderSelector
             availableHeaders={allAvailableHeaders}
             selectedHeaders={selectedHeaders}

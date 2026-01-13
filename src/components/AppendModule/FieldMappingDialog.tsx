@@ -38,7 +38,7 @@ interface FieldMappingDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (mappings: FieldMapping[]) => void;
-  availableSources: Array<{ id: string; name: string; type: 'input' | 'append' }>;
+  availableSources: Array<{ id: string; name: string; type: 'input' | 'append'; headers?: string[] }>;
   initialMappings: FieldMapping[];
 }
 
@@ -58,33 +58,34 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
 
   // Get available columns from selected sources with table names
   const getAvailableColumnsWithTables = (): Array<{ value: string; label: string; tableName: string }> => {
-    // Mock columns based on source selection
-    // In a real app, this would fetch actual columns from the sources
     const columnsWithTables: Array<{ value: string; label: string; tableName: string }> = [];
 
     selectedSources.forEach(sourceId => {
       const source = availableSources.find(s => s.id === sourceId);
-      if (source?.type === 'input') {
-        const fields = ['EMAIL_ID', 'PROFILE_ID', 'FIRST_NAME', 'LAST_NAME', 'ZIP_CODE'];
-        fields.forEach(field => {
-          const uniqueValue = `${sourceId}::${field}`;
-          columnsWithTables.push({
-            value: uniqueValue,
-            label: `${field} → ${source.name}`,
-            tableName: source.name,
-          });
-        });
-      } else if (source?.type === 'append') {
-        const fields = ['CITY', 'STATE', 'COUNTY', 'LATITUDE', 'LONGITUDE'];
-        fields.forEach(field => {
-          const uniqueValue = `${sourceId}::${field}`;
-          columnsWithTables.push({
-            value: uniqueValue,
-            label: `${field} → ${source.name}`,
-            tableName: source.name,
-          });
-        });
+      if (!source) return;
+
+      // Use actual headers if provided, otherwise use mock data
+      let fields: string[] = [];
+
+      if (source.headers && source.headers.length > 0) {
+        // Use actual headers from the source
+        fields = source.headers;
+      } else if (source.type === 'input') {
+        // Fallback to mock data for input sources
+        fields = ['EMAIL_ID', 'PROFILE_ID', 'FIRST_NAME', 'LAST_NAME', 'ZIP_CODE'];
+      } else if (source.type === 'append') {
+        // Fallback to mock data for append sources
+        fields = ['CITY', 'STATE', 'COUNTY', 'LATITUDE', 'LONGITUDE'];
       }
+
+      fields.forEach(field => {
+        const uniqueValue = `${sourceId}::${field}`;
+        columnsWithTables.push({
+          value: uniqueValue,
+          label: `${field} → ${source.name}`,
+          tableName: source.name,
+        });
+      });
     });
 
     return columnsWithTables;

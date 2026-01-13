@@ -69,8 +69,14 @@ const StatsSection: React.FC<StatsSectionProps> = ({
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     Count On:
                   </Typography>
-                  {config.countsOn.map((field) => (
-                    <Chip key={field} label={field} size="small" color="primary" variant="outlined" />
+                  {config.countsOn.map((countOn) => (
+                    <Chip
+                      key={countOn.field}
+                      label={`${countOn.field}${countOn.isDistinct ? ' (D)' : ''}`}
+                      size="small"
+                      color={countOn.isDistinct ? 'success' : 'primary'}
+                      variant="outlined"
+                    />
                   ))}
                 </Box>
                 {config.breakdownBy.length > 0 && (
@@ -82,9 +88,6 @@ const StatsSection: React.FC<StatsSectionProps> = ({
                       <Chip key={field} label={field} size="small" color="secondary" variant="outlined" />
                     ))}
                   </Box>
-                )}
-                {config.isDistinct && (
-                  <Chip label="Distinct Count" size="small" color="success" sx={{ mt: 1 }} />
                 )}
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5 }}>

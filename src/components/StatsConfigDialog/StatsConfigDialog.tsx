@@ -78,7 +78,7 @@ const SAMPLE_DATA_FLOW: DataFlowRow[] = [
 interface GenerateCountConfig {
   id: string;
   fields: string[];
-  isDistinct: boolean;
+  distinctFields: string[];
 }
 
 interface BreakdownConfig {

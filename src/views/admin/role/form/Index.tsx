@@ -77,7 +77,6 @@ const RoleCreationPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    console.log('Save role:', { formData, permissions });
     navigate('/roles');
   };
 

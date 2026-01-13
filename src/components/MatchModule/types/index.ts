@@ -25,6 +25,14 @@ export interface MatchModuleProps {
   versionedSources?: any[]; // Versioned sources for display
   getSourceNameById?: (sourceId: string) => string; // Helper function to get source names
   onUpdateVersionName?: (versionId: string, newName: string) => void;
+  onUpdateVersion?: (versionId: string, updatedVersion: any) => void; // Update full version configuration
+  // Shared custom sources across all modules
+  sharedCustomSources?: InputSource[];
+  onAddSharedCustomSource?: (source: InputSource, moduleId?: string) => void;
+  onEditSharedCustomSource?: (source: InputSource) => void;
+  onDeleteSharedCustomSource?: (id: string) => void;
+  // Configuration tracking for dependency validation
+  onConfigurationsChange?: (configs: MatchConfig[]) => void;
 }
 
 export interface PredefinedSource {

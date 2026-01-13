@@ -28,18 +28,29 @@ export interface OutputDestination {
   bucket?: string;
   region?: string;
   credentials?: string;
+  // SFTP specific fields
+  username?: string;
+  password?: string;
+  // AWS specific fields
+  accessKey?: string;
 }
 
 interface OutputDestinationDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (destination: OutputDestination) => void;
+  onUpdate?: (destination: OutputDestination) => void;
+  mode?: 'add' | 'edit' | 'view';
+  editingDestination?: OutputDestination | null;
 }
 
 const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
   open,
   onClose,
   onSave,
+  onUpdate,
+  mode = 'add',
+  editingDestination = null,
 }) => {
   const [destinationType, setDestinationType] = useState<'SFTP' | 'S3' | 'NFS' | 'Other'>('SFTP');
   const [destinationName, setDestinationName] = useState('');
@@ -49,9 +60,25 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
   const [bucket, setBucket] = useState('');
   const [region, setRegion] = useState('');
   const [credentials, setCredentials] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [accessKey, setAccessKey] = useState('');
 
   useEffect(() => {
-    if (!open) {
+    if (open && (mode === 'edit' || mode === 'view') && editingDestination) {
+      // Load editing destination data
+      setDestinationType(editingDestination.type);
+      setDestinationName(editingDestination.name);
+      setHost(editingDestination.host || '');
+      setPort(editingDestination.port || '');
+      setPath(editingDestination.path || '');
+      setBucket(editingDestination.bucket || '');
+      setRegion(editingDestination.region || '');
+      setCredentials(editingDestination.credentials || '');
+      setUsername(editingDestination.username || '');
+      setPassword(editingDestination.password || '');
+      setAccessKey(editingDestination.accessKey || '');
+    } else if (!open) {
       // Reset form when dialog closes
       setDestinationType('SFTP');
       setDestinationName('');
@@ -61,8 +88,11 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       setBucket('');
       setRegion('');
       setCredentials('');
+      setUsername('');
+      setPassword('');
+      setAccessKey('');
     }
-  }, [open]);
+  }, [open, mode, editingDestination]);
 
   const handleSave = () => {
     if (!destinationName.trim()) {
@@ -85,7 +115,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
     }
 
     const destination: OutputDestination = {
-      id: Date.now().toString(),
+      id: mode === 'edit' && editingDestination ? editingDestination.id : Date.now().toString(),
       name: destinationName,
       type: destinationType,
       host: host || undefined,
@@ -94,15 +124,24 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       bucket: bucket || undefined,
       region: region || undefined,
       credentials: credentials || undefined,
+      username: username || undefined,
+      password: password || undefined,
+      accessKey: accessKey || undefined,
     };
 
-    onSave(destination);
+    if (mode === 'edit' && onUpdate) {
+      onUpdate(destination);
+    } else {
+      onSave(destination);
+    }
     onClose();
   };
 
   const handleClose = () => {
     onClose();
   };
+
+  const isReadOnly = mode === 'view';
 
   return (
     <Dialog
@@ -127,7 +166,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
         }}
       >
         <Typography variant="h6" sx={{ fontWeight: 700, color: '#3B82F6' }}>
-          Add Output Destination
+          {mode === 'view' ? 'View Output Destination' : mode === 'edit' ? 'Edit Output Destination' : 'Add Output Destination'}
         </Typography>
         <IconButton onClick={handleClose} size="small">
           <Close />
@@ -153,9 +192,13 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
             placeholder="e.g., Production SFTP Server"
             value={destinationName}
             onChange={(e) => setDestinationName(e.target.value)}
+            disabled={isReadOnly}
+            InputProps={{
+              readOnly: isReadOnly,
+            }}
             sx={{
               '& .MuiOutlinedInput-root': {
-                backgroundColor: 'white',
+                backgroundColor: isReadOnly ? '#F9FAFB' : 'white',
               },
             }}
           />
@@ -180,23 +223,27 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 control={<Radio size="small" />}
                 label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>SFTP</Typography>}
                 sx={{ mr: 3 }}
+                disabled={isReadOnly}
               />
               <FormControlLabel
                 value="S3"
                 control={<Radio size="small" />}
                 label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>S3</Typography>}
                 sx={{ mr: 3 }}
+                disabled={isReadOnly}
               />
               <FormControlLabel
                 value="NFS"
                 control={<Radio size="small" />}
                 label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>NFS</Typography>}
                 sx={{ mr: 3 }}
+                disabled={isReadOnly}
               />
               <FormControlLabel
                 value="Other"
                 control={<Radio size="small" />}
                 label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>Other</Typography>}
+                disabled={isReadOnly}
               />
             </RadioGroup>
           </FormControl>
@@ -226,7 +273,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                   placeholder="sftp.example.com"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
-                  sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
                 />
               </Box>
               <Box sx={{ flex: 1 }}>
@@ -244,7 +293,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                   placeholder="22"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
-                  sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
                 />
               </Box>
             </Box>
@@ -258,21 +309,43 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="/output/data"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-                Credentials
-              </Typography>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="Username or credential reference"
-                value={credentials}
-                onChange={(e) => setCredentials(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
-              />
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
+                  Username
+                </Typography>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="sftp_user"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
+                  Password
+                </Typography>
+                <TextField
+                  size="small"
+                  fullWidth
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
+                />
+              </Box>
             </Box>
           </Box>
         )}
@@ -299,7 +372,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                   placeholder="my-output-bucket"
                   value={bucket}
                   onChange={(e) => setBucket(e.target.value)}
-                  sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
                 />
               </Box>
               <Box sx={{ flex: 1 }}>
@@ -317,7 +392,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                   placeholder="us-east-1"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                  disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
                 />
               </Box>
             </Box>
@@ -331,20 +408,24 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="output/data/"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-                Credentials
+                Access Key
               </Typography>
               <TextField
                 size="small"
                 fullWidth
-                placeholder="AWS access key or IAM role"
-                value={credentials}
-                onChange={(e) => setCredentials(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                placeholder="AKIA..."
+                value={accessKey}
+                onChange={(e) => setAccessKey(e.target.value)}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
           </Box>
@@ -371,7 +452,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="nfs.example.com"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -389,7 +472,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="/mnt/output"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
           </Box>
@@ -411,7 +496,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="custom.endpoint.com"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -424,7 +511,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="/path/to/output"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -439,7 +528,9 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 placeholder="Additional configuration details..."
                 value={credentials}
                 onChange={(e) => setCredentials(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: 'white' } }}
+                disabled={isReadOnly}
+                InputProps={{ readOnly: isReadOnly }}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
           </Box>
@@ -449,30 +540,51 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       <Divider />
 
       <DialogActions sx={{ p: 2, gap: 1 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={handleClose}
-          sx={{ px: 2, textTransform: 'none' }}
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          onClick={handleSave}
-          sx={{
-            px: 2,
-            textTransform: 'none',
-            color: '#fff',
-            backgroundColor: '#3B82F6',
-            '&:hover': {
-              backgroundColor: '#2563EB',
-            }
-          }}
-        >
-          Add Destination
-        </Button>
+        {mode === 'view' ? (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleClose}
+            sx={{
+              px: 2,
+              textTransform: 'none',
+              color: '#fff',
+              backgroundColor: '#3B82F6',
+              '&:hover': {
+                backgroundColor: '#2563EB',
+              }
+            }}
+          >
+            Close
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleClose}
+              sx={{ px: 2, textTransform: 'none' }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleSave}
+              sx={{
+                px: 2,
+                textTransform: 'none',
+                color: '#fff',
+                backgroundColor: '#3B82F6',
+                '&:hover': {
+                  backgroundColor: '#2563EB',
+                }
+              }}
+            >
+              {mode === 'edit' ? 'Update Destination' : 'Add Destination'}
+            </Button>
+          </>
+        )}
       </DialogActions>
     </Dialog>
   );

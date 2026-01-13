@@ -51,7 +51,6 @@ const UserCreationPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    console.log('Save user:', formData);
     // Here you would typically make an API call to create the user
     navigate('/userManagement');
   };

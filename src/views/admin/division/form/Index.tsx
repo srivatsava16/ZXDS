@@ -40,7 +40,6 @@ const DivisionCreationPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    console.log('Save Division:', formData);
     navigate('/divisions');
   };
 

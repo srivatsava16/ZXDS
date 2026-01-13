@@ -41,17 +41,8 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
     onHeadersChange(validSelectedHeaders);
   };
 
-  const handleSelectAll = () => {
-    if (validSelectedHeaders.length === availableHeaders.length) {
-      // Deselect all
-      onHeadersChange([]);
-    } else {
-      // Select all
-      onHeadersChange([...availableHeaders]);
-    }
-  };
 
-  const isAllSelected = validSelectedHeaders.length === availableHeaders.length && availableHeaders.length > 0;
+
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -61,24 +52,7 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
           <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
             ({validSelectedHeaders.length} of {availableHeaders.length} selected)
           </Typography>
-        </Typography>
-        {availableHeaders.length > 0 && (
-          <Typography
-            variant="body2"
-            sx={{
-              color: 'primary.main',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              textDecoration: 'underline',
-              '&:hover': {
-                textDecoration: 'underline',
-              },
-            }}
-            onClick={handleSelectAll}
-          >
-            {isAllSelected ? 'Deselect All' : 'Select All'}
-          </Typography>
-        )}
+        </Typography> 
       </Box>
 
       {availableHeaders.length === 0 ? (

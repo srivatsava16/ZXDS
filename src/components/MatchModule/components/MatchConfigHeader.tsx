@@ -1,6 +1,5 @@
-import { Box, Button, Typography, Chip, Tooltip, IconButton, Menu, MenuItem } from '@mui/material';
-import { Add, AccountTree, Visibility } from '@mui/icons-material';
-import { useState } from 'react';
+import { Box, Button, Typography, Chip, Tooltip, IconButton } from '@mui/material';
+import { Add, AccountTree } from '@mui/icons-material';
 import type { FieldMapping } from '../../AppendModule/FieldMappingDialog';
 
 interface MatchConfigHeaderProps {
@@ -9,7 +8,6 @@ interface MatchConfigHeaderProps {
   onFieldMappingClick: () => void;
   onAddCustomSourceClick: () => void;
   onCreateVersion?: () => void;
-  onViewVersions?: () => void;
   canCreateVersion: boolean;
 }
 
@@ -19,29 +17,8 @@ const MatchConfigHeader: React.FC<MatchConfigHeaderProps> = ({
   onFieldMappingClick,
   onAddCustomSourceClick,
   onCreateVersion,
-  onViewVersions,
   canCreateVersion,
 }) => {
-  const [versionMenuAnchorEl, setVersionMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const versionMenuOpen = Boolean(versionMenuAnchorEl);
-
-  const handleVersionMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setVersionMenuAnchorEl(event.currentTarget);
-  };
-
-  const handleVersionMenuClose = () => {
-    setVersionMenuAnchorEl(null);
-  };
-
-  const handleCreateVersion = () => {
-    setVersionMenuAnchorEl(null);
-    onCreateVersion?.();
-  };
-
-  const handleViewVersions = () => {
-    setVersionMenuAnchorEl(null);
-    onViewVersions?.();
-  };
 
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -114,45 +91,30 @@ const MatchConfigHeader: React.FC<MatchConfigHeaderProps> = ({
           >
             Add Custom Match Source
           </Button>
-          <Tooltip title="Version Actions" arrow>
-            <IconButton
-              size="small"
-              onClick={handleVersionMenuOpen}
-              sx={{
-                color: '#F59E0B',
-                border: '2px solid #F59E0B',
-                borderRadius: 1,
-                '&:hover': {
-                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                  borderColor: '#D97706',
-                },
-              }}
-            >
-              <AccountTree fontSize="small" />
-            </IconButton>
+          <Tooltip title="Create Version" arrow>
+            <span>
+              <IconButton
+                size="small"
+                onClick={onCreateVersion}
+                disabled={!canCreateVersion}
+                sx={{
+                  color: '#F59E0B',
+                  border: '2px solid #F59E0B',
+                  borderRadius: 1,
+                  '&:hover': {
+                    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                    borderColor: '#D97706',
+                  },
+                  '&:disabled': {
+                    color: 'rgba(245, 158, 11, 0.4)',
+                    borderColor: 'rgba(245, 158, 11, 0.4)',
+                  },
+                }}
+              >
+                <AccountTree fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
-          <Menu
-            anchorEl={versionMenuAnchorEl}
-            open={versionMenuOpen}
-            onClose={handleVersionMenuClose}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'left',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'left',
-            }}
-          >
-            <MenuItem onClick={handleCreateVersion} disabled={!canCreateVersion}>
-              <AccountTree sx={{ fontSize: 16, mr: 1 }} />
-              Create Version
-            </MenuItem>
-            <MenuItem onClick={handleViewVersions}>
-              <Visibility sx={{ fontSize: 16, mr: 1 }} />
-              View Versions
-            </MenuItem>
-          </Menu>
         </Box>
       </Box>
     </Box>

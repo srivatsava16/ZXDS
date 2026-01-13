@@ -2,10 +2,47 @@ import ApiService from './ApiService';
 
 export interface RequestInputsResponse {
   fileSource: {
-    sftpSources: Array<{id: number; name: string}>;
-    nfsSources: Array<{id: number; name: string}>;
-    awsSources: Array<{id: number; name: string}>;
+    sftpSources: Array<{
+      id: number;
+      name: string;
+      host?: string;
+      port?: string;
+      path?: string;
+      username?: string;
+      password?: string;
+    }>;
+    nfsSources: Array<{
+      id: number;
+      name: string;
+      hostserver?: string;
+      mountpath?: string;
+    }>;
+    awsSources: Array<{
+      id: number;
+      name: string;
+      bucketname?: string;
+      region?: string;
+      path?: string;
+      accesskey?: string;
+    }>;
     dataBase?: Record<string, Array<{id: number; name: string}>>;
+  };
+  outputDestination?: {
+    sftpDestinations: Array<{
+      id: number;
+      name: string;
+      path?: string;
+    }>;
+    nfsDestinations: Array<{
+      id: number;
+      name: string;
+      path?: string;
+    }>;
+    awsDestinations: Array<{
+      id: number;
+      name: string;
+      bucket?: string;
+    }>;
   };
   dbSource: {
     preconfiguredTables: {
@@ -45,7 +82,7 @@ export interface RequestInputsResponse {
           type: string;
         }>;
       }>;
-      output: string[]; // Keep output as strings for now
+      output: string[]; // Legacy support - keep for backward compatibility
     };
     dataDictionary: Record<string, Array<{
       fieldName: string;
@@ -60,7 +97,7 @@ export interface Top10RecordsRequest {
   // File source properties
   fileSource?: string;
   inputFilePath?: string;
-  sourceOption?: string;
+  sourceOption?: number;
   // Database source properties
   tableName?: string;
   tableType?: string;
@@ -70,6 +107,9 @@ export interface Top10RecordsRequest {
   [key: string]: unknown;
 }
 
+// API can return either format:
+// 1. { columns: string[], data: Record<string, any>[] }
+// 2. Record<string, any>[] (plain array)
 export interface Top10RecordsResponse {
   columns: string[];
   data: Record<string, any>[];
@@ -83,7 +123,6 @@ export async function getRequestInputs(): Promise<RequestInputsResponse> {
     });
     return ApiService.transform<RequestInputsResponse>(response);
   } catch (error) {
-    console.error('Error fetching request inputs:', error);
     // Return fallback mock data on error
     return getMockRequestInputs();
   }
@@ -98,7 +137,6 @@ export async function getTop10Records(payload: Top10RecordsRequest): Promise<Top
     });
     return ApiService.transform<Top10RecordsResponse>(response);
   } catch (error) {
-    console.error('Error fetching top 10 records:', error);
     throw error;
   }
 }
@@ -108,18 +146,71 @@ function getMockRequestInputs(): any {
   return {
     fileSource: {
       sftpSources: [
-        { id: 1, name: 'BO31 SFTP' },
-        { id: 3, name: 'ZXDS4 SFTP' },
-        { id: 9, name: 'DC3 SFTP' }
+        {
+          id: 1,
+          name: 'BO31 SFTP',
+          host: 'sftp.bo31.example.com',
+          port: '22',
+          path: '/data/input',
+          username: 'bo31_user',
+          password: '***'
+        },
+        {
+          id: 3,
+          name: 'ZXDS4 SFTP',
+          host: 'sftp.zxds.example.com',
+          port: '22',
+          path: '/zxds/data',
+          username: 'zxds_user',
+          password: '***'
+        },
+        {
+          id: 9,
+          name: 'DC3 SFTP',
+          host: 'sftp.dc3.example.com',
+          port: '22',
+          path: '/dc/files',
+          username: 'dc3_user',
+          password: '***'
+        }
       ],
       nfsSources: [
-        { id: 2, name: 'Test NFS1' },
-        { id: 4, name: 'Backup NFS4' },
-        { id: 10, name: 'Archive NFS10' }
+        {
+          id: 2,
+          name: 'Test NFS1',
+          hostserver: 'nfs1.example.com',
+          mountpath: '/mnt/nfs1/data'
+        },
+        {
+          id: 4,
+          name: 'Backup NFS4',
+          hostserver: 'nfs4.example.com',
+          mountpath: '/mnt/backup/files'
+        },
+        {
+          id: 10,
+          name: 'Archive NFS10',
+          hostserver: 'nfs10.example.com',
+          mountpath: '/mnt/archive/data'
+        }
       ],
       awsSources: [
-        { id: 5, name: 'ZXDS AWS' },
-        { id: 6, name: 'DC AWS' }
+        {
+          id: 5,
+          name: 'ZXDS AWS',
+          bucketname: 'zxds-data-bucket',
+          region: 'us-east-1',
+          path: '/input-data',
+          accesskey: 'AKIA***'
+        },
+        {
+          id: 6,
+          name: 'DC AWS',
+          bucketname: 'dc-storage-bucket',
+          region: 'us-west-2',
+          path: '/dc-files',
+          accesskey: 'AKIA***'
+        }
       ],
       dataBase: {
         SALES_DB: [
@@ -131,6 +222,23 @@ function getMockRequestInputs(): any {
           { id: 12, name: 'LEADS' }
         ]
       }
+    },
+
+    outputDestination: {
+      sftpDestinations: [
+        { id: 1, name: 'DC SFTP', path: '/exports/dc' },
+        { id: 2, name: 'ZXDS SFTP', path: '/exports/zxds' },
+        { id: 3, name: 'BO3 SFTP', path: '/exports/bo3' }
+      ],
+      nfsDestinations: [
+        { id: 4, name: 'NFS Server 1', path: '/mnt/exports/nfs1' },
+        { id: 5, name: 'NFS Server 2', path: '/mnt/exports/nfs2' }
+      ],
+      awsDestinations: [
+        { id: 6, name: 'ZXDS S3', bucket: 'zxds-exports' },
+        { id: 7, name: 'AWS S3 Primary', bucket: 'aws-primary-exports' },
+        { id: 8, name: 'AWS S3 Secondary', bucket: 'aws-secondary-exports' }
+      ]
     },
 
     dbSource: {
@@ -293,7 +401,6 @@ export async function checkRequestName(requestName: string): Promise<boolean> {
     });
     return response?.data?.exists ;
   } catch (error) {
-    console.error('Error checking request name:', error);
     // For development - simulate some existing names
     return false;
   }
@@ -329,19 +436,47 @@ export interface SubmitRequestPayload {
     scheduledDateTime?: string; // Include when requestType is 'S'
   };
   inputSources: any[];
+  workflow?: Array<{
+    stepOrder: number;
+    actionType: string;
+    saveAsVersion: number;
+    versionName: string;
+    internalStepOrder: number;
+    configJson: {
+      operation: string;
+      input_sources: Array<{
+        source_name: string;
+        columns: string[];
+      }>;
+      added_fields: Array<{
+        source_name: string;
+        fields: Array<{
+          field_name: string;
+          data_type: string;
+          default_value: string | number;
+        }>;
+      }>;
+      field_mappings: Array<{
+        field_name: string;
+        source_mappings: string;
+      }>;
+      merge_keys: string[];
+      priority_order: string[];
+    };
+  }>;
   stats?: Array<{
     input_sources: Array<{
-      source_id: number;
-      columns: "all" | "limited";
+      source_name: string;
+      columns: string[];
     }>;
     generate_counts_on: string[];
     is_distinct: boolean;
     breakdown_by: string[];
   }>;
-  output?: {
+  output?: Array<{
     input_sources: Array<{
-      source_id: number;
-      columns: "all" | "limited";
+      source_name: string;
+      columns: string[];
       priority: number;
     }>;
     output_fields: string[];
@@ -351,14 +486,43 @@ export interface SubmitRequestPayload {
       limit_records: number | null;
       shuffle_records: boolean;
     };
-    destination?: {
-      data_source_id: number;
-      path: string;
-      filename: string;
-      format: string;
-      compression: string;
-    };
-  };
+    destination:
+      | {
+          // Preconfigured source
+          data_source_id: number;
+        }
+      | {
+          // Custom SFTP destination
+          destinationName: string;
+          type: 'sftp';
+          host: string;
+          port: string;
+          path: string;
+          username: string;
+          password: string;
+        }
+      | {
+          // Custom AWS S3 destination
+          destinationName: string;
+          type: 'aws';
+          bucketname: string;
+          region: string;
+          path: string;
+          accesskey: string;
+        }
+      | {
+          // Custom NFS destination
+          destinationName: string;
+          type: 'nfs';
+          hostserver: string;
+          mountpath: string;
+        };
+    field_mappings: Array<{
+      field_name: string;
+      source_mappings: string;
+    }>;
+  }>;
+
   [key: string]: any; // Add index signature for additional properties
 }
 
@@ -371,18 +535,40 @@ export interface SubmitRequestResponse {
 export async function submitRequest(payload: SubmitRequestPayload): Promise<SubmitRequestResponse> {
   try {
     const response = await ApiService.fetchData<SubmitRequestResponse>({
-      url: '/submitRequest1.php',
+      url: '/submitRequest.php',
       method: 'post',
       data: payload
     });
     return ApiService.transform<SubmitRequestResponse>(response);
   } catch (error) {
-    console.error('Error submitting request:', error);
     // Return mock success response for development
     return {
       success: true,
       message: 'Request submitted successfully',
       requestId: `submit_${Date.now()}`
     };
+  }
+}
+
+export interface EditRequestPayload {
+  requestId: number;
+}
+
+export interface EditRequestResponse {
+  success: boolean;
+  data?: any;
+  message?: string;
+}
+
+export async function getEditRequest(requestId: number): Promise<EditRequestResponse> {
+  try {
+    const response = await ApiService.fetchData<EditRequestResponse>({
+      url: '/editRequest.php',
+      method: 'post',
+      data: { requestId }
+    });
+    return ApiService.transform<EditRequestResponse>(response);
+  } catch (error) {
+    throw error;
   }
 }

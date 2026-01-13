@@ -35,7 +35,6 @@ const BusinessUnitCreationPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    console.log('Save Business Unit:', formData);
     navigate('/businessUnits');
   };
 

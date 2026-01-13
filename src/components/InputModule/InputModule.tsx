@@ -49,6 +49,7 @@ export interface InputSource {
   schema?: string;
   table?: string;
   originalTableName?: string; // For preconfigured tables: stores the original table name for restoration
+  tableSourceId?: number; // For preconfigured database tables: stores the tableId for proper restoration
   customTableMetadata?: {
     source: string;
     database: string;
@@ -61,6 +62,20 @@ export interface InputSource {
     combineAs: 'merge' | 'union' | 'intersect';
     fieldMappings: any[];
   };
+  // Self source specific fields
+  isSelfSource?: boolean; // Indicates if this is a self source (for tier generation, etc.)
+  selfConfig?: {
+    input_source_names: string[]; // Array of input source names (not IDs)
+    generated_column: string; // The column name to generate
+    generated_datatype: string; // Data type of the generated column
+    assignment_sets: Array<{
+      value_to_assign: string; // Value to assign when condition matches
+      filter_sql: string; // SQL filter condition
+    }>;
+    tiering_on: string; // Comma-separated list of field names used for tiering
+  };
+  createdByModuleId?: string; // Track which module created this custom source (for order-aware filtering)
+  apiFormat?: any; // Cached API format for submission (only for File sources)
 }
 
 interface InputModuleProps {
@@ -72,17 +87,19 @@ interface InputModuleProps {
   sourcesLoading?: boolean;
   versionCounters?: { Input: number; Match: number; Append: number; Suppress: number };
   onUpdateVersionCounter?: (module: 'Input', increment: number) => void;
+  sharedCustomSources?: InputSource[]; // Sources from Append/Match/Suppress modules for validation
 }
 
-const InputModule: React.FC<InputModuleProps> = ({ 
-  hideButton = false, 
-  onAddClick, 
-  onSourcesChange, 
+const InputModule: React.FC<InputModuleProps> = ({
+  hideButton = false,
+  onAddClick,
+  onSourcesChange,
   initialSources = [],
   apiSources = null,
   sourcesLoading = false,
   versionCounters = { Input: 0, Match: 0, Append: 0, Suppress: 0 },
-  onUpdateVersionCounter
+  onUpdateVersionCounter,
+  sharedCustomSources = []
 }) => {
   const [sources, setSources] = useState<InputSource[]>(initialSources || []);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -148,51 +165,62 @@ const InputModule: React.FC<InputModuleProps> = ({
 
   const handleVersionSave = (versionData: any) => {
     let newSources: InputSource[];
-    
+
+    // Extract data from the new format
+    const { stepOrder, actionType, saveAsVersion, versionName, internalStepOrder, configJson } = versionData;
+    const { operation, input_sources, added_fields } = configJson || {};
+
+    // For UI display, extract headers from the first input source
+    const allHeaders = input_sources?.[0]?.columns || [];
+
+    // Extract source IDs/names from input_sources
+    const selectedSourceNames = input_sources?.map((src: any) => src.source_name) || [];
+
     if (editingVersion) {
       // Update existing version
       const updatedSource: InputSource = {
         ...editingVersion,
-        sourceName: versionData.name,
-        headers: versionData.orderedHeaders,
+        sourceName: versionName || editingVersion.sourceName, // Use new version name or keep existing
+        headers: allHeaders,
         versionConfig: {
-          selectedSources: versionData.selectedSources,
-          combineAs: versionData.combineAs,
-          fieldMappings: versionData.fieldMappings,
+          selectedSources: selectedSourceNames,
+          combineAs: operation === 'union' ? 'merge' : operation, // Map back to UI format
+          fieldMappings: [], // Field mappings not in new format yet
         },
+        // Store the full config for API submission
+        ...(versionData as any)
       };
 
       newSources = sources?.map(s => s?.id === editingVersion?.id ? updatedSource : s) ?? [];
       setEditingVersion(null);
     } else {
-      // Create a new versioned source with distinct naming
-      const inputVersionCount = (versionCounters?.Input || 0) + 1;
-      const distinctVersionName = `Input_${versionData.name}_v${inputVersionCount}`;
-      
+      // Create a new versioned source using the provided version name
       const versionedSource: InputSource = {
         id: `version_${Date.now()}`,
         sourceType: 'Version',
-        sourceName: distinctVersionName,
+        sourceName: versionName, // Use the version name from the modal
         subSourceType: '', // Empty for versions
         fileSource: '', // Empty for versions
-        headers: versionData.orderedHeaders,
+        headers: allHeaders,
         isVersioned: true,
         versionConfig: {
-          selectedSources: versionData.selectedSources,
-          combineAs: versionData.combineAs,
-          fieldMappings: versionData.fieldMappings,
+          selectedSources: selectedSourceNames,
+          combineAs: operation === 'union' ? 'merge' : operation, // Map back to UI format
+          fieldMappings: [], // Field mappings not in new format yet
         },
+        // Store the full config for API submission
+        ...(versionData as any)
       };
 
       // Add the versioned source to existing sources
       newSources = [...sources, versionedSource];
-      
+
       // Update version counter
       if (onUpdateVersionCounter) {
         onUpdateVersionCounter('Input', 1);
       }
     }
-    
+
     setSources(newSources);
     if (onSourcesChange) {
       onSourcesChange(newSources);
@@ -304,8 +332,27 @@ const InputModule: React.FC<InputModuleProps> = ({
             </TableHead>
             <TableBody>
               {sources?.map((source) => {
-                const headerText = source?.headers?.join(', ') || '--';
-                const headerCount = source?.headers?.length || 0;
+                // Handle both UI format and API format
+                // UI format: headers (array), selectedHeaders (array)
+                // API format: columns (array), selectedColumns (comma-separated string)
+                let displayHeaders: string[] = [];
+
+                if (source?.selectedHeaders && Array.isArray(source?.selectedHeaders)) {
+                  // UI format with selectedHeaders
+                  displayHeaders = source.selectedHeaders;
+                } else if ((source as any)?.selectedColumns && typeof (source as any)?.selectedColumns === 'string') {
+                  // API format with selectedColumns (comma-separated string)
+                  displayHeaders = (source as any).selectedColumns.split(',').map((h: string) => h.trim()).filter((h: string) => h.length > 0);
+                } else if (source?.headers && Array.isArray(source?.headers)) {
+                  // UI format with headers (fallback)
+                  displayHeaders = source.headers;
+                } else if ((source as any)?.columns && Array.isArray((source as any)?.columns)) {
+                  // API format with columns (fallback)
+                  displayHeaders = (source as any).columns;
+                }
+
+                const headerText = displayHeaders.join(', ') || '--';
+                const headerCount = displayHeaders.length || 0;
                 return (
                   <TableRow
                     key={source.id}
@@ -350,7 +397,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                File Headers ({headerCount} columns):
+                                Selected Headers ({headerCount} columns):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
                                 {headerText}
@@ -378,7 +425,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {source?.headers?.slice(0, 3).join(', ')}
+                              {displayHeaders.slice(0, 3).join(', ')}
                               {headerCount > 3 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -436,6 +483,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         onSave={handleSaveSource}
         initialSource={editingSource}
         existingSources={sources}
+        allExistingSources={[...sources, ...sharedCustomSources]}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
       />
@@ -450,6 +498,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         availableSources={sources}
         onSave={handleVersionSave}
         editingVersion={editingVersion}
+        currentVersionCount={sources.filter(s => s.isVersioned).length}
       />
     </Box>
   );

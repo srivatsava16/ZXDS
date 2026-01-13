@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { AppendConfig } from '../types';
 import { nanoid } from 'nanoid';
 
@@ -6,13 +6,20 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
   const [configs, setConfigs] = useState<AppendConfig[]>(initialConfigs || []);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
 
+  // Sync configs when initialConfigs changes (for edit mode data loading)
+  useEffect(() => {
+    if (initialConfigs && initialConfigs.length > 0) {
+      setConfigs(initialConfigs);
+    }
+  }, [initialConfigs]);
+
   // Current working config state
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedAppendOnFields, setSelectedAppendOnFields] = useState<string[]>([]);
   const [selectedAppendSources, setSelectedAppendSources] = useState<string[]>([]);
   const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
 
-  const handleAddOrUpdateConfig = useCallback(() => {
+  const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[]) => {
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source');
       return;
@@ -32,17 +39,19 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
 
     if (editingConfigId) {
       // Update existing config
+      const updatedConfig = {
+        id: editingConfigId,
+        inputSources: selectedInputSources,
+        appendOnFields: selectedAppendOnFields,
+        appendSources: selectedAppendSources,
+        appendFields: selectedAppendFields,
+        fieldMappings: fieldMappings || undefined,
+      };
+
       setConfigs(configs.map(config =>
-        config.id === editingConfigId
-          ? {
-              ...config,
-              inputSources: selectedInputSources,
-              appendOnFields: selectedAppendOnFields,
-              appendSources: selectedAppendSources,
-              appendFields: selectedAppendFields,
-            }
-          : config
+        config.id === editingConfigId ? updatedConfig : config
       ));
+
       setEditingConfigId(null);
     } else {
       // Add new config
@@ -52,7 +61,9 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
         appendOnFields: selectedAppendOnFields,
         appendSources: selectedAppendSources,
         appendFields: selectedAppendFields,
+        fieldMappings: fieldMappings || undefined,
       };
+
       setConfigs([...configs, newConfig]);
     }
 

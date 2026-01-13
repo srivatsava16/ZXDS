@@ -119,12 +119,10 @@ const RoleManagementPage: React.FC = () => {
   };
 
   const handleEdit = () => {
-    console.log('Edit role:', selectedRole);
     handleMenuClose();
   };
 
   const handleDelete = () => {
-    console.log('Delete role:', selectedRole);
     handleMenuClose();
   };
 

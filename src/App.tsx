@@ -1,127 +1,105 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Provider } from 'react-redux';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline, Box, CircularProgress } from '@mui/material';
+import { CssBaseline, Box } from '@mui/material';
+import { Provider } from 'react-redux';
 import { store } from './store';
 import theme from './theme';
-import ErrorBoundary from './components/ErrorBoundary';
 import { NotificationProvider } from './contexts/NotificationContext';
+
+// Layout Components
 import Header from './components/layout/Header';
-import Sidebar from './components/layout';
+import Sidebar from './components/layout/Sidebar';
 
-// Lazy load route components for code splitting
-const ReportPage = lazy(() => import('./views/reports/list/Index'));
-const UniversalPullPage = lazy(() => import('./views/universal-pull/Index'));
-const UniversalPullRequestPage = lazy(() => import('./views/universal-pull/list/Index'));
-const UniversalPullRequestViewPage = lazy(() => import('./views/universal-pull/view/Index'));
-const RequestCreationPage = lazy(() => import('./views/universal-pull/create/Index'));
-const LoginPage = lazy(() => import('./views/auth/LoginPage'));
-const ForgotPasswordPage = lazy(() => import('./views/auth/ForgotPasswordPage'));
-const ZipRadiusSearchPage = lazy(() => import('./views/zip-radius/Index'));
-const DataStreamsPage = lazy(() => import('./views/data-streams/Index'));
+// Auth Pages
+import LoginPage from './views/auth/LoginPage';
+import ForgotPasswordPage from './views/auth/ForgotPasswordPage';
 
-// Admin Views - Lazy loaded
-const UserManagementPage = lazy(() => import('./views/admin/user/list/Index'));
-const UserCreationPage = lazy(() => import('./views/admin/user/form/Index'));
-const RoleManagementPage = lazy(() => import('./views/admin/role/list/Index'));
-const RoleCreationPage = lazy(() => import('./views/admin/role/form/Index'));
-const BusinessUnitManagementPage = lazy(() => import('./views/admin/business-unit/list/Index'));
-const BusinessUnitCreationPage = lazy(() => import('./views/admin/business-unit/form/Index'));
-const DivisionManagementPage = lazy(() => import('./views/admin/division/list/Index'));
-const DivisionCreationPage = lazy(() => import('./views/admin/division/form/Index'));
-const SystemSettingsPage = lazy(() => import('./views/admin/system-settings/Index'));
+// Main Pages
+import UniversalPullPage from './views/universal-pull/Index';
+import UniversalPullRequestPage from './views/universal-pull/list/Index';
+import UniversalPullRequestViewPage from './views/universal-pull/view/Index';
+import ReportPage from './views/reports/list/Index';
+import ZipRadiusSearchPage from './views/zip-radius/Index';
+import RequestCreationPage from './views/universal-pull/create/Index';
+import DataStreamsPage from './views/data-streams/Index';
+import SystemSettingsPage from './views/admin/system-settings/Index';
 
-// Loading fallback component
-const LoadingFallback = () => (
-  <Box
-    sx={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      flexDirection: 'column',
-      gap: 2,
-    }}
-  >
-    <CircularProgress size={60} thickness={4} />
-    <Box sx={{ color: 'text.secondary', fontSize: '0.9rem' }}>Loading...</Box>
-  </Box>
-);
+// Admin Pages
+import UserManagementPage from './views/admin/user/list/Index';
+import UserCreationPage from './views/admin/user/form/Index';
+import RoleManagementPage from './views/admin/role/list/Index';
+import RoleCreationPage from './views/admin/role/form/Index';
+import BusinessUnitManagementPage from './views/admin/business-unit/list/Index';
+import BusinessUnitCreationPage from './views/admin/business-unit/form/Index';
+import DivisionManagementPage from './views/admin/division/list/Index';
+import DivisionCreationPage from './views/admin/division/form/Index';
 
 function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const handleMenuClick = () => {
-    setSidebarOpen(!sidebarOpen);
-  };
+  const [sidebarOpen] = useState(true);
 
   return (
-    <ErrorBoundary>
-      <Provider store={store}>
-        <ThemeProvider theme={theme}>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <NotificationProvider>
           <CssBaseline />
-          <NotificationProvider>
-            <Router basename="/zxPlatformDevEnvironment">
-              <Suspense fallback={<LoadingFallback />}>
-                <Routes>
-                  {/* Auth Routes (No Layout) */}
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Router basename="/zxPlatformDevEnvironment">
+        <Routes>
+          {/* Auth Routes (No Layout) */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-                  {/* Main App Routes (With Layout) */}
-                  <Route
-                    path="/*"
-                    element={
-                      <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
-                        <Header onMenuClick={handleMenuClick} />
-                        <Box sx={{ display: 'flex', flex: 1, pt: 8 }}>
-                          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-                          <Box
-                            component="main"
-                            sx={{
-                              flexGrow: 1,
-                              backgroundColor: 'background.default',
-                              minHeight: 'calc(100vh - 64px)',
-                              display: 'flex',
-                              flexDirection: 'column',
-                            }}
-                          >
-                            <Suspense fallback={<LoadingFallback />}>
-                              <Routes>
-                                <Route path="/" element={<Navigate to="/reports" replace />} />
-                                <Route path="/universal-pull" element={<UniversalPullPage />} />
-                                <Route path="/universal-pull/list" element={<UniversalPullRequestPage />} />
-                                <Route path="/universal-pull/view/:requestId" element={<UniversalPullRequestViewPage />} />
-                                <Route path="/reports" element={<ReportPage />} />
-                                <Route path="/data-pull-requests/create" element={<RequestCreationPage />} />
-                                <Route path="/data-pull-requests/edit/:requestId" element={<RequestCreationPage />} />
-                                <Route path="/zip-radius" element={<ZipRadiusSearchPage />} />
-                                <Route path="/userManagement" element={<UserManagementPage />} />
-                                <Route path="/createUser/new" element={<UserCreationPage />} />
-                                <Route path="/roles" element={<RoleManagementPage />} />
-                                <Route path="/roles/new" element={<RoleCreationPage />} />
-                                <Route path="/businessUnits" element={<BusinessUnitManagementPage />} />
-                                <Route path="/businessUnits/new" element={<BusinessUnitCreationPage />} />
-                                <Route path="/divisions" element={<DivisionManagementPage />} />
-                                <Route path="/divisions/new" element={<DivisionCreationPage />} />
-                                <Route path="/data-streams" element={<DataStreamsPage />} />
-                                <Route path="/systemSettings" element={<SystemSettingsPage />} />
-                                <Route path="*" element={<Navigate to="/reports" replace />} />
-                              </Routes>
-                            </Suspense>
-                          </Box>
-                        </Box>
-                      </Box>
-                    }
-                  />
-                </Routes>
-              </Suspense>
-            </Router>
-          </NotificationProvider>
-        </ThemeProvider>
-      </Provider>
-    </ErrorBoundary>
+          {/* Main App Routes (With Layout) */}
+          <Route
+            path="/*"
+            element={
+              <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+                <Header onMenuClick={() => {}} />
+                <Box sx={{ display: 'flex', flex: 1, pt: 8 }}>
+                  <Sidebar open={sidebarOpen} onClose={() => {}} />
+                  <Box
+                    component="main"
+                    sx={{
+                      flexGrow: 1,
+                      backgroundColor: 'background.default',
+                      minHeight: 'calc(100vh - 64px)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/dataPullReports" replace />} />
+                      <Route path="/universeReports" element={<UniversalPullRequestPage />} />
+                      <Route path="/universeRequests/new" element={<UniversalPullPage />} />
+                      <Route path="/universeRequests/edit/:requestId" element={<UniversalPullPage />} />
+                      <Route path="/universeRequests/view/:requestId" element={<UniversalPullRequestViewPage />} />
+                      <Route path="/dataPullReports" element={<ReportPage />} />
+                      <Route path="/zipRadiusSearch" element={<ZipRadiusSearchPage />} />
+                      <Route path="/dataPullRequests/new" element={<RequestCreationPage />} />
+                      <Route path="/dataPullRequests/edit/:requestId" element={<RequestCreationPage />} />
+                      <Route path="/request/:clientType" element={<RequestCreationPage />} />
+                      <Route path="/userManagement" element={<UserManagementPage />} />
+                      <Route path="/createUser/new" element={<UserCreationPage />} />
+                      <Route path="/roles" element={<RoleManagementPage />} />
+                      <Route path="/roles/new" element={<RoleCreationPage />} />
+                      <Route path="/businessUnits" element={<BusinessUnitManagementPage />} />
+                      <Route path="/businessUnits/new" element={<BusinessUnitCreationPage />} />
+                      <Route path="/divisions" element={<DivisionManagementPage />} />
+                      <Route path="/divisions/new" element={<DivisionCreationPage />} />
+                      <Route path="/dataStreams" element={<DataStreamsPage />} />
+                      <Route path="/systemSettings" element={<SystemSettingsPage />} />
+                      <Route path="*" element={<Navigate to="/dataPullReports" replace />} />
+                    </Routes>
+                  </Box>
+                </Box>
+              </Box>
+            }
+          />
+        </Routes>
+        </Router>
+        </NotificationProvider>
+      </ThemeProvider>
+    </Provider>
   );
 }
 

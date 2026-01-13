@@ -86,14 +86,14 @@ const ReportPage: React.FC = () => {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsRequestId, setStatsRequestId] = useState<number | null>(null);
 
-  // New API-related state
-  const [reports, setReports] = useState<ReportData[]>([]);
+  // New API-related state - Initialize with mock data
+  const [reports, setReports] = useState<ReportData[]>(mockApiResponse.data);
   const [apiCounts, setApiCounts] = useState<{
     TodayRequests: number;
     Waiting: number;
     Inprogress: number;
     Completed: number;
-  } | null>(null);
+  } | null>(mockApiResponse.Counts);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
@@ -102,19 +102,36 @@ const ReportPage: React.FC = () => {
   const loadReports = async () => {
     // Prevent multiple simultaneous API calls, but allow initial load
     if (loading && hasInitialLoaded) return;
-    
+
     try {
       setLoading(true);
       setError(null);
+
+
       const response: any = await getAllReports();
-      
+
+
       // Handle new API response format
-      if (response && response.success && response.data) {
-        setReports(response.data);
-        setApiCounts(response.Counts);
-      } 
+      if (response && response.success) {
+
+
+
+        // Set reports even if data array is empty
+        setReports(response.data || []);
+        setApiCounts(response.Counts || null);
+
+        if (!response.data || response.data.length === 0) {
+
+        }
+      } else {
+        // If API returns unsuccessful response, use mock data
+
+        const fallbackData = getMockReportsData();
+        setReports(fallbackData.data);
+        setApiCounts(fallbackData.Counts);
+      }
     } catch (err) {
-      console.warn('API failed, using fallback data:', err);
+
       setError('Failed to load reports from API, showing cached data');
       // Use the centralized mock data when API fails
       const fallbackData = getMockReportsData();
@@ -123,6 +140,7 @@ const ReportPage: React.FC = () => {
     } finally {
       setLoading(false);
       setHasInitialLoaded(true);
+
     }
   };
 
@@ -149,7 +167,7 @@ const ReportPage: React.FC = () => {
   };
 
   const handleNewRequest = () => {
-    navigate('/data-pull-requests/create');
+    navigate('/dataPullRequests/new');
   };
 
   const handleOpenFileGeneration = (requestId: number) => {
@@ -164,7 +182,7 @@ const ReportPage: React.FC = () => {
 
   const handleSaveFileGeneration = () => {
     // Handle save logic here
-    console.log('Saving file generation for request:', selectedRequestId);
+
     handleCloseFileGeneration();
   };
 
@@ -436,7 +454,7 @@ const ReportPage: React.FC = () => {
                           <IconButton
                             size="small"
                             disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
-                            onClick={() => navigate(`/data-pull-requests/edit/${row.id}`)}
+                            onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
                             sx={{
                               color: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'primary.main' : 'text.disabled',
                               '&:hover': {
@@ -457,7 +475,7 @@ const ReportPage: React.FC = () => {
                       <Tooltip title="Duplicate request" arrow>
                         <IconButton
                           size="small"
-                          onClick={() => console.log('Duplicate request:', row.id)}
+                          onClick={() => {}}
                           sx={{
                             color: 'primary.main',
                             '&:hover': {
@@ -469,11 +487,40 @@ const ReportPage: React.FC = () => {
                         </IconButton>
                       </Tooltip>
                       
-                      {/* Stats & File Generation Icon - Enabled only for Completed */}
-                      <Tooltip 
-                        title={row.status === 'Completed' 
-                          ? "View stats & generate files" 
-                          : "Stats & file generation available only for completed requests"
+                      {/* Stats Icon - Enabled only for Completed */}
+                      <Tooltip
+                        title={row.status === 'Completed'
+                          ? "View stats"
+                          : "Stats available only for completed requests"
+                        }
+                        arrow
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={row.status !== 'Completed'}
+                            onClick={() => handleOpenStats(row.id)}
+                            sx={{
+                              color: row.status === 'Completed' ? 'success.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: row.status === 'Completed' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Assessment fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+
+                      {/* File Generation Icon - Enabled only for Completed */}
+                      <Tooltip
+                        title={row.status === 'Completed'
+                          ? "Generate files"
+                          : "File generation available only for completed requests"
                         }
                         arrow
                       >
@@ -493,7 +540,7 @@ const ReportPage: React.FC = () => {
                               },
                             }}
                           >
-                            <Assessment fontSize="small" />
+                            <Description fontSize="small" />
                           </IconButton>
                         </span>
                       </Tooltip>

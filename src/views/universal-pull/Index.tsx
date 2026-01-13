@@ -120,7 +120,6 @@ const UniversalPullRequestPage: React.FC = () => {
   };
 
   const handleSave = () => {
-    console.log('Save universal pull request');
   };
 
   // Filter fields based on search query

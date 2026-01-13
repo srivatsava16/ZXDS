@@ -30,17 +30,17 @@ import {
   DialogActions,
   Menu,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, Visibility, List } from '@mui/icons-material';
+import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import MatchSourceDialog from './MatchSourceDialog';
+import DraggableMatchSources from './DraggableMatchSources';
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
-import VersionsModal from '../shared/VersionsModal';
+import MatchVersionModal from './MatchVersionModal';
 
 // Extracted modules
 import type { MatchConfig, MatchModuleProps } from './types';
 import { getPredefinedSources, getMatchOnFields, getAddFieldsFromMatchSources } from './utils/matchHelpers';
 import { useMatchConfig } from './hooks/useMatchConfig';
-import { useCustomSources } from './hooks/useCustomSources';
 import MatchConfigHeader from './components/MatchConfigHeader';
 import ViewSourceDialog from './components/ViewSourceDialog';
 
@@ -54,17 +54,82 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   sourcesLoading = false,
   versionedSources = [],
   getSourceNameById,
-  onUpdateVersionName
+  onUpdateVersionName,
+  onUpdateVersion,
+  sharedCustomSources = [],
+  onAddSharedCustomSource,
+  onEditSharedCustomSource,
+  onDeleteSharedCustomSource,
+  onConfigurationsChange
 }) => {
   // Use custom hooks for state management
   const matchConfig = useMatchConfig(initialConfigs);
-  const customSources = useCustomSources();
+
+  // Use shared custom sources from props instead of local state
+  const [editingSource, setEditingSource] = useState<InputSource | null>(null);
+  const [viewingSource, setViewingSource] = useState<InputSource | null>(null);
+
+  // Version edit states
+  const [editingVersion, setEditingVersion] = useState<any | null>(null);
+  const [viewingVersion, setViewingVersion] = useState<any | null>(null);
+  const [versionEditDialogOpen, setVersionEditDialogOpen] = useState(false);
+  const [versionViewDialogOpen, setVersionViewDialogOpen] = useState(false);
+
+  // Handlers for viewing and editing versions
+  const handleViewVersion = (version: any) => {
+    setViewingVersion(version);
+    setVersionViewDialogOpen(true);
+  };
+
+  const handleEditVersion = (version: any) => {
+    setEditingVersion(version);
+    setVersionEditDialogOpen(true);
+  };
+
+  const handleSaveVersion = (updatedVersion: any) => {
+    if (onUpdateVersion) {
+      onUpdateVersion(updatedVersion.id, updatedVersion);
+    }
+    setVersionEditDialogOpen(false);
+    setEditingVersion(null);
+  };
+
+  // Handlers for custom sources using shared state
+  const handleAddCustomSource = (source: InputSource) => {
+    if (onAddSharedCustomSource) {
+      onAddSharedCustomSource(source);
+    }
+  };
+
+  const handleEditCustomSource = (source: InputSource) => {
+    if (onEditSharedCustomSource && editingSource) {
+      onEditSharedCustomSource({ ...source, id: editingSource.id });
+    }
+    setEditingSource(null);
+  };
+
+  const handleDeleteCustomSource = (id: string) => {
+    if (onDeleteSharedCustomSource) {
+      onDeleteSharedCustomSource(id);
+    }
+  };
+
+  // Use shared custom sources from props
+  const customSources = {
+    customMatchSources: sharedCustomSources,
+    editingSource,
+    viewingSource,
+    setEditingSource,
+    setViewingSource,
+    handleAddCustomSource,
+    handleEditCustomSource,
+    handleDeleteCustomSource
+  };
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
-  const [versionsModalOpen, setVersionsModalOpen] = useState(false);
 
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);
@@ -76,11 +141,23 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     }
   }, [initialConfigs]);
 
+  // Notify parent component when configurations change (for dependency validation)
+  useEffect(() => {
+    if (onConfigurationsChange) {
+      onConfigurationsChange(matchConfig.configs);
+    }
+  }, [matchConfig.configs, onConfigurationsChange]);
+
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
   const [matchOnFieldsSearch, setMatchOnFieldsSearch] = useState('');
   const [matchSourcesSearch, setMatchSourcesSearch] = useState('');
   const [addFieldsSearch, setAddFieldsSearch] = useState('');
+
+  // Handle reordering of match sources via drag-and-drop
+  const handleReorderMatchSources = (newOrder: string[]) => {
+    matchConfig.setSelectedMatchSources(newOrder);
+  };
 
   const handleCreateVersion = () => {
     // Validation
@@ -104,9 +181,11 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     }
   };
 
-  const handleViewVersions = () => {
-    setVersionsModalOpen(true);
-  };
+  // Combine configurations and versions for unified display
+  const combinedItems = [
+    ...matchConfig.configs.map(config => ({ type: 'config' as const, data: config })),
+    ...versionedSources.map(version => ({ type: 'version' as const, data: version }))
+  ];
 
   const getSourceName = (id: string): string => {
     const inputSource = availableInputSources.find(src => src.id === id);
@@ -121,7 +200,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     return id;
   };
 
-  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources);
+  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources, fieldMappings);
 
   // Extract versioned sources from availableInputSources
   const localVersionedSources = availableInputSources.filter(src =>
@@ -142,7 +221,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   const availableAddFields = getAddFieldsFromMatchSources(
     matchConfig.selectedMatchSources,
     customSources.customMatchSources,
-    availableInputSources
+    availableInputSources,
+    apiSources
   );
 
   // Filtered lists based on search queries
@@ -194,7 +274,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         onFieldMappingClick={() => setFieldMappingDialogOpen(true)}
         onAddCustomSourceClick={() => setDialogOpen(true)}
         onCreateVersion={handleCreateVersion}
-        onViewVersions={handleViewVersions}
         canCreateVersion={!!onCreateVersionedSource}
       />
 
@@ -305,13 +384,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               >
                 <AccountTree sx={{ fontSize: 16, mr: 1 }} />
                 Create Version
-              </MenuItem>
-              <MenuItem 
-                onClick={handleViewVersions}
-                disabled={!versionedSources || versionedSources.length === 0}
-              >
-                <List sx={{ fontSize: 16, mr: 1 }} />
-                View Versions
               </MenuItem>
             </Menu>
           </Box>
@@ -681,52 +753,54 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 />
               </FormGroup>
 
-              {/* Full Match / Any Match Radio Buttons */}
-              <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
-                <RadioGroup
-                  row
-                  value={matchConfig.matchType}
-                  onChange={(e) => matchConfig.setMatchType(e.target.value as 'full' | 'any')}
-                  sx={{ gap: 1 }}
-                >
-                  <FormControlLabel
-                    value="full"
-                    control={
-                      <Radio
-                        size="small"
-                        sx={{
-                          padding: '2px',
-                          '& .MuiSvgIcon-root': { fontSize: 18 }
-                        }}
-                      />
-                    }
-                    label={
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                        Full Match
-                      </Typography>
-                    }
-                    sx={{ margin: 0 }}
-                  />
-                  <FormControlLabel
-                    value="any"
-                    control={
-                      <Radio
-                        size="small"
-                        sx={{
-                          padding: '2px',
-                          '& .MuiSvgIcon-root': { fontSize: 18 }
-                        }}
-                      />
-                    }
-                    label={
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                        Any Match
-                      </Typography>
-                    }
-                    sx={{ margin: 0 }}
-                  />
-                </RadioGroup>
-              </FormControl>
+              {/* Full Match / Any Match Radio Buttons - Hidden when Expand is enabled */}
+              {!matchConfig.expand && (
+                <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
+                  <RadioGroup
+                    row
+                    value={matchConfig.matchType}
+                    onChange={(e) => matchConfig.setMatchType(e.target.value as 'full' | 'any')}
+                    sx={{ gap: 1 }}
+                  >
+                    <FormControlLabel
+                      value="full"
+                      control={
+                        <Radio
+                          size="small"
+                          sx={{
+                            padding: '2px',
+                            '& .MuiSvgIcon-root': { fontSize: 18 }
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
+                          Full Match
+                        </Typography>
+                      }
+                      sx={{ margin: 0 }}
+                    />
+                    <FormControlLabel
+                      value="any"
+                      control={
+                        <Radio
+                          size="small"
+                          sx={{
+                            padding: '2px',
+                            '& .MuiSvgIcon-root': { fontSize: 18 }
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
+                          Any Match
+                        </Typography>
+                      }
+                      sx={{ margin: 0 }}
+                    />
+                  </RadioGroup>
+                </FormControl>
+              )}
             </Box>
           </Box>
           <FormControl fullWidth size="small">
@@ -889,6 +963,15 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 );
               })}
             </Select>
+
+            {/* Draggable Priority Order for selected sources */}
+            {matchConfig.selectedMatchSources.length > 0 && (
+              <DraggableMatchSources
+                selectedSources={matchConfig.selectedMatchSources}
+                onReorder={handleReorderMatchSources}
+                getSourceName={getSourceName}
+              />
+            )}
           </FormControl>
         </Box>
 
@@ -1093,25 +1176,29 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         </Box>
       )}
 
-      {/* Configurations List */}
-      {matchConfig.configs.length > 0 && (
+      {/* Configurations and Versions List */}
+      {combinedItems.length > 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
-              Configured Match Operations
+              Configured Match Operations & Versions
             </Typography>
-            <Chip
-              label={`${matchConfig.configs.length} configuration${matchConfig.configs.length !== 1 ? 's' : ''}`}
-              size="small"
-              sx={{
-                fontWeight: 600,
-                backgroundColor: '#FDE68A',
-                color: '#fff',
-                '&:hover': {
-                  backgroundColor: '#FCD34D',
-                }
-              }}
-            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Chip
+                label={`${matchConfig.configs.length} configuration${matchConfig.configs.length !== 1 ? 's' : ''}`}
+                size="small"
+                color="primary"
+                sx={{ fontWeight: 600 }}
+              />
+              {versionedSources.length > 0 && (
+                <Chip
+                  label={`${versionedSources.length} version${versionedSources.length !== 1 ? 's' : ''}`}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 600 }}
+                />
+              )}
+            </Box>
           </Box>
           <TableContainer
             component={Paper}
@@ -1125,30 +1212,93 @@ const MatchModule: React.FC<MatchModuleProps> = ({
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Name / Details</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Input Sources</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Match Keys</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Match Sources</TableCell>
-                  <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Expand</TableCell>
-                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Add Fields</TableCell>
-                  <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Match Type</TableCell>
                   <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {matchConfig.configs.map((config) => (
+                {combinedItems.map((item) => {
+                  const isVersion = item.type === 'version';
+                  const config = item.type === 'config' ? item.data : null;
+                  const version = item.type === 'version' ? item.data : null;
+
+                  return (
                   <TableRow
-                    key={config.id}
+                    key={isVersion ? version?.id : config?.id}
                     hover
                     sx={{
-                      backgroundColor: matchConfig.editingConfigId === config.id ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
+                      backgroundColor: !isVersion && matchConfig.editingConfigId === config?.id ? 'rgba(245, 158, 11, 0.04)' :
+                                       isVersion ? 'rgba(16, 185, 129, 0.02)' : 'transparent',
                       '&:hover': {
-                        backgroundColor: matchConfig.editingConfigId === config.id ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.04)',
+                        backgroundColor: !isVersion && matchConfig.editingConfigId === config?.id ? 'rgba(245, 158, 11, 0.08)' :
+                                         isVersion ? 'rgba(16, 185, 129, 0.06)' : 'rgba(245, 158, 11, 0.04)',
                       },
                     }}
                   >
+                    {/* Type Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Chip
+                        label={isVersion ? 'Version' : 'Config'}
+                        size="small"
+                        color={isVersion ? 'success' : 'primary'}
+                        sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+
+                    {/* Name / Details Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {isVersion ? (
+                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                          {version?.versionLabel || version?.sourceName || '--'}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Configuration #{matchConfig.configs.indexOf(config!) + 1}
+                        </Typography>
+                      )}
+                    </TableCell>
+
                     {/* Input Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.inputSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.baseInputSources && version.baseInputSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#29669520',
+                                color: '#296695',
+                                border: '1px solid #29669540',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.baseInputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.baseInputSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.inputSources && config.inputSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1156,7 +1306,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 Input Sources ({config.inputSources.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.inputSources.map(id => getSourceName(id)).join(', ')}
+                                {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1186,7 +1336,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config.inputSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
+                              {config.inputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
                               {config.inputSources.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -1200,7 +1350,11 @@ const MatchModule: React.FC<MatchModuleProps> = ({
 
                     {/* Match On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.matchOnFields.length > 0 ? (
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : config && config.matchOnFields && config.matchOnFields.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1252,7 +1406,41 @@ const MatchModule: React.FC<MatchModuleProps> = ({
 
                     {/* Match Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.matchSources.length > 0 ? (
+                      {isVersion ? (
+                        version?.operationSources && version.operationSources.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#F59E0B20',
+                                color: '#F59E0B',
+                                border: '1px solid #F59E0B40',
+                                fontWeight: 600,
+                                height: 20,
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {version.operationSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
+                              {version.operationSources.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.matchSources && config.matchSources.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1260,7 +1448,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 Match Sources ({config.matchSources.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.matchSources.map(id => getSourceName(id)).join(', ')}
+                                {config.matchSources.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1290,7 +1478,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {config.matchSources.slice(0, 2).map(id => getSourceName(id)).join(', ')}
+                              {config.matchSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
                               {config.matchSources.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -1304,24 +1492,34 @@ const MatchModule: React.FC<MatchModuleProps> = ({
 
                     {/* Expand Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      <Chip
-                        label={config.expand ? 'Yes' : 'No'}
-                        size="small"
-                        sx={{
-                          backgroundColor: config.expand ? '#10B98120' : '#EF444420',
-                          color: config.expand ? '#10B981' : '#EF4444',
-                          border: `1px solid ${config.expand ? '#10B98140' : '#EF444440'}`,
-                          fontWeight: 600,
-                          height: 20,
-                          fontSize: '0.65rem',
-                          minWidth: 40,
-                        }}
-                      />
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : (
+                        <Chip
+                          label={config?.expand ? 'Yes' : 'No'}
+                          size="small"
+                          sx={{
+                            backgroundColor: config?.expand ? '#10B98120' : '#EF444420',
+                            color: config?.expand ? '#10B981' : '#EF4444',
+                            border: `1px solid ${config?.expand ? '#10B98140' : '#EF444440'}`,
+                            fontWeight: 600,
+                            height: 20,
+                            fontSize: '0.65rem',
+                            minWidth: 40,
+                          }}
+                        />
+                      )}
                     </TableCell>
 
                     {/* Add Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {config.expand && config.addFields && config.addFields.length > 0 ? (
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : config?.expand && config.addFields && config.addFields.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
@@ -1373,56 +1571,98 @@ const MatchModule: React.FC<MatchModuleProps> = ({
 
                     {/* Match Type Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      <Chip
-                        label={config.matchType === 'full' ? 'Full Match' : 'Any Match'}
-                        size="small"
-                        sx={{
-                          backgroundColor: '#FCD34D20',
-                          color: '#F59E0B',
-                          border: '1px solid #FCD34D40',
-                          fontWeight: 600,
-                          height: 20,
-                          fontSize: '0.65rem',
-                          minWidth: 80,
-                        }}
-                      />
+                      {isVersion ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : (
+                        <Chip
+                          label={config?.matchType === 'full' ? 'Full Match' : 'Any Match'}
+                          size="small"
+                          sx={{
+                            backgroundColor: '#FCD34D20',
+                            color: '#F59E0B',
+                            border: '1px solid #FCD34D40',
+                            fontWeight: 600,
+                            height: 20,
+                            fontSize: '0.65rem',
+                            minWidth: 80,
+                          }}
+                        />
+                      )}
                     </TableCell>
 
                     {/* Actions Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => matchConfig.handleEditConfig(config)}
-                          sx={{
-                            color: 'info.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                            },
-                          }}
-                          title="Edit"
-                        >
-                          <Edit sx={{ fontSize: 16 }} />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => matchConfig.handleDeleteConfig(config.id)}
-                          sx={{
-                            color: 'error.main',
-                            padding: '3px',
-                            '&:hover': {
-                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                            },
-                          }}
-                          title="Delete"
-                        >
-                          <Delete sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Box>
+                      {isVersion ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <Tooltip title="View Details" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewVersion(version)}
+                              sx={{
+                                color: '#296695',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(41, 102, 149, 0.12)',
+                                },
+                              }}
+                            >
+                              <Visibility sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditVersion(version)}
+                              sx={{
+                                color: 'info.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                },
+                              }}
+                            >
+                              <Edit sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => matchConfig.handleEditConfig(config!)}
+                            sx={{
+                              color: 'info.main',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                              },
+                            }}
+                            title="Edit"
+                          >
+                            <Edit sx={{ fontSize: 16 }} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => matchConfig.handleDeleteConfig(config!.id)}
+                            sx={{
+                              color: 'error.main',
+                              padding: '3px',
+                              '&:hover': {
+                                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                              },
+                            }}
+                            title="Delete"
+                          >
+                            <Delete sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Box>
+                      )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1438,6 +1678,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         }}
         onSave={customSources.editingSource ? customSources.handleEditCustomSource : customSources.handleAddCustomSource}
         existingSources={customSources.customMatchSources}
+        allExistingSources={[...availableInputSources, ...sharedCustomSources]}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={customSources.editingSource}
@@ -1447,20 +1688,68 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={(mappings) => setFieldMappings(mappings)}
-        availableSources={[
-          ...availableInputSources
-            .filter(src => matchConfig.selectedInputSources.includes(src.id))
-            .map(src => ({ id: src.id, name: src.sourceName, type: 'input' as const })),
-          ...matchConfig.selectedMatchSources.map(srcId => {
-            const predefined = [...predefinedSources].find(s => s.id === srcId);
-            if (predefined) {
-              return { id: srcId, name: predefined.name, type: 'append' as const };
+        onSave={setFieldMappings}
+        availableSources={(() => {
+          // Helper function to extract all headers including nested fields
+          const getAllHeaders = (src: any) => {
+            const regularHeaders = src.headers || [];
+            const nestedFieldNames: string[] = [];
+
+            // Extract nested fields from configJson.added_fields if they exist
+            if (src.configJson?.added_fields) {
+              const addedFields = src.configJson.added_fields;
+              addedFields.forEach((sourceFields: any) => {
+                if (sourceFields.source_name === src.sourceName && sourceFields.fields) {
+                  sourceFields.fields.forEach((field: any) => {
+                    nestedFieldNames.push(field.field_name);
+                  });
+                }
+              });
             }
-            const custom = customSources.customMatchSources.find(s => s.id === srcId);
-            return { id: srcId, name: custom?.sourceName || srcId, type: 'append' as const };
-          }),
-        ]}
+
+            return [...regularHeaders, ...nestedFieldNames];
+          };
+
+          // Include sources from earlier workflow steps:
+          // 1. All input sources from Input module (Step 1)
+          // 2. Custom sources created in Append module (Step 2 - panel2)
+          // 3. Custom sources created in Suppress module (Step 3 - panel3)
+          const sources = [
+            // All input sources (regular + versioned) - include nested fields
+            ...availableInputSources.map(src => ({
+              id: src.id,
+              name: src.sourceName,
+              type: 'input' as const,
+              headers: getAllHeaders(src)
+            })),
+            // Custom sources from Append module (panel2) - include nested fields
+            ...sharedCustomSources
+              .filter(src => {
+                const createdBy = src.createdByModuleId;
+                return createdBy && (createdBy === 'panel2' || createdBy.startsWith('panel2_'));
+              })
+              .map(src => ({
+                id: src.id,
+                name: src.sourceName,
+                type: 'append' as const,
+                headers: getAllHeaders(src)
+              })),
+            // Custom sources from Suppress module (panel3) - include nested fields
+            ...sharedCustomSources
+              .filter(src => {
+                const createdBy = src.createdByModuleId;
+                return createdBy && (createdBy === 'panel3' || createdBy.startsWith('panel3_'));
+              })
+              .map(src => ({
+                id: src.id,
+                name: src.sourceName,
+                type: 'append' as const,
+                headers: getAllHeaders(src)
+              })),
+          ];
+
+          return sources;
+        })()}
         initialMappings={fieldMappings}
       />
 
@@ -1574,14 +1863,128 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         </Dialog>
       )}
 
-      {/* Versions Modal */}
-      <VersionsModal
-        open={versionsModalOpen}
-        onClose={() => setVersionsModalOpen(false)}
-        versionedSources={versionedSources}
-        getSourceNameById={getSourceNameById || (() => 'Unknown')}
-        moduleType="Match"
-        onUpdateVersionName={onUpdateVersionName}
+      {/* View Version Details Dialog */}
+      {viewingVersion && (
+        <Dialog
+          open={versionViewDialogOpen}
+          onClose={() => {
+            setVersionViewDialogOpen(false);
+            setViewingVersion(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#10B981' }}>
+              Version Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Version Name
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {viewingVersion.sourceName || viewingVersion.versionLabel}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Module
+                </Typography>
+                <Chip
+                  label={viewingVersion.sourceModule}
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 600 }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Input Sources ({viewingVersion.baseInputSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources.length > 0 ? (
+                    viewingVersion.baseInputSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceNameById?.(sourceId) || sourceId}
+                        size="small"
+                        color="primary"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No input sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  {viewingVersion.sourceModule} Sources ({viewingVersion.operationSources?.length || 0})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {viewingVersion.operationSources && viewingVersion.operationSources.length > 0 ? (
+                    viewingVersion.operationSources.map((sourceId: string) => (
+                      <Chip
+                        key={sourceId}
+                        label={getSourceNameById?.(sourceId) || sourceId}
+                        size="small"
+                        color="success"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No operation sources
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+              {viewingVersion.headers && viewingVersion.headers.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Headers ({viewingVersion.headers.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflowY: 'auto' }}>
+                    {viewingVersion.headers.map((header: string, index: number) => (
+                      <Chip
+                        key={index}
+                        label={header}
+                        size="small"
+                        sx={{ fontSize: '0.75rem' }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', p: 2 }}>
+            <Button onClick={() => {
+              setVersionViewDialogOpen(false);
+              setViewingVersion(null);
+            }} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Edit Version Modal */}
+      <MatchVersionModal
+        open={versionEditDialogOpen}
+        onClose={() => {
+          setVersionEditDialogOpen(false);
+          setEditingVersion(null);
+        }}
+        version={editingVersion}
+        availableInputSources={availableInputSources}
+        availableMatchSources={[...predefinedSources.map(s => ({ id: s.id, name: s.name })), ...customSources.customMatchSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        onSave={handleSaveVersion}
       />
     </Box>
   );

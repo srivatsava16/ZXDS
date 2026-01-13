@@ -176,11 +176,15 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
             }
           : group
       );
-      
+
+      const query = buildQuery(newGroups);
+      if (onFilterChange) {
+        onFilterChange(query);
+      }
       if (onConfigChange) {
         onConfigChange(newGroups);
       }
-      
+
       return newGroups;
     });
   };
@@ -195,11 +199,15 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
             }
           : group
       );
-      
+
+      const query = buildQuery(newGroups);
+      if (onFilterChange) {
+        onFilterChange(query);
+      }
       if (onConfigChange) {
         onConfigChange(newGroups);
       }
-      
+
       return newGroups;
     });
   };
@@ -223,11 +231,15 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
           groupOperator: 'OR' as 'AND' | 'OR', // Default operator for new groups
         },
       ];
-      
+
+      const query = buildQuery(newGroups);
+      if (onFilterChange) {
+        onFilterChange(query);
+      }
       if (onConfigChange) {
         onConfigChange(newGroups);
       }
-      
+
       return newGroups;
     });
   };
@@ -236,11 +248,15 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
     if (groups.length > 1) {
       setGroups((prevGroups) => {
         const newGroups = prevGroups.filter((group) => group.id !== groupId);
-        
+
+        const query = buildQuery(newGroups);
+        if (onFilterChange) {
+          onFilterChange(query);
+        }
         if (onConfigChange) {
           onConfigChange(newGroups);
         }
-        
+
         return newGroups;
       });
     }
@@ -316,64 +332,6 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
 
   return (
     <Box>
-      {/* Existing Filter Info */}
-      {existingFilter && showExistingFilter && (
-        <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
-              Editing Existing Filter
-            </Typography>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                setShowExistingFilter(false);
-                setExistingFilter('');
-                // Reset to default empty filter
-                const defaultGroups = [{
-                  id: Date.now().toString(),
-                  conditions: [{
-                    id: `${Date.now()}-1`,
-                    field: '',
-                    dataType: 'STRING',
-                    operator: '=',
-                    value: '',
-                  }],
-                  logicalOperator: 'AND' as 'AND' | 'OR',
-                  groupOperator: 'OR' as 'AND' | 'OR',
-                }];
-                setGroups(defaultGroups);
-                if (onFilterChange) {
-                  onFilterChange('');
-                }
-                if (onConfigChange) {
-                  onConfigChange(defaultGroups);
-                }
-              }}
-              sx={{ textTransform: 'none', fontSize: '0.8rem' }}
-            >
-              Clear & Start Fresh
-            </Button>
-          </Box>
-          <Paper
-            sx={{
-              p: 2,
-              backgroundColor: '#E3F2FD',
-              borderRadius: 2,
-              border: '1px solid #BBDEFB',
-              fontFamily: 'monospace',
-              fontSize: '0.85rem',
-            }}
-          >
-            <Typography variant="caption" sx={{ display: 'block', mb: 1, color: '#1976D2', fontWeight: 600 }}>
-              Current Filter Query:
-            </Typography>
-            <Typography sx={{ color: '#0D47A1', wordBreak: 'break-word' }}>
-              {existingFilter}
-            </Typography>
-          </Paper>
-        </Box>
-      )}
       
       {/* Filter Builder - Always Visible */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
