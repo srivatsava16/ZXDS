@@ -12,7 +12,9 @@
       "Bash(npx tsc:*)",
       "Bash(npx eslint:*)",
       "Bash(python3:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx vite build)",
+      "Bash(./node_modules/.bin/tsc:*)"
     ],
     "deny": [],
     "ask": []

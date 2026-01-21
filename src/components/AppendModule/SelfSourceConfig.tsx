@@ -58,6 +58,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
   // Track initialization to prevent infinite loops
   const isInitializing = useRef(true);
   const prevDataStringRef = useRef('');
+  const isManuallyEdited = useRef(false); // Track if user manually edited source name
 
   // Source name
   const [sourceName, setSourceName] = useState<string>(data.sourceName || '');
@@ -87,10 +88,9 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
     );
 
     selectedSources.forEach(src => {
-      // Use selectedHeaders if available, otherwise fall back to headers
-      const headersToUse = src.selectedHeaders && src.selectedHeaders.length > 0
-        ? src.selectedHeaders
-        : src.headers;
+      // Always use the full headers array to show ALL available fields
+      // Don't use selectedHeaders here - we want all fields to be available in filters
+      const headersToUse = src.headers;
 
       if (headersToUse && Array.isArray(headersToUse)) {
         headersToUse.forEach(field => fieldsSet.add(field));
@@ -144,6 +144,30 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       isInitializing.current = false;
     }, 100);
   }, []); // Only on mount
+
+  // Auto-generate source name when generated column or input sources change
+  useEffect(() => {
+    // Skip during initialization
+    if (isInitializing.current) {
+      return;
+    }
+
+    // Skip if user has manually edited the source name
+    if (isManuallyEdited.current) {
+      return;
+    }
+
+    // Skip if already in edit mode with existing source name
+    if (data.sourceName && data.id) {
+      return;
+    }
+
+    // Auto-generate source name when both conditions are met
+    if (generatedColumn && inputSourceNames.length > 0) {
+      const autoSourceName = `Self_${generatedColumn}`;
+      setSourceName(autoSourceName);
+    }
+  }, [generatedColumn, inputSourceNames, data.sourceName, data.id]);
 
   // Update parent component when local state changes
   useEffect(() => {
@@ -199,22 +223,6 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   return (
     <Box>
-      {/* Source Name */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
-          Source Name
-          <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
-        </Typography>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Enter source name..."
-          value={sourceName}
-          onChange={(e) => setSourceName(e.target.value)}
-          required
-        />
-      </Box>
-
       {/* Input Sources Multi-Select */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
@@ -522,6 +530,34 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
               : 'No fields available from selected input sources - they may not be configured properly'}
           </Typography>
         )}
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      {/* Source Name - Auto-generated, always shown at the end */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+          Source Name
+          <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
+        </Typography>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Auto-generated based on generated column"
+          value={sourceName}
+          onChange={(e) => {
+            setSourceName(e.target.value);
+            isManuallyEdited.current = true; // Mark as manually edited
+          }}
+          required
+          helperText="Source name will be auto-generated from the generated column name"
+          sx={{
+            '& .MuiFormHelperText-root': {
+              fontSize: '0.7rem',
+              mt: 0.5
+            }
+          }}
+        />
       </Box>
     </Box>
   );

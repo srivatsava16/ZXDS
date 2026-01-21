@@ -69,8 +69,9 @@ export const useVersionedSources = () => {
         const combinedHeaders = inputSource.headers || [];
 
         // Create the versioned source
+        const timestamp = Date.now();
         const versionedSource: VersionedSource = {
-          id: `versioned_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `versioned_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
           isVersioned: true,
           versionNumber: versionedSources.length + newVersions.length + 1,
           versionLabel: versionName,
@@ -84,6 +85,7 @@ export const useVersionedSources = () => {
           sourceType: 'Self',
           subSourceType: 'Versioned',
           headers: combinedHeaders,
+          createdAt: timestamp, // Add timestamp for creation order
         };
 
         newVersions.push(versionedSource);
@@ -109,11 +111,16 @@ export const useVersionedSources = () => {
     ));
   }, []);
 
+  const deleteVersion = useCallback((versionId: string) => {
+    setVersionedSources(prev => prev.filter(source => source?.id !== versionId));
+  }, []);
+
   return {
     versionedSources,
     setVersionedSources,
     handleCreateVersionedSource,
     updateVersionName,
+    deleteVersion,
     getSourceNameById,
   };
 };

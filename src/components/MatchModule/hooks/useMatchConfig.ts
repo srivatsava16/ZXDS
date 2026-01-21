@@ -23,7 +23,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
   const [expand, setExpand] = useState<boolean>(false);
   const [matchType, setMatchType] = useState<'full' | 'any'>('full');
 
-  const handleAddOrUpdateConfig = useCallback(() => {
+  const handleAddOrUpdateConfig = useCallback((availableMatchSources?: any[], apiSources?: any) => {
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source');
       return;
@@ -35,6 +35,51 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
     if (selectedMatchSources.length === 0) {
       alert('Please select at least one Match Source');
       return;
+    }
+
+    // Validation: Check if Add Fields are compatible with Match Keys (Match On Fields)
+    // The match sources must have the fields that can be used as match keys
+    if (expand && selectedAddFields.length > 0 && availableMatchSources && selectedMatchSources.length > 0) {
+      const matchSourcesWithoutMatchKeys: string[] = [];
+
+      selectedMatchSources.forEach(sourceId => {
+        // Find the source
+        let source = availableMatchSources.find((s: any) => s.id === sourceId);
+
+        // If not found in available sources, check if it's a preconfigured source from API
+        if (!source && apiSources?.dbSource?.preconfiguredTables?.match) {
+          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.match.find(
+            (table: any) => `match_${table?.tableId}` === sourceId
+          );
+          if (preconfiguredSource) {
+            source = {
+              id: sourceId,
+              sourceName: preconfiguredSource.tableName,
+              headers: preconfiguredSource.columns || []
+            };
+          }
+        }
+
+        if (source) {
+          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h.toLowerCase());
+          const missingFields = selectedMatchOnFields.filter(
+            field => !sourceHeaders.includes(field.toLowerCase())
+          );
+
+          if (missingFields.length > 0) {
+            matchSourcesWithoutMatchKeys.push(
+              `${source.sourceName || sourceId} (missing: ${missingFields.join(', ')})`
+            );
+          }
+        }
+      });
+
+      if (matchSourcesWithoutMatchKeys.length > 0) {
+        alert(
+          `Validation Error: The following match sources do not have all the required match key fields:\n\n${matchSourcesWithoutMatchKeys.join('\n')}\n\nThe Add Fields must be compatible with the selected Match Keys (Match On Fields).`
+        );
+        return;
+      }
     }
 
     if (editingConfigId) {
@@ -63,6 +108,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
         expand: expand,
         matchType: matchType,
         addFields: expand ? selectedAddFields : undefined,
+        createdAt: Date.now(), // Add timestamp for creation order
       };
       setConfigs([...configs, newConfig]);
     }
@@ -93,8 +139,6 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
     setSelectedAddFields(config.addFields || []);
     setExpand(config.expand);
     setMatchType(config.matchType);
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const handleCancelEdit = useCallback(() => {

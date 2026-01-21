@@ -51,6 +51,12 @@ export interface OutputConfig {
   fieldMappings?: FieldMapping[];
 }
 
+interface AppendConfig {
+  id: string;
+  inputSources: string[];
+  appendFields?: string[];
+}
+
 interface OutputModuleProps {
   availableInputSources?: InputSource[];
   onOutputChange?: (outputSource: string) => void;
@@ -59,6 +65,7 @@ interface OutputModuleProps {
   sourcesLoading?: boolean;
   onConfigurationsChange?: (configurations: OutputConfig[]) => void;
   onTransformedDataChange?: (transformedData: OutputAPIPayload | null) => void;
+  appendConfigurations?: AppendConfig[]; // To track appended fields
 }
 
 const OutputModule: React.FC<OutputModuleProps> = ({
@@ -68,6 +75,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   sourcesLoading = false,
   onConfigurationsChange,
   onTransformedDataChange,
+  appendConfigurations = [],
 }) => {
   const { showAlert } = useNotification();
   const [configs, setConfigs] = useState<OutputConfig[]>([]);
@@ -130,38 +138,124 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   const [outputFieldsSearch, setOutputFieldsSearch] = useState('');
   const [outputDestinationsSearch, setOutputDestinationsSearch] = useState('');
 
+  // Helper function to get all fields for a source (original + appended fields)
+  const getSourceFieldsWithAppends = useMemo(() => {
+    return (source: InputSource): string[] => {
+      // Start with original headers
+      const originalHeaders = source.selectedHeaders || source.headers || [];
+      const allFields = new Set<string>(originalHeaders);
+
+      // Find all append configurations where this source is an input source
+      appendConfigurations.forEach(config => {
+        // Check if this source is one of the input sources for this append config
+        const isInputSource = config.inputSources.some(inputSourceId => {
+          const inputSource = availableInputSources.find(s => s.id === inputSourceId);
+          return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
+        });
+
+        // If this source is used in the append config, add the appended fields
+        if (isInputSource && config.appendFields) {
+          config.appendFields.forEach(field => allFields.add(field));
+        }
+      });
+
+      return Array.from(allFields);
+    };
+  }, [appendConfigurations, availableInputSources]);
+
   // Memoize available output fields to prevent infinite re-renders
+  // IMPORTANT: Show only COMMON fields (intersection) when multiple sources are selected
   const availableOutputFields = useMemo(() => {
-    const fieldsMap = new Map<string, string>(); // originalField -> mappedField or originalField
+    if (selectedInputSources.length === 0) {
+      return [];
+    }
+
+    if (selectedInputSources.length === 1) {
+      // Single source: show all its fields (with mappings applied, including appended fields)
+      const fieldsMap = new Map<string, string>();
+      const sourceId = selectedInputSources[0];
+      const source = availableInputSources.find(src => src.id === sourceId);
+
+      if (source) {
+        const allFields = getSourceFieldsWithAppends(source); // Include appended fields
+        allFields.forEach(field => {
+          const mapping = fieldMappings.find(m => {
+            return m.selectedColumns.some(col => {
+              const [colSourceId, colFieldName] = col.split('::');
+              return colSourceId === sourceId && colFieldName === field;
+            });
+          });
+
+          if (mapping) {
+            fieldsMap.set(field, mapping.fieldName);
+          } else {
+            fieldsMap.set(field, field);
+          }
+        });
+      }
+
+      return Array.from(new Set(fieldsMap.values()));
+    }
+
+    // Multiple sources: show only COMMON fields (intersection, including appended fields)
+    const allSourceFieldSets: Set<string>[] = [];
 
     selectedInputSources.forEach(id => {
       const source = availableInputSources.find(src => src.id === id);
-      if (source?.headers) {
-        source.headers.forEach(field => {
-          // Check if this field has a mapping
+      if (source) {
+        const sourceFields = new Set<string>();
+        const allFields = getSourceFieldsWithAppends(source); // Include appended fields
+
+        allFields.forEach(field => {
           const mapping = fieldMappings.find(m => {
-            // Check if any of the selected columns in this mapping matches this source and field
             return m.selectedColumns.some(col => {
               const [colSourceId, colFieldName] = col.split('::');
               return colSourceId === id && colFieldName === field;
             });
           });
 
-          if (mapping) {
-            // Use the mapped field name
-            fieldsMap.set(`${id}::${field}`, mapping.fieldName);
-          } else {
-            // Use the original field name
-            fieldsMap.set(`${id}::${field}`, field);
-          }
+          // Use mapped field name if exists, otherwise use original
+          const displayFieldName = mapping ? mapping.fieldName : field;
+          sourceFields.add(displayFieldName.toLowerCase()); // Case-insensitive comparison
         });
+
+        allSourceFieldSets.push(sourceFields);
       }
     });
 
-    // Return unique field names (mapped or original)
-    const uniqueFields = new Set(Array.from(fieldsMap.values()));
-    return Array.from(uniqueFields);
-  }, [selectedInputSources, availableInputSources, fieldMappings]);
+    if (allSourceFieldSets.length === 0) {
+      return [];
+    }
+
+    // Find intersection of all field sets (fields common to ALL selected sources)
+    const intersection = Array.from(allSourceFieldSets[0]).filter(field => {
+      // Check if this field exists in ALL other source field sets
+      return allSourceFieldSets.every(fieldSet => fieldSet.has(field));
+    });
+
+    // Get the original casing from the first source (including appended fields)
+    const firstSource = availableInputSources.find(src => src.id === selectedInputSources[0]);
+    const resultFields = intersection.map(fieldLower => {
+      // Find the original field name with proper casing from first source
+      if (firstSource) {
+        const allFirstSourceFields = getSourceFieldsWithAppends(firstSource); // Include appended fields
+        const originalField = allFirstSourceFields.find(h => h.toLowerCase() === fieldLower);
+        if (originalField) {
+          // Check if there's a mapping for this field
+          const mapping = fieldMappings.find(m => {
+            return m.selectedColumns.some(col => {
+              const [, colFieldName] = col.split('::');
+              return colFieldName.toLowerCase() === fieldLower;
+            });
+          });
+          return mapping ? mapping.fieldName : originalField;
+        }
+      }
+      return fieldLower;
+    });
+
+    return resultFields;
+  }, [selectedInputSources, availableInputSources, fieldMappings, getSourceFieldsWithAppends]);
 
   // Memoize flattened destinations to prevent infinite re-renders
   const allOutputDestinations = useMemo(() => {
@@ -418,8 +512,6 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     setLimitCount(config?.limitCount);
     setRandom(config?.random);
     // Note: Field mappings are NOT loaded from config - they're shared at module level
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
@@ -467,7 +559,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
               {editingConfigId ? 'Edit Output Configuration' : 'Create Output Configuration'}
             </Typography>
             {editingConfigId && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block !important', mt: 0.5 }}>
                 Editing existing configuration - make changes and click Update
               </Typography>
             )}
@@ -504,7 +596,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     size="small"
                     sx={{
                       ml: 1,
-                      height: 18,
+                      height: '18px !important',
                       fontSize: '0.65rem',
                       backgroundColor: '#3B82F6',
                       color: 'white',
@@ -582,7 +674,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       fontWeight: 700,
                       mr: 0.75,
                       width: 24,
-                      height: 24,
+                      height: '24px !important',
                     }}
                   />
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -623,13 +715,31 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       return (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, py: 0.4 }}>
                           {selected.map((value) => (
-                            <Chip
-                              key={value}
-                              label={getSourceName(value)}
-                              size="small"
-                              color="primary"
-                              sx={{ height: 18, fontSize: '0.65rem' }}
-                            />
+                            <Tooltip key={value} title={getSourceName(value)} arrow>
+                              <Chip
+                                label={getSourceName(value)}
+                                size="small"
+                                color="primary"
+                                sx={{
+                                  maxWidth: '150px !important',
+                              minWidth: '50px',
+                                  height: '18px !important',
+                                  fontSize: '0.65rem',
+                                  overflow: 'hidden !important',
+                                  flexShrink: '0 !important',
+                                  '& .MuiChip-label': {
+                                    display: 'block !important',
+                                    overflow: 'hidden !important',
+                                    textOverflow: 'ellipsis !important',
+                                    whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                                  }
+                                }}
+                              />
+                            </Tooltip>
                           ))}
                         </Box>
                       );
@@ -718,25 +828,51 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <Chip
-                    label={'2'}
-                    size="small"
-                    sx={{
-                      backgroundColor: '#3B82F6',
-                      color: 'white',
-                      fontWeight: 700,
-                      mr: 0.75,
-                      width: 24,
-                      height: 24,
-                    }}
-                  />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
-                    Output Fields
-                  </Typography>
-                  <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
-                    *
-                  </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Chip
+                      label={'2'}
+                      size="small"
+                      sx={{
+                        backgroundColor: '#3B82F6',
+                        color: 'white',
+                        fontWeight: 700,
+                        mr: 0.75,
+                        width: 24,
+                        height: '24px !important',
+                      }}
+                    />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
+                      Output Fields
+                    </Typography>
+                    <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>
+                      *
+                    </Typography>
+                  </Box>
+                  {/* Combine Sources Checkbox - Show when 2+ input sources selected */}
+                  {selectedInputSources.length > 1 && (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={combineSources}
+                          onChange={(e) => setCombineSources(e.target.checked)}
+                          size="small"
+                          sx={{
+                            color: '#3B82F6',
+                            '&.Mui-checked': {
+                              color: '#3B82F6',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ fontSize: '0.7rem', color: '#2D3748', fontWeight: 500 }}>
+                          Combine Sources
+                        </Typography>
+                      }
+                      sx={{ m: 0 }}
+                    />
+                  )}
                 </Box>
                 <FormControl fullWidth size="small">
                   <Select
@@ -767,13 +903,31 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       return (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, py: 0.4 }}>
                           {selected.map((value) => (
-                            <Chip
-                              key={value}
-                              label={value}
-                              size="small"
-                              color="info"
-                              sx={{ height: 18, fontSize: '0.65rem' }}
-                            />
+                            <Tooltip key={value} title={value} arrow>
+                              <Chip
+                                label={value}
+                                size="small"
+                                color="info"
+                                sx={{
+                                  maxWidth: '150px !important',
+                              minWidth: '50px',
+                                  height: '18px !important',
+                                  fontSize: '0.65rem',
+                                  overflow: 'hidden !important',
+                                  flexShrink: '0 !important',
+                                  '& .MuiChip-label': {
+                                    display: 'block !important',
+                                    overflow: 'hidden !important',
+                                    textOverflow: 'ellipsis !important',
+                                    whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                                  }
+                                }}
+                              />
+                            </Tooltip>
                           ))}
                         </Box>
                       );
@@ -859,142 +1013,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 </FormControl>
               </Box>
 
-              {/* Step 3: Combine Sources - CHECKBOX + Dropdown */}
-              <Box
-                sx={{
-                  flex: 1,
-                  p: 1.5,
-                  backgroundColor: 'white',
-                  borderRadius: 2,
-                  border: '1px solid',
-                  borderColor: 'rgba(0, 0, 0, 0.08)',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <Chip
-                    label={'3'}
-                    size="small"
-                    sx={{
-                      backgroundColor: '#3B82F6',
-                      color: 'white',
-                      fontWeight: 700,
-                      mr: 0.75,
-                      width: 24,
-                      height: 24,
-                    }}
-                  />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
-                    Combine Sources
-                  </Typography>
-                </Box>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={combineSources}
-                      onChange={(e) => setCombineSources(e.target.checked)}
-                      disabled={selectedInputSources.length < 2}
-                      size="small"
-                      sx={{
-                        color: '#3B82F6',
-                        '&.Mui-checked': {
-                          color: '#3B82F6',
-                        },
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography variant="body2" sx={{ fontSize: '0.7rem', color: '#2D3748' }}>
-                      {selectedInputSources.length < 2
-                        ? 'Select 2+ sources'
-                        : 'Enable'}
-                    </Typography>
-                  }
-                  sx={{ mb: combineSources ? 1 : 0 }}
-                />
-                {combineSources && (
-                  <FormControl fullWidth size="small">
-                    <Select
-                      multiple
-                      value={combineSourcesList}
-                      onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                        if (value.includes('select-all-combine-sources')) {
-                          if (combineSourcesList.length === selectedInputSources.length) {
-                            setCombineSourcesList([]);
-                          } else {
-                            setCombineSourcesList(selectedInputSources);
-                          }
-                        } else {
-                          setCombineSourcesList(value);
-                        }
-                      }}
-                      input={<OutlinedInput />}
-                      renderValue={(selected) => {
-                        if (selected.length === 0) {
-                          return (
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                              Select
-                            </Typography>
-                          );
-                        }
-                        return (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, py: 0.3 }}>
-                            {selected.map((value) => (
-                              <Chip
-                                key={value}
-                                label={getSourceName(value)}
-                                size="small"
-                                sx={{
-                                  height: 16,
-                                  fontSize: '0.6rem',
-                                  backgroundColor: '#10B981',
-                                  color: '#fff',
-                                }}
-                              />
-                            ))}
-                          </Box>
-                        );
-                      }}
-                      displayEmpty
-                      sx={{
-                        backgroundColor: 'white',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(0, 0, 0, 0.15)',
-                        },
-                      }}
-                    >
-                      <MenuItem disabled value="">
-                        <em style={{ fontSize: '0.75rem' }}>Select Sources</em>
-                      </MenuItem>
-                      <MenuItem
-                        value="select-all-combine-sources"
-                        sx={{
-                          backgroundColor: '#f0f0f0',
-                          fontWeight: 600,
-                          borderBottom: '1px solid #ddd',
-                        }}
-                      >
-                        <Checkbox
-                          checked={selectedInputSources.length > 0 && combineSourcesList.length === selectedInputSources.length}
-                          indeterminate={combineSourcesList.length > 0 && combineSourcesList.length < selectedInputSources.length}
-                          size="small"
-                        />
-                        <ListItemText primary="Select All" primaryTypographyProps={{ fontSize: '0.75rem' }} />
-                      </MenuItem>
-                      {selectedInputSources.map((sourceId) => (
-                        <MenuItem key={sourceId} value={sourceId}>
-                          <Checkbox checked={combineSourcesList.indexOf(sourceId) > -1} size="small" />
-                          <ListItemText primary={getSourceName(sourceId)} primaryTypographyProps={{ fontSize: '0.75rem' }} />
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-              </Box>
-
-              {/* Priority Order - Show when Combine Sources is enabled */}
-              {combineSources && priorityOrder.length > 0 && (
+              {/* Priority Order - Show as separate section when Combine Sources is enabled */}
+              {combineSources && selectedInputSources.length > 1 && priorityOrder.length > 0 && (
                 <Box
                   sx={{
                     flex: 1,
@@ -1020,8 +1040,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 </Box>
               )}
 
-              {/* Field Priority - Show when Combine Sources is enabled */}
-              {combineSources && (
+              {/* Field Priority Order - Show as separate section when Combine Sources is enabled */}
+              {combineSources && selectedInputSources.length > 1 && (
                 <Box
                   sx={{
                     flex: 1,
@@ -1035,7 +1055,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748' }}>
-                      Field Priority
+                      Field Priority Order
                     </Typography>
                   </Box>
                   <FormControl fullWidth size="small">
@@ -1064,19 +1084,34 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                           );
                         }
                         return (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, py: 0.3 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, py: 0.3, alignItems: 'center' }}>
                             {selected.map((value, index) => (
-                              <Chip
-                                key={value}
-                                label={`${index + 1}. ${value}`}
-                                size="small"
-                                sx={{
-                                  height: 16,
-                                  fontSize: '0.6rem',
-                                  backgroundColor: '#8B5CF6',
-                                  color: '#fff',
-                                }}
-                              />
+                              <Tooltip key={value} title={`${index + 1}. ${value}`} arrow>
+                                <Chip
+                                  label={`${index + 1}. ${value}`}
+                                  size="small"
+                                  sx={{
+                                    maxWidth: '150px !important',
+                                    minWidth: '50px',
+                                    height: '16px !important',
+                                    fontSize: '0.6rem',
+                                    overflow: 'hidden !important',
+                                    flexShrink: '0 !important',
+                                    backgroundColor: '#8B5CF6',
+                                    color: '#fff',
+                                    '& .MuiChip-label': {
+                                      display: 'block !important',
+                                      overflow: 'hidden !important',
+                                      textOverflow: 'ellipsis !important',
+                                      whiteSpace: 'nowrap !important',
+                                      paddingLeft: '8px !important',
+                                      paddingRight: '8px !important',
+                                      textAlign: 'left !important',
+                                      direction: 'ltr !important',
+                                    }
+                                  }}
+                                />
+                              </Tooltip>
                             ))}
                           </Box>
                         );
@@ -1209,7 +1244,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 </Box>
               </Box>
 
-              {/* Step 4: Output Destination - Always shown */}
+              {/* Step 3: Output Destination - Always shown */}
               <Box
                 sx={{
                   flex: 1,
@@ -1223,7 +1258,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                   <Chip
-                    label={'4'}
+                    label={'3'}
                     size="small"
                     sx={{
                       backgroundColor: '#3B82F6',
@@ -1231,7 +1266,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       fontWeight: 700,
                       mr: 0.75,
                       width: 24,
-                      height: 24,
+                      height: '24px !important',
                     }}
                   />
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -1265,7 +1300,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                             label={dest.type}
                             size="small"
                             sx={{
-                              height: 18,
+                              height: '18px !important',
                               fontSize: '0.6rem',
                               backgroundColor: dest.type === 'SFTP' ? '#3B82F620' : dest.type === 'NFS' ? '#10B98120' : '#F59E0B20',
                               color: dest.type === 'SFTP' ? '#3B82F6' : dest.type === 'NFS' ? '#10B981' : '#F59E0B',
@@ -1340,7 +1375,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                 label={dest.type}
                                 size="small"
                                 sx={{
-                                  height: 18,
+                                  height: '18px !important',
                                   fontSize: '0.6rem',
                                   backgroundColor: dest.type === 'SFTP' ? '#3B82F620' : dest.type === 'NFS' ? '#10B98120' : '#F59E0B20',
                                   color: dest.type === 'SFTP' ? '#3B82F6' : dest.type === 'NFS' ? '#10B981' : '#F59E0B',
@@ -1352,7 +1387,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                   label={dest.path}
                                   size="small"
                                   sx={{
-                                    height: 18,
+                                    height: '18px !important',
                                     fontSize: '0.55rem',
                                     backgroundColor: '#E5E7EB',
                                     color: '#6B7280',
@@ -1365,7 +1400,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                   label={dest.bucket}
                                   size="small"
                                   sx={{
-                                    height: 18,
+                                    height: '18px !important',
                                     fontSize: '0.55rem',
                                     backgroundColor: '#E5E7EB',
                                     color: '#6B7280',
@@ -1445,7 +1480,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                   onClick={handleAddOrUpdateConfig}
                   sx={{
                     width: 44,
-                    height: 44,
+                    height: '44px !important',
                     backgroundColor: '#3B82F6',
                     color: 'white',
                     boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)',
@@ -1541,7 +1576,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
                                       Input Sources ({config?.inputSources?.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
@@ -1561,7 +1596,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       color: '#296695',
                                       border: '1px solid #29669540',
                                       fontWeight: 600,
-                                      height: 20,
+                                      height: '20px !important',
                                       fontSize: '0.65rem',
                                     }}
                                   />
@@ -1570,9 +1605,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                     color="text.secondary"
                                     sx={{
                                       fontSize: '0.7rem',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden !important',
+                                      textOverflow: 'ellipsis !important',
+                                      whiteSpace: 'nowrap !important',
                                     }}
                                   >
                                     {config?.inputSources?.slice(0, 2)?.map(id => getSourceName(id))?.join(', ')}
@@ -1593,7 +1628,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
                                       Output Fields ({config.outputFields.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
@@ -1613,7 +1648,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       color: '#0EA5E9',
                                       border: '1px solid #0EA5E940',
                                       fontWeight: 600,
-                                      height: 20,
+                                      height: '20px !important',
                                       fontSize: '0.65rem',
                                     }}
                                   />
@@ -1622,9 +1657,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                     color="text.secondary"
                                     sx={{
                                       fontSize: '0.7rem',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden !important',
+                                      textOverflow: 'ellipsis !important',
+                                      whiteSpace: 'nowrap !important',
                                     }}
                                   >
                                     {config.outputFields.slice(0, 2).join(', ')}
@@ -1645,7 +1680,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
                                       Output Destinations ({config.destinations.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
@@ -1665,7 +1700,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       color: '#10B981',
                                       border: '1px solid #10B98140',
                                       fontWeight: 600,
-                                      height: 20,
+                                      height: '20px !important',
                                       fontSize: '0.65rem',
                                     }}
                                   />
@@ -1674,9 +1709,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                     color="text.secondary"
                                     sx={{
                                       fontSize: '0.7rem',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden !important',
+                                      textOverflow: 'ellipsis !important',
+                                      whiteSpace: 'nowrap !important',
                                     }}
                                   >
                                     {config.destinations.slice(0, 2).join(', ')}
@@ -1697,7 +1732,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               label={config.combineSources ? 'Yes' : 'No'}
                               size="small"
                               color={config.combineSources ? 'success' : 'default'}
-                              sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600 }}
+                              sx={{ height: '20px !important', fontSize: '0.65rem', fontWeight: 600 }}
                             />
                           </TableCell>
 
@@ -1707,7 +1742,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
                                       Priority Order:
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
@@ -1723,9 +1758,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                   color="text.secondary"
                                   sx={{
                                     fontSize: '0.7rem',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden !important',
+                                    textOverflow: 'ellipsis !important',
+                                    whiteSpace: 'nowrap !important',
                                     cursor: 'help',
                                   }}
                                 >

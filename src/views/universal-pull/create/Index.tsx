@@ -43,7 +43,7 @@ import {
   ExpandMore,
   ExpandLess,
 } from '@mui/icons-material';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   closestCenter,
@@ -76,7 +76,7 @@ import { checkRequestName, submitRequest, getEditRequest, type SubmitRequestPayl
 import type { StatsConfiguration, VersionedSource, CountOnField } from './types';
 import { transformAllStatsToAPI } from './types';
 import { createModuleDefinitions } from './utils/moduleDefinitions';
-import { validateModuleMove, validateCustomSourceDependencies } from './utils/moduleHelpers';
+import { validateModuleMove, validateCustomSourceDependencies, getModuleType } from './utils/moduleHelpers';
 import { validateRequestName } from './utils/requestValidators';
 import SortableAccordionItem from './components/SortableAccordionItem';
 import SortableStep from './components/SortableStep';
@@ -87,6 +87,8 @@ import { useDataLoading } from './hooks/useDataLoading';
 const RequestCreationPage: React.FC = () => {
   const navigate = useNavigate();
   const { requestId } = useParams<{ requestId?: string }>();
+  const [searchParams] = useSearchParams();
+  const duplicateId = searchParams.get('duplicate');
 
   // View and UI state
   const [viewMode, setViewMode] = useState<'accordion' | 'stepper'>('accordion');
@@ -132,7 +134,6 @@ const RequestCreationPage: React.FC = () => {
 
   // Clear selected fields when input sources change (but not when editing)
   useEffect(() => {
-    console.log("req",requestId)
     // Don't clear fields if we're in edit mode
     if (!editingStatsId) {
       setSelectedCountsOn([]);
@@ -234,7 +235,7 @@ const RequestCreationPage: React.FC = () => {
           database: source?.database || source?.dbName || '',
           schema: source?.schema || '',
           filterQuery: source?.filters || '',  // Map 'filters' from API to 'filterQuery' in UI
-          filterConfig: source?.filterConfig || null,
+          filterJson: source?.filterJson || null,
           isCustomTable: source?.isCustomTable || 0,
           // File source specific fields
           fileSource: source?.fileSource || '',
@@ -341,8 +342,8 @@ const RequestCreationPage: React.FC = () => {
         const actionType = workflowItem?.actionType;
         const configJson = workflowItem?.configJson;
 
-        if (actionType === 'P' && configJson) {
-          // Input Version (actionType 'P' for Processing/Version)
+        if (actionType === 'I' && configJson) {
+          // Input Version (actionType 'I' for Processing/Version)
           const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name || src) || [];
           const versionName = workflowItem?.versionName || `Version_${index}`;
 
@@ -360,7 +361,7 @@ const RequestCreationPage: React.FC = () => {
             selectedHeaders: configJson?.merge_keys || configJson?.priority_order || [],
             // Store workflow properties for payload reconstruction
             stepOrder: workflowItem?.stepOrder || 1,
-            actionType: 'P',
+            actionType: 'I',
             saveAsVersion: workflowItem?.saveAsVersion || 1,
             versionName: versionName,
             internalStepOrder: workflowItem?.internalStepOrder,
@@ -584,17 +585,20 @@ const RequestCreationPage: React.FC = () => {
     return transformedData;
   };
 
-  // Load request data when in edit mode
+  // Load request data when in edit mode or duplicate mode
   useEffect(() => {
     const loadEditRequest = async () => {
-      if (!requestId) return;
+      const idToLoad = requestId || duplicateId;
+      if (!idToLoad) return;
 
       // Wait for apiSources to load before transforming edit request data
       // This ensures preconfigured table IDs can be properly resolved
       if (sourcesLoading) {
-        console.log('[Edit Mode] Waiting for apiSources to load...');
+        console.log('[Edit/Duplicate Mode] Waiting for apiSources to load...');
         return;
       }
+
+      const isDuplicateMode = !!duplicateId && !requestId;
 
       // // Demo mode: Load sample data for requestId === '999'
       // if (requestId === '999') {
@@ -643,194 +647,42 @@ const RequestCreationPage: React.FC = () => {
       //   return;
       // }
 
-      // Edit mode: Make API call to fetch request data
+      // Edit/Duplicate mode: Make API call to fetch request data
       try {
         setEditRequestLoading(true);
         setEditRequestError('');
 
-        const response = await getEditRequest(parseInt(requestId, 10));
+        const response = await getEditRequest(parseInt(idToLoad, 10));
 
         let dataToLoad: any = null;
 
-        if (response.success && response.data) {
-          // Transform API response to internal format
-          dataToLoad = transformApiDataToInternalFormat(response.data, apiSources);
+        // Check if response has the expected structure (direct data format)
+        if (response && (response as any).requestDetails && (response as any).inputSources) {
+          // Response is in direct format - transform it
+          dataToLoad = transformApiDataToInternalFormat(response, apiSources);
+        } else if (response && (response as any).success && (response as any).data) {
+          // Handle wrapped format if API sometimes returns it
+          dataToLoad = transformApiDataToInternalFormat((response as any).data, apiSources);
         } else {
-          // API failed or returned no data - use mock data
-          console.warn('API failed to load request data, using mock data:', response.message);
+          // API failed or returned no data - show error
+          console.error('API failed to load request data:', (response as any)?.message || response);
+          const errorMsg = `Failed to load request data: ${(response as any)?.message || 'Unknown error. Please try again.'}`;
+          setEditRequestLoading(false);
+          setEditRequestError(errorMsg);
 
-          // Mock data structure
-          const mockData = {
-            "requestDetails": {
-              "requestName": "final_test",
-              "createdBy": "system",
-              "updatedBy": "system",
-              "requestType": "A",
-              "sendNotificationOn": "S",
-              "recipientEmail": "test@test"
-            },
-            "inputSources": [
-              {
-                "sourceName": "PROFILE",  // User's custom Table Source Name
-                "tableName": "PROFILE",  // Actual database table name
-                "sourceType": "T",
-                "columnSelectionType": "A",
-                "columns": [
-                  "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                  "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                  "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                ],
-                "selectedColumns": "EMAIL_ID,PROFILE_ID,LIST_ID,EMAIL_MD5,MA1566,CREDIT_SCORE,INCOME,AGE,ZIP_CODE,FIRST_NAME,LAST_NAME,PHONE_NUMBER,STATE,CITY,ACCOUNT_STATUS,EMPLOYMENT_STATUS,ACCOUNT_BALANCE",
-                "inputType": "I",
-                "filters": "",
-                "isCustomTable": 0,
-                "sourceOption": 1  // Table ID for preconfigured table
-              }
-            ],
-            "workflow": [
-              {
-                "stepOrder": 1,
-                "internalStepOrder": 1,
-                "actionType": "I",
-                "configJson": {
-                  "input_sources": ["PROFILE"]
-                }
-              },
-              {
-                "stepOrder": 1,
-                "actionType": "P",
-                "saveAsVersion": 1,
-                "versionName": "PROFILE_version",
-                "internalStepOrder": 2,
-                "configJson": {
-                  "operation": "union",
-                  "input_sources": [
-                    {
-                      "source_name": "PROFILE",
-                      "columns": [
-                        "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                        "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                        "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                      ]
-                    }
-                  ],
-                  "added_fields": [],
-                  "field_mappings": [],
-                  "merge_keys": [
-                    "ACCOUNT_BALANCE", "ACCOUNT_STATUS", "AGE", "CITY", "CREDIT_SCORE", "EMAIL_ID", "EMAIL_MD5",
-                    "EMPLOYMENT_STATUS", "FIRST_NAME", "INCOME", "LAST_NAME", "LIST_ID", "MA1566", "PHONE_NUMBER",
-                    "PROFILE_ID", "STATE", "ZIP_CODE"
-                  ],
-                  "priority_order": [
-                    "ACCOUNT_BALANCE", "ACCOUNT_STATUS", "AGE", "CITY", "CREDIT_SCORE", "EMAIL_ID", "EMAIL_MD5",
-                    "EMPLOYMENT_STATUS", "FIRST_NAME", "INCOME", "LAST_NAME", "LIST_ID", "MA1566", "PHONE_NUMBER",
-                    "PROFILE_ID", "STATE", "ZIP_CODE"
-                  ]
-                }
-              },
-              {
-                "stepOrder": 2,
-                "internalStepOrder": 1,
-                "actionType": "A",
-                "configJson": {
-                  "input_sources": [
-                    {
-                      "source_name": "PROFILE",
-                      "columns": [
-                        "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                        "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                        "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                      ]
-                    }
-                  ],
-                  "match_keys": ["EMAIL_ID"],
-                  "is_self_append": false,
-                  "append_sources": [
-                    {
-                      "source_type": "preconfigured",
-                      "source_name": "ZXDS_ALLCHANNEL_Q1_2026_UNIVERSE_PERMISSIONED_DND",
-                      "fields": ["MD5"],
-                      "priority": 1
-                    }
-                  ],
-                  "field_mappings": []
-                }
-              },
-              {
-                "stepOrder": 3,
-                "internalStepOrder": 1,
-                "actionType": "S",
-                "configJson": {
-                  "input_sources": [
-                    {
-                      "source_name": "PROFILE",
-                      "columns": [
-                        "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                        "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                        "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                      ]
-                    }
-                  ],
-                  "suppress_on_fields": ["PROFILE_ID"],
-                  "suppress_sources": [
-                    {
-                      "source_type": "preconfigured",
-                      "source_name": "ZXDS_Q1_2026_UNIVERSE_NON_PERMISSIONED_DND"
-                    }
-                  ]
-                }
-              }
-            ],
-            "stats": [
-              {
-                "input_sources": [
-                  {
-                    "source_name": "PROFILE",
-                    "columns": [
-                      "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                      "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                      "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                    ]
-                  }
-                ],
-                "generate_counts_config": {
-                  "counts": [
-                    {
-                      "field": "ACCOUNT_STATUS",
-                      "is_distinct": true
-                    }
-                  ]
-                },
-                "breakdown_by": ["AGE"]
-              }
-            ],
-            "output": [
-              {
-                "config": {
-                  "input_sources": ["PROFILE"],
-                  "output_fields": ["LIST_ID"],
-                  "field_mappings": [],
-                  "combine_sources": false,
-                  "field_priority": []
-                },
-                "destinationType": "preconfigured",
-                "destinationName": "ZXDS_NEW_SFTP",
-                "limitations": {
-                  "limit_records": null,
-                  "shuffle_records": false
-                }
-              }
-            ]
-          };
-
-          dataToLoad = transformApiDataToInternalFormat(mockData, apiSources);
+          // Redirect after showing error for 3 seconds
+          setTimeout(() => {
+            navigate('/dataPullReports');
+          }, 3000);
+          return;
         }
 
         // Populate form fields with the transformed data
         if (dataToLoad) {
-          // Load request name
+          // Load request name (append _duplicate suffix if in duplicate mode)
           if (dataToLoad?.requestName) {
-            setRequestName(dataToLoad.requestName);
+            const name = isDuplicateMode ? `${dataToLoad.requestName}_duplicate` : dataToLoad.requestName;
+            setRequestName(name);
           }
 
           // Load input sources
@@ -885,268 +737,33 @@ const RequestCreationPage: React.FC = () => {
           setScheduledDateTimeError('');
         }
 
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading edit request:', error);
-        console.warn('Using mock data due to API error');
 
-        
-
-        // Use mock data when API throws an error
-        const mockData = {
-          "requestDetails": {
-            "requestName": "final_test",
-            "createdBy": "system",
-            "updatedBy": "system",
-            "requestType": "A",
-            "sendNotificationOn": "S",
-            "recipientEmail": "test@test"
-          },
-          "inputSources": [
-            {
-              "sourceName": "PROFILE123",  // User's custom Table Source Name
-              "tableName": "PROFILE",  // Actual database table name
-              "sourceType": "T",
-              "columnSelectionType": "A",
-              "columns": [
-                "EMAIL_ID",  "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-              ],
-              "selectedColumns": "EMAIL_ID,PROFILE_ID",
-              "inputType": "I",
-              "filters": "",
-              "isCustomTable": 0,
-              "sourceOption": 2  // Table ID for preconfigured table
-            } , 
-
-            {
-    "sourceName": "MedicomCoreResponders_1223_1231_AfterSupp_zxds_up_new",
-    "sourceType": "F",
-    "dataSourceId": 8,
-    "filePath": "/ftp/Mediacom/Switch_Save/MedicomCoreResponders_1223_1231_AfterSupp_zxds_up_new.csv",
-    "delimiter": ",",
-    "fileFormat": "CSV",
-    "isHeader": 1,
-    "columnSelectionType": "A",
-    "columns": [
-        "email",
-        "open_date",
-        "click_date",
-        "exec_date",
-        "touch"
-    ],
-    "selectedColumns": "email,open_date,click_date,exec_date,touch",
-    "inputType": "I",
-    "filters": "",
-    "customHeaders": "",
-    "filterConfig": null,
-    "subSourceType": "SFTP"
-}
-            
-          ],
-          "workflow": [
-            {
-              "stepOrder": 1,
-              "internalStepOrder": 1,
-              "actionType": "I",
-              "configJson": {
-                "input_sources": ["PROFILE"]
-              }
-            },
-            {
-              "stepOrder": 1,
-              "actionType": "P",
-              "saveAsVersion": 1,
-              "versionName": "PROFILE_version",
-              "internalStepOrder": 2,
-              "configJson": {
-                "operation": "union",
-                "input_sources": [
-                  {
-                    "source_name": "PROFILE",
-                    "columns": [
-                      "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                      "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                      "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                    ]
-                  }
-                ],
-                "added_fields": [],
-                "field_mappings": [],
-                "merge_keys": [
-                  "ACCOUNT_BALANCE", "ACCOUNT_STATUS", "AGE", "CITY", "CREDIT_SCORE", "EMAIL_ID", "EMAIL_MD5",
-                  "EMPLOYMENT_STATUS", "FIRST_NAME", "INCOME", "LAST_NAME", "LIST_ID", "MA1566", "PHONE_NUMBER",
-                  "PROFILE_ID", "STATE", "ZIP_CODE"
-                ],
-                "priority_order": [
-                  "ACCOUNT_BALANCE", "ACCOUNT_STATUS", "AGE", "CITY", "CREDIT_SCORE", "EMAIL_ID", "EMAIL_MD5",
-                  "EMPLOYMENT_STATUS", "FIRST_NAME", "INCOME", "LAST_NAME", "LIST_ID", "MA1566", "PHONE_NUMBER",
-                  "PROFILE_ID", "STATE", "ZIP_CODE"
-                ]
-              }
-            },
-            {
-              "stepOrder": 2,
-              "internalStepOrder": 1,
-              "actionType": "A",
-              "configJson": {
-                "input_sources": [
-                  {
-                    "source_name": "PROFILE",
-                    "columns": [
-                      "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                      "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                      "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                    ]
-                  }
-                ],
-                "match_keys": ["EMAIL_ID"],
-                "is_self_append": false,
-                "append_sources": [
-                  {
-                    "source_type": "preconfigured",
-                    "source_name": "PROFILE",
-                    "fields": ["PROFILE_ID", "EMAIL_ADDRESS_MD5"],
-                    "priority": 1
-                  }
-                ],
-                "field_mappings": []
-              }
-            },
-            {
-              "stepOrder": 3,
-              "internalStepOrder": 1,
-              "actionType": "S",
-              "configJson": {
-                "input_sources": [
-                  {
-                    "source_name": "PROFILE",
-                    "columns": [
-                      "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                      "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                      "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                    ]
-                  }
-                ],
-                "suppress_on_fields": ["EMAIL_MD5"],
-                "suppress_sources": [
-                  {
-                    "source_type": "preconfigured",
-                    "source_name": "DNS_SUPPRESSION_LIST"
-                  }
-                ]
-              }
-            }
-          ],
-          "stats": [
-            {
-              "input_sources": [
-                {
-                  "source_name": "PROFILE",
-                  "columns": [
-                    "EMAIL_ID", "PROFILE_ID", "LIST_ID", "EMAIL_MD5", "MA1566", "CREDIT_SCORE", "INCOME", "AGE",
-                    "ZIP_CODE", "FIRST_NAME", "LAST_NAME", "PHONE_NUMBER", "STATE", "CITY", "ACCOUNT_STATUS",
-                    "EMPLOYMENT_STATUS", "ACCOUNT_BALANCE"
-                  ]
-                }
-              ],
-              "generate_counts_config": {
-                "counts": [
-                  {
-                    "field": "ACCOUNT_STATUS",
-                    "is_distinct": true
-                  }
-                ]
-              },
-              "breakdown_by": ["AGE"]
-            }
-          ],
-          "output": [
-            {
-              "config": {
-                "input_sources": ["PROFILE"],
-                "output_fields": ["LIST_ID"],
-                "field_mappings": [],
-                "combine_sources": false,
-                "field_priority": []
-              },
-              "destinationType": "preconfigured",
-              "destinationName": "ZXDS_NEW_SFTP",
-              "limitations": {
-                "limit_records": null,
-                "shuffle_records": false
-              }
-            }
-          ]
-        };
-
-        const dataToLoad = transformApiDataToInternalFormat(mockData, apiSources);
-
-        // Load the mock data into form fields
-        if (dataToLoad) {
-          // Load request name
-          if (dataToLoad?.requestName) {
-            setRequestName(dataToLoad.requestName);
-          }
-
-          // Load input sources
-          if (dataToLoad?.inputSources && Array.isArray(dataToLoad.inputSources)) {
-            setInputSources(dataToLoad.inputSources);
-          }
-
-          // Load input versions
-          if (dataToLoad?.inputVersions && Array.isArray(dataToLoad.inputVersions)) {
-            setVersionedSources(dataToLoad.inputVersions);
-          }
-
-          // Load append configurations
-          if (dataToLoad?.appendConfigs && Array.isArray(dataToLoad.appendConfigs) && dataToLoad.appendConfigs.length > 0) {
-            setInitialAppendConfigs(dataToLoad.appendConfigs);
-          }
-
-          // Load suppress configurations
-          if (dataToLoad?.suppressConfigs && Array.isArray(dataToLoad.suppressConfigs) && dataToLoad.suppressConfigs.length > 0) {
-            setInitialSuppressConfigs(dataToLoad.suppressConfigs);
-          }
-
-          // Load match configurations
-          if (dataToLoad?.matchConfigs && Array.isArray(dataToLoad.matchConfigs) && dataToLoad.matchConfigs.length > 0) {
-            setInitialMatchConfigs(dataToLoad.matchConfigs);
-          }
-
-          // Load output configurations
-          if (dataToLoad?.outputConfigs && Array.isArray(dataToLoad.outputConfigs) && dataToLoad.outputConfigs.length > 0) {
-            setInitialOutputConfigs(dataToLoad.outputConfigs);
-          }
-
-          // Load stats configurations
-          if (dataToLoad?.statsConfigs && Array.isArray(dataToLoad.statsConfigs) && dataToLoad.statsConfigs.length > 0) {
-            setStatsConfigurations(dataToLoad.statsConfigs);
-          }
-
-          // Load schedule configuration
-          if (dataToLoad?.scheduleConfig) {
-            const schedConfig = dataToLoad.scheduleConfig;
-            setScheduleType(schedConfig?.scheduleType || 'adhoc');
-            setScheduledDateTime(schedConfig?.scheduledDateTime || '');
-            setNotificationWhen(schedConfig?.emailNotification || 'standard');
-            if (schedConfig?.notificationEmails && Array.isArray(schedConfig.notificationEmails) && schedConfig.notificationEmails.length > 0) {
-              setRecipientEmail(schedConfig.notificationEmails.join(', ') || '');
-            }
-          }
-
-          // Clear validation errors
-          setRequestNameError('');
-          setRecipientEmailError('');
-          setScheduledDateTimeError('');
+        // Show error message
+        let errorMessage = 'Failed to load request data. ';
+        if (error?.message) {
+          errorMessage += error.message;
+        } else if (error?.response?.data?.message) {
+          errorMessage += error.response.data.message;
+        } else {
+          errorMessage += 'Please try again later.';
         }
+
+        setEditRequestError(errorMessage);
+
+        // Redirect after showing error for 3 seconds
+        setTimeout(() => {
+          navigate('/dataPullReports');
+        }, 3000);
       } finally {
+        // Always clear loading state
         setEditRequestLoading(false);
       }
     };
 
     loadEditRequest();
-  }, [requestId, sourcesLoading, apiSources]);
+  }, [requestId, duplicateId, sourcesLoading, apiSources]);
 
   const handleUpdateVersionCounter = (module: 'Input' | 'Match' | 'Append' | 'Suppress', increment: number) => {
     setVersionCounters(prev => ({
@@ -1165,6 +782,63 @@ const RequestCreationPage: React.FC = () => {
     setInputSources(prev => prev.map(source =>
       source?.id === versionId ? { ...source, sourceName: newName } : source
     ));
+  };
+
+  const handleUpdateVersion = (versionId: string, updatedVersion: any) => {
+    console.log('[handleUpdateVersion] Updating version:', { versionId, updatedVersion });
+
+    // Update versioned sources with the new configuration
+    setVersionedSources(prev => prev.map(version =>
+      version?.id === versionId ? {
+        ...version,
+        ...updatedVersion,
+        // Ensure critical properties are preserved
+        id: versionId,
+        isVersioned: true as const,
+        // Update configJson with the latest values
+        configJson: {
+          ...(version as any).configJson,
+          ...updatedVersion.configJson,
+          // For Append module - only update match_keys at root level
+          match_keys: updatedVersion.operationFields || updatedVersion.configJson?.match_keys || [],
+          // Update fields within each append_sources item (for Append module)
+          append_sources: (version as any).configJson?.append_sources?.map((appendSource: any) => ({
+            ...appendSource,
+            // Set fields from the appendFields array (all sources get the same fields)
+            fields: updatedVersion.appendFields || updatedVersion.configJson?.append_fields || []
+          })) || [],
+          // Update fields within each match_sources item (for Match module)
+          match_sources: (version as any).configJson?.match_sources?.map((matchSource: any) => ({
+            ...matchSource,
+            // Set fields from the addFields array (all sources get the same fields)
+            fields: updatedVersion.addFields || updatedVersion.configJson?.add_fields || []
+          })) || []
+        }
+      } : version
+    ));
+
+    // Also update input sources if the version exists there
+    setInputSources(prev => prev.map(source =>
+      source?.id === versionId ? {
+        ...source,
+        ...updatedVersion,
+        id: versionId
+      } : source
+    ));
+
+    console.log('[handleUpdateVersion] Version updated successfully');
+  };
+
+  const handleDeleteVersion = (versionId: string) => {
+    console.log('[handleDeleteVersion] Deleting version:', versionId);
+
+    // Remove from versioned sources
+    setVersionedSources(prev => prev.filter(version => version?.id !== versionId));
+
+    // Also remove from input sources if it exists there
+    setInputSources(prev => prev.filter(source => source?.id !== versionId));
+
+    console.log('[handleDeleteVersion] Version deleted successfully');
   };
 
   // Handlers for shared custom sources - with module tracking
@@ -1189,21 +863,20 @@ const RequestCreationPage: React.FC = () => {
     }
   };
 
-  // Filter custom sources based on module execution order
+  // Filter custom sources based on module type
   const getAvailableCustomSourcesForModule = (currentModuleId: string): InputSource[] => {
-    // Get the index of the current module in the modules array
-    const currentModuleIndex = modules.findIndex(module => module.id === currentModuleId);
+    // Get the type of the current module (Append, Match, Suppress, etc.)
+    const currentModuleType = getModuleType(currentModuleId);
 
-    if (currentModuleIndex === -1) return [];
-
-    // Return only custom sources created in or before this module
+    // Return only custom sources created by modules of the same type
     return sharedCustomSources.filter(source => {
       if (!source.createdByModuleId) return true; // Legacy sources without tracking
 
-      const sourceModuleIndex = modules.findIndex(module => module.id === source.createdByModuleId);
+      // Get the type of the module that created this source
+      const sourceModuleType = getModuleType(source.createdByModuleId);
 
-      // Source is available if it was created in this module or any previous module
-      return sourceModuleIndex !== -1 && sourceModuleIndex <= currentModuleIndex;
+      // Source is available only if it was created by a module of the same type
+      return sourceModuleType === currentModuleType;
     });
   };
 
@@ -1259,8 +932,20 @@ const RequestCreationPage: React.FC = () => {
     baseInputSources: string[],
     operationSources: string[],
     operationFields?: string[],
-    fieldMappings?: any[]
+    fieldMappings?: any[],
+    appendFields?: string[],  // Fields to Append for Append module
+    addFields?: string[]      // Add Fields for Match module
   ) => {
+    console.log(`[handleCreateVersionedSource] Called with:`, {
+      sourceModule,
+      moduleId,
+      baseInputSources,
+      operationSources,
+      operationFields,
+      appendFields,
+      hasFieldMappings: !!fieldMappings
+    });
+
     // Validation: Must have at least one input source and one operation source
     if (baseInputSources.length === 0) {
       alert('Please select at least one Input Source before creating versions.');
@@ -1431,11 +1116,25 @@ const RequestCreationPage: React.FC = () => {
         const hasSelfAppend = operationSourcesList.some(src => src.source_type === 'self_append');
         configJson.is_self_append = hasSelfAppend;
         configJson.match_keys = operationFields || [];
+
+        console.log(`[handleCreateVersionedSource] Append version configJson:`, {
+          match_keys: configJson.match_keys,
+          append_sources_with_fields: configJson.append_sources,
+          is_self_append: configJson.is_self_append
+        });
+      }
+
+      // For Match versions, log the structure
+      if (sourceModule === 'Match') {
+        console.log(`[handleCreateVersionedSource] Match version configJson:`, {
+          match_sources_with_fields: configJson.match_sources
+        });
       }
 
       // Create the versioned source
+      const timestamp = Date.now();
       const versionedSource: VersionedSource = {
-        id: `versioned_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `versioned_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
         isVersioned: true,
         versionNumber: versionedSources.length + newVersions.length + 1,
         versionLabel: versionName,
@@ -1445,6 +1144,8 @@ const RequestCreationPage: React.FC = () => {
         baseInputSources: [inputSourceId],
         operationSources: operationSources,  // All operation sources
         operationFields,
+        appendFields,  // Store Fields to Append for Append module
+        addFields,     // Store Add Fields for Match module
         combinedHeaders,
         sourceType: 'Self',
         subSourceType: 'Versioned',
@@ -1457,6 +1158,7 @@ const RequestCreationPage: React.FC = () => {
         versionName,
         internalStepOrder: newVersions.length + 1,
         configJson,
+        createdAt: timestamp,  // Add timestamp for creation order
       } as any;
 
       newVersions.push(versionedSource);
@@ -1484,20 +1186,92 @@ const RequestCreationPage: React.FC = () => {
     [inputSources, versionedSources]
   );
 
+  // Helper function to get all fields for a source (original + appended fields)
+  const getSourceFieldsWithAppends = useMemo(() => {
+    return (source: InputSource): string[] => {
+      // Start with original headers
+      const originalHeaders = source.selectedHeaders || source.headers || [];
+      const allFields = new Set<string>(originalHeaders);
+
+      // Find all append configurations where this source is an input source
+      appendConfigurations.forEach(config => {
+        // Check if this source is one of the input sources for this append config
+        const isInputSource = config.inputSources.some(inputSourceId => {
+          const inputSource = allAvailableInputSources.find(s => s.id === inputSourceId);
+          return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
+        });
+
+        // If this source is used in the append config, add the appended fields
+        if (isInputSource && config.appendFields) {
+          config.appendFields.forEach(field => allFields.add(field));
+        }
+      });
+
+      return Array.from(allFields);
+    };
+  }, [appendConfigurations, allAvailableInputSources]);
+
   // Memoize stats module calculations to prevent infinite loops
   const availableStatsHeaders = useMemo(() => {
-    const uniqueHeaders = new Set<string>();
+    if (selectedInputSources.length === 0) {
+      return [];
+    }
 
-    selectedInputSources.forEach(sourceName => {
-      const source = allAvailableInputSources.find(s => s.sourceName === sourceName);
-      if (source) {
-        const headersToUse = source.selectedHeaders || source.headers || [];
-        headersToUse.forEach(header => uniqueHeaders.add(header));
+    // Find the selected source objects from allAvailableInputSources
+    const selectedSourceObjects = selectedInputSources
+      .map(sourceName => allAvailableInputSources.find(s => s.sourceName === sourceName))
+      .filter(src => src);
+
+    if (selectedSourceObjects.length === 0) {
+      return [];
+    }
+
+    if (selectedSourceObjects.length === 1) {
+      // Single source: return all its headers (including appended fields)
+      const source = selectedSourceObjects[0];
+      if (!source) return [];
+      const headersToUse = getSourceFieldsWithAppends(source);
+      return headersToUse.sort();
+    }
+
+    // Multiple sources: return only COMMON headers (intersection)
+    const allSourceFieldSets: Set<string>[] = [];
+
+    selectedSourceObjects.forEach(source => {
+      if (!source) return;
+      const headersToUse = getSourceFieldsWithAppends(source); // Include appended fields
+      if (headersToUse.length > 0) {
+        const sourceFields = new Set<string>();
+        headersToUse.forEach((field: string) => {
+          sourceFields.add(field.toLowerCase()); // Case-insensitive comparison
+        });
+        allSourceFieldSets.push(sourceFields);
       }
     });
 
-    return Array.from(uniqueHeaders).sort();
-  }, [selectedInputSources, allAvailableInputSources]);
+    if (allSourceFieldSets.length === 0) {
+      return [];
+    }
+
+    // Find intersection of all field sets
+    const intersection = Array.from(allSourceFieldSets[0]).filter(field => {
+      return allSourceFieldSets.every(fieldSet => fieldSet.has(field));
+    });
+
+    // Map back to original casing from the first source
+    const resultFields: string[] = [];
+    const firstSource = selectedSourceObjects[0];
+    if (!firstSource) return [];
+    const firstSourceHeaders = getSourceFieldsWithAppends(firstSource); // Include appended fields
+
+    firstSourceHeaders.forEach(field => {
+      if (intersection.includes(field.toLowerCase())) {
+        resultFields.push(field);
+      }
+    });
+
+    return resultFields.sort();
+  }, [selectedInputSources, allAvailableInputSources, getSourceFieldsWithAppends]);
 
   const filteredStatsInputSources = useMemo(() =>
     allAvailableInputSources.filter(source =>
@@ -1579,12 +1353,12 @@ const RequestCreationPage: React.FC = () => {
       return extension || 'CSV';
     };
 
-    // Extract filters from filterConfig if filterQuery is empty but filterConfig exists
+    // Extract filters from filterJson if filterQuery is empty but filterJson exists
     let filters = source.filterQuery || '';
 
-    if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+    if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
       try {
-        const filterGroup = source?.filterConfig[0];
+        const filterGroup = source?.filterJson[0];
         if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
           const filterParts: string[] = [];
 
@@ -1604,11 +1378,11 @@ const RequestCreationPage: React.FC = () => {
           if (filterParts.length > 0) {
             const logicalOp = filterGroup?.logicalOperator || 'AND';
             filters = filterParts.join(` ${logicalOp} `);
-            console.log('🔄 Extracted filters from filterConfig for File source:', filters);
+            console.log('🔄 Extracted filters from filterJson for File source:', filters);
           }
         }
       } catch (error) {
-        console.error('Error extracting filter from filterConfig for File source:', error);
+        console.error('Error extracting filter from filterJson for File source:', error);
       }
     }
 
@@ -1626,7 +1400,7 @@ const RequestCreationPage: React.FC = () => {
       inputType: inputType,
       filters: filters,
       customHeaders: source.customHeaders || '',
-      filterConfig: source.filterConfig || null,
+      filterJson: source.filterJson || null,
       subSourceType: source.subSourceType
     };
   };
@@ -1638,35 +1412,37 @@ const RequestCreationPage: React.FC = () => {
       'source types': sources.map(s => s?.sourceType)
     });
 
-    // Filter to only include File and Database sources
+    // Filter to only include File and Database sources, keeping track of original indices
     // Handle both UI format ('File', 'Database') and API format ('F', 'T')
-    const fileAndDatabaseSources = sources.filter(source => {
-      const sourceType = source?.sourceType as any;
-      return sourceType === 'File' || sourceType === 'Database' ||
-             sourceType === 'F' || sourceType === 'T';
-    });
+    const fileAndDatabaseSources = sources
+      .map((source, originalIndex) => ({ source, originalIndex }))
+      .filter(({ source }) => {
+        const sourceType = source?.sourceType as any;
+        return sourceType === 'File' || sourceType === 'Database' ||
+               sourceType === 'F' || sourceType === 'T';
+      });
 
     console.log('✅ After filtering:', {
       'fileAndDatabaseSources count': fileAndDatabaseSources.length,
-      'filtered sources': fileAndDatabaseSources.map(s => ({
-        sourceName: s?.sourceName,
-        sourceType: s?.sourceType
+      'filtered sources': fileAndDatabaseSources.map(({ source }) => ({
+        sourceName: source?.sourceName,
+        sourceType: source?.sourceType
       }))
     });
 
-    return fileAndDatabaseSources.map((source, index) => {
+    return fileAndDatabaseSources.map(({ source, originalIndex }) => {
       // Check if source is already in API format (sourceType is 'F' or 'T' instead of 'File' or 'Database')
       const isAlreadyAPIFormat = (source?.sourceType as any) === 'F' || (source?.sourceType as any) === 'T';
 
       if (isAlreadyAPIFormat) {
         console.log('✅ Source already in API format:', source?.sourceName);
 
-        // Extract filters from filterConfig if filters is empty but filterConfig exists
+        // Extract filters from filterJson if filters is empty but filterJson exists
         let filters = (source as any)?.filters || '';
 
-        if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+        if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
           try {
-            const filterGroup = source?.filterConfig[0];
+            const filterGroup = source?.filterJson[0];
             if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
               const filterParts: string[] = [];
 
@@ -1686,18 +1462,20 @@ const RequestCreationPage: React.FC = () => {
               if (filterParts.length > 0) {
                 const logicalOp = filterGroup?.logicalOperator || 'AND';
                 filters = filterParts.join(` ${logicalOp} `);
-                console.log('🔄 Extracted filters from filterConfig:', filters);
+                console.log('🔄 Extracted filters from filterJson:', filters);
               }
             }
           } catch (error) {
-            console.error('Error extracting filter from filterConfig:', error);
+            console.error('Error extracting filter from filterJson:', error);
           }
         }
 
-        // Return source with extracted filters
+        // Return source with extracted filters, stepOrder, and internalStepOrder
         return {
           ...source,
-          filters: filters
+          filters: filters,
+          stepOrder: 1, // Input module sources have stepOrder = 1
+          internalStepOrder: originalIndex + 1 // 1-based index from original position
         };
       }
 
@@ -1711,23 +1489,33 @@ const RequestCreationPage: React.FC = () => {
           hasSelectedHeaders: !!source?.selectedHeaders,
           selectedHeadersCount: source?.selectedHeaders?.length || 0
         });
-        return transformFileSourceToAPI(source);
+        return {
+          ...transformFileSourceToAPI(source),
+          stepOrder: 1, // Input module sources have stepOrder = 1
+          internalStepOrder: originalIndex + 1 // 1-based index from original position
+        };
       }
 
       // Handle Database sources
       if (source?.sourceType === 'Database') {
-        console.log('🔄 Transforming Database source:', source?.sourceName);
+        console.log('🔄 Transforming Database source:', source?.sourceName, {
+          hasTableSourceId: !!source?.tableSourceId,
+          tableSourceId: source?.tableSourceId,
+          sourceOption: source?.sourceOption,
+          originalTableName: source?.originalTableName,
+          fullSource: source
+        });
         const selectedHeaders = source?.selectedHeaders || source?.headers || [];
         const headers = source?.headers || [];
         const columnSelectionType = selectedHeaders.length === headers.length ? 'A' : 'S';
 
-        // Get filters - check filterQuery and extract from filterConfig if needed
+        // Get filters - check filterQuery and extract from filterJson if needed
         let filters = source?.filterQuery || '';
 
-        // If filterQuery is empty but filterConfig exists, try to extract filter from config
-        if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+        // If filterQuery is empty but filterJson exists, try to extract filter from config
+        if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
           try {
-            const filterGroup = source?.filterConfig[0];
+            const filterGroup = source?.filterJson[0];
             if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
               const filterParts: string[] = [];
 
@@ -1750,7 +1538,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
           } catch (error) {
-            console.error('Error extracting filter from filterConfig:', error);
+            console.error('Error extracting filter from filterJson:', error);
           }
         }
 
@@ -1768,7 +1556,10 @@ const RequestCreationPage: React.FC = () => {
           selectedColumns: selectedHeaders.join(','),
           inputType: 'I', // Primary for database sources
           filters,
-          isCustomTable: (!source?.originalTableName || source?.customTableMetadata) ? 1 : 0
+          filterJson: source?.filterJson || null, // Include filterJson for database sources
+          isCustomTable: (!source?.originalTableName || source?.customTableMetadata) ? 1 : 0,
+          stepOrder: 1, // Input module sources have stepOrder = 1
+          internalStepOrder: originalIndex + 1 // 1-based index from original position
         };
 
         // Only include database fields if they have values
@@ -1777,10 +1568,20 @@ const RequestCreationPage: React.FC = () => {
         if (schema) result.schema = schema;
 
         // Include sourceOption (tableId) for preconfigured tables
+        console.log('🔍 Checking for tableSourceId:', {
+          hasTableSourceId: !!source?.tableSourceId,
+          tableSourceIdValue: source?.tableSourceId,
+          willAddSourceOption: !!source?.tableSourceId
+        });
+
         if (source?.tableSourceId) {
           result.sourceOption = source.tableSourceId;
+          console.log('✅ Added sourceOption to result:', result.sourceOption);
+        } else {
+          console.warn('⚠️ No tableSourceId found for database source:', source?.sourceName);
         }
 
+        console.log('📦 Final Database source result:', result);
         return result;
       }
 
@@ -1992,10 +1793,33 @@ const RequestCreationPage: React.FC = () => {
           id: s?.id,
           sourceName: s?.sourceName,
           sourceType: s?.sourceType,
+          subSourceType: s?.subSourceType,
           hasHeaders: !!(s?.headers),
-          hasSelectedHeaders: !!(s?.selectedHeaders)
+          hasSelectedHeaders: !!(s?.selectedHeaders),
+          hasTableSourceId: 'tableSourceId' in (s || {}),
+          tableSourceId: s?.tableSourceId,
+          originalTableName: s?.originalTableName
         }))
       });
+
+      // Debug: Specifically log Database sources with tableSourceId info
+      const databaseSources = inputSources.filter(s => s?.sourceType === 'Database');
+      if (databaseSources.length > 0) {
+        console.log('🗄️ DEBUG - Database Sources Details:', databaseSources.map(s => ({
+          sourceName: s?.sourceName,
+          subSourceType: s?.subSourceType,
+          originalTableName: s?.originalTableName,
+          hasTableSourceId: !!s?.tableSourceId,
+          tableSourceId: s?.tableSourceId,
+          fullSource: s
+        })));
+      }
+
+      // Helper function to get stepOrder based on module position in modules array
+      const getStepOrder = (moduleId: string): number => {
+        const moduleIndex = modules.findIndex(m => m.id === moduleId);
+        return moduleIndex !== -1 ? moduleIndex + 1 : 0; // 1-based index
+      };
 
       // Transform input sources to API format (only File and Database sources)
       const transformedInputSources = transformInputSourcesToAPIFormat(inputSources);
@@ -2020,6 +1844,7 @@ const RequestCreationPage: React.FC = () => {
       };
 
       // Transform append sources to API format with inputType: 'A'
+      const appendStepOrder = getStepOrder('panel2'); // Get Append module's step order
       const transformedAppendSources = sharedCustomSources
         .filter(source => {
           // Filter by source type AND module that created it
@@ -2034,7 +1859,7 @@ const RequestCreationPage: React.FC = () => {
 
           return isFileOrDatabaseOrSelf && createdByAppend;
         })
-        .map((source) => {
+        .map((source, appendIndex) => {
           console.log('🔍 DEBUG - Append source before transformation:', {
             sourceName: source?.sourceName,
             sourceType: source?.sourceType,
@@ -2056,10 +1881,12 @@ const RequestCreationPage: React.FC = () => {
           const isAlreadyAPIFormat = (source?.sourceType as any) === 'F' || (source?.sourceType as any) === 'T';
 
           if (isAlreadyAPIFormat) {
-            // Return source with inputType: 'A'
+            // Return source with inputType: 'A', stepOrder, and internalStepOrder
             return {
               ...source,
-              inputType: 'A'
+              inputType: 'A',
+              stepOrder: appendStepOrder,
+              internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
           }
 
@@ -2098,11 +1925,11 @@ const RequestCreationPage: React.FC = () => {
 
             const inputType = source.fileSourceId ? 'I' : 'M';
 
-            // Extract filters from filterConfig if filterQuery is empty
+            // Extract filters from filterJson if filterQuery is empty
             let filters = source.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
                   const filterParts: string[] = [];
                   filterGroup?.conditions?.forEach((condition: any) => {
@@ -2122,7 +1949,7 @@ const RequestCreationPage: React.FC = () => {
                   }
                 }
               } catch (error) {
-                console.error('Error extracting filter from filterConfig for Append File source:', error);
+                console.error('Error extracting filter from filterJson for Append File source:', error);
               }
             }
 
@@ -2140,8 +1967,10 @@ const RequestCreationPage: React.FC = () => {
               inputType: 'A', // Append sources have inputType: 'A'
               filters: filters,
               customHeaders: source.customHeaders || '',
-              filterConfig: source.filterConfig || null,
-              subSourceType: source.subSourceType
+              filterJson: source.filterJson || null,
+              subSourceType: source.subSourceType,
+              stepOrder: appendStepOrder,
+              internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
           }
 
@@ -2177,9 +2006,9 @@ const RequestCreationPage: React.FC = () => {
 
             // Get filters
             let filters = source?.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
                   const filterParts: string[] = [];
                   filterGroup?.conditions?.forEach((condition: any) => {
@@ -2199,7 +2028,7 @@ const RequestCreationPage: React.FC = () => {
                   }
                 }
               } catch (error) {
-                console.error('Error extracting filter from filterConfig:', error);
+                console.error('Error extracting filter from filterJson:', error);
               }
             }
 
@@ -2211,12 +2040,20 @@ const RequestCreationPage: React.FC = () => {
               selectedColumns: selectedHeaders.join(','),
               inputType: 'A', // Append sources have inputType: 'A'
               filters,
-              isCustomTable: (!source?.originalTableName || source?.customTableMetadata) ? 1 : 0
+              filterJson: source?.filterJson || null, // Include filterJson for database sources
+              isCustomTable: (!source?.originalTableName || source?.customTableMetadata) ? 1 : 0,
+              stepOrder: appendStepOrder,
+              internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
 
             if (dbName) result.dbName = dbName;
             if (tableName) result.tableName = tableName;
             if (schema) result.schema = schema;
+
+            // Include sourceOption (tableId) for preconfigured tables
+            if (source?.tableSourceId) {
+              result.sourceOption = source.tableSourceId;
+            }
 
             return result;
           }
@@ -2254,7 +2091,9 @@ const RequestCreationPage: React.FC = () => {
                 generated_datatype: selfSource?.selfConfig?.generated_datatype || 'STRING',
                 assignment_sets: assignmentSets,
                 tiering_on: tieringOn
-              }
+              },
+              stepOrder: appendStepOrder,
+              internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
 
             console.log('✅ Transformed Self source:', result);
@@ -2314,6 +2153,7 @@ const RequestCreationPage: React.FC = () => {
       };
 
       // Transform match sources to API format with inputType: 'M'
+      const matchStepOrder = getStepOrder('panel4'); // Get Match module's step order
       const transformedMatchSources = sharedCustomSources
         .filter(source => {
           // Filter by source type AND module that created it
@@ -2328,7 +2168,7 @@ const RequestCreationPage: React.FC = () => {
 
           return isFileOrDatabase && createdByMatch;
         })
-        .map((source) => {
+        .map((source, matchIndex) => {
           console.log('🔍 DEBUG - Match source before transformation:', {
             sourceName: source?.sourceName,
             sourceType: source?.sourceType,
@@ -2389,11 +2229,11 @@ const RequestCreationPage: React.FC = () => {
               return extension || 'CSV';
             };
 
-            // Extract filters from filterConfig if filterQuery is empty
+            // Extract filters from filterJson if filterQuery is empty
             let filters = source.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
                   const filterParts: string[] = [];
                   filterGroup?.conditions?.forEach((condition: any) => {
@@ -2413,7 +2253,7 @@ const RequestCreationPage: React.FC = () => {
                   }
                 }
               } catch (error) {
-                console.error('Error extracting filter from filterConfig for Match File source:', error);
+                console.error('Error extracting filter from filterJson for Match File source:', error);
               }
             }
 
@@ -2431,8 +2271,10 @@ const RequestCreationPage: React.FC = () => {
               inputType: 'M', // Match sources have inputType: 'M'
               filters: filters,
               customHeaders: source.customHeaders || '',
-              filterConfig: source.filterConfig || null,
-              subSourceType: source.subSourceType
+              filterJson: source.filterJson || null,
+              subSourceType: source.subSourceType,
+              stepOrder: matchStepOrder,
+              internalStepOrder: matchIndex + 1 // 1-based index within match sources
             };
           }
 
@@ -2467,9 +2309,9 @@ const RequestCreationPage: React.FC = () => {
 
             // Get filters
             let filters = source?.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.rules) {
                   filters = filterGroup?.rules
                     ?.map((rule: any) => {
@@ -2485,7 +2327,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
 
-            return {
+            const result: any = {
               sourceName: source.sourceName,
               sourceType: 'T',
               inputType: 'M', // Match sources have inputType: 'M'
@@ -2496,8 +2338,18 @@ const RequestCreationPage: React.FC = () => {
               selectedColumns: selectedHeaders.join(','),
               columnSelectionType: columnSelectionType,
               isCustomTable: 1,
-              filters: filters
+              filters: filters,
+              filterJson: source?.filterJson || null, // Include filterJson for database sources
+              stepOrder: matchStepOrder,
+              internalStepOrder: matchIndex + 1 // 1-based index within match sources
             };
+
+            // Include sourceOption (tableId) for preconfigured tables
+            if (source?.tableSourceId) {
+              result.sourceOption = source.tableSourceId;
+            }
+
+            return result;
           }
 
           return null;
@@ -2519,6 +2371,7 @@ const RequestCreationPage: React.FC = () => {
       console.log('======================\n');
 
       // Transform suppress sources to API format with inputType: 'S'
+      const suppressStepOrder = getStepOrder('panel3'); // Get Suppress module's step order
       const transformedSuppressSources = sharedCustomSources
         .filter(source => {
           // Filter by source type AND module that created it
@@ -2533,7 +2386,7 @@ const RequestCreationPage: React.FC = () => {
 
           return isFileOrDatabase && createdBySuppress;
         })
-        .map((source) => {
+        .map((source, suppressIndex) => {
           console.log('🔍 DEBUG - Suppress source before transformation:', {
             sourceName: source?.sourceName,
             sourceType: source?.sourceType,
@@ -2594,11 +2447,11 @@ const RequestCreationPage: React.FC = () => {
               return extension || 'CSV';
             };
 
-            // Extract filters from filterConfig if filterQuery is empty
+            // Extract filters from filterJson if filterQuery is empty
             let filters = source.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.conditions && Array.isArray(filterGroup?.conditions)) {
                   const filterParts: string[] = [];
                   filterGroup?.conditions?.forEach((condition: any) => {
@@ -2618,7 +2471,7 @@ const RequestCreationPage: React.FC = () => {
                   }
                 }
               } catch (error) {
-                console.error('Error extracting filter from filterConfig for Suppress File source:', error);
+                console.error('Error extracting filter from filterJson for Suppress File source:', error);
               }
             }
 
@@ -2636,8 +2489,10 @@ const RequestCreationPage: React.FC = () => {
               inputType: 'S', // Suppress sources have inputType: 'S'
               filters: filters,
               customHeaders: source.customHeaders || '',
-              filterConfig: source.filterConfig || null,
-              subSourceType: source.subSourceType
+              filterJson: source.filterJson || null,
+              subSourceType: source.subSourceType,
+              stepOrder: suppressStepOrder,
+              internalStepOrder: suppressIndex + 1 // 1-based index within suppress sources
             };
           }
 
@@ -2672,9 +2527,9 @@ const RequestCreationPage: React.FC = () => {
 
             // Get filters
             let filters = source?.filterQuery || '';
-            if (!filters && source?.filterConfig && Array.isArray(source?.filterConfig) && source?.filterConfig?.length > 0) {
+            if (!filters && source?.filterJson && Array.isArray(source?.filterJson) && source?.filterJson?.length > 0) {
               try {
-                const filterGroup = source?.filterConfig[0];
+                const filterGroup = source?.filterJson[0];
                 if (filterGroup && filterGroup?.rules) {
                   filters = filterGroup?.rules
                     ?.map((rule: any) => {
@@ -2690,7 +2545,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
 
-            return {
+            const result: any = {
               sourceName: source.sourceName,
               sourceType: 'T',
               inputType: 'S', // Suppress sources have inputType: 'S'
@@ -2701,8 +2556,18 @@ const RequestCreationPage: React.FC = () => {
               selectedColumns: selectedHeaders.join(','),
               columnSelectionType: columnSelectionType,
               isCustomTable: 1,
-              filters: filters
+              filters: filters,
+              filterJson: source?.filterJson || null, // Include filterJson for database sources
+              stepOrder: suppressStepOrder,
+              internalStepOrder: suppressIndex + 1 // 1-based index within suppress sources
             };
+
+            // Include sourceOption (tableId) for preconfigured tables
+            if (source?.tableSourceId) {
+              result.sourceOption = source.tableSourceId;
+            }
+
+            return result;
           }
 
           return null;
@@ -2782,86 +2647,59 @@ const RequestCreationPage: React.FC = () => {
         return suppressPayload;
       };
 
-      // Helper function to get stepOrder based on module position in modules array
-      const getStepOrder = (moduleId: string): number => {
-        const moduleIndex = modules.findIndex(m => m.id === moduleId);
-        return moduleIndex !== -1 ? moduleIndex + 1 : 0; // 1-based index
-      };
-
-      // Extract regular input sources (non-versioned) for the workflow array
-      const extractInputSourcesForWorkflow = () => {
-        // Filter only non-versioned input sources
-        const regularInputSources = inputSources.filter(source =>
-          source.isVersioned !== true
-        );
-
-        console.log('🔍 Extracting regular input sources for workflow:');
+      // Extract ALL input sources and versions in creation order for the workflow array
+      const extractInputSourcesAndVersionsForWorkflow = () => {
+        console.log('🔍 Extracting input sources and versions in creation order:');
         console.log('  Total input sources:', inputSources.length);
-        console.log('  Regular (non-versioned) input sources:', regularInputSources.length);
 
-        // Map them to the workflow format
-        return regularInputSources.map((source, index) => {
-          console.log(`  Input Source ${index + 1}:`, {
-            sourceName: source.sourceName,
-            sourceType: source.sourceType,
-            internalStepOrder: index + 1
-          });
+        // Process all input sources in the order they were created
+        // This maintains the correct sequence: source, version, source, version, etc.
+        return inputSources.map((source, index) => {
+          const isVersioned = source.isVersioned === true;
 
-          return {
-            stepOrder: 1,
-            internalStepOrder: index + 1,  // Sequential starting from 1
-            actionType: 'I',
-            configJson: {
-              input_sources: [source.sourceName]
-            }
-          };
-        });
-      };
+          if (isVersioned) {
+            // This is a versioned source
+            const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
 
-      // Extract input versions and format them for the workflow array
-      const extractInputVersionsForWorkflow = (inputSourceCount: number) => {
-        // Filter only versioned sources from Input module (exclude Append, Match, Suppress versions)
-        const versionedSources = inputSources.filter(source =>
-          source.isVersioned === true &&
-          (!( source as any).sourceModule || (source as any).sourceModule === 'Input')
-        );
+            console.log(`  ${index + 1}. Version:`, {
+              sourceName: source.sourceName,
+              versionName: versionName,
+              hasConfigJson: !!configJson,
+              internalStepOrder: index + 1
+            });
 
-        console.log('🔍 Extracting input versions for workflow:');
-        console.log('  Total input sources:', inputSources.length);
-        console.log('  Input module versioned sources:', versionedSources.length);
-        console.log('  Input source count for offset:', inputSourceCount);
+            return {
+              stepOrder: stepOrder || 1,
+              actionType: actionType || 'I',
+              saveAsVersion: saveAsVersion || 1,
+              versionName: versionName || source.sourceName,
+              internalStepOrder: index + 1,  // Sequential based on creation order
+              configJson: configJson || {
+                operation: source.versionConfig?.combineAs || 'union',
+                input_sources: [],
+                added_fields: [],
+                field_mappings: [],
+                merge_keys: source.headers || [],
+                priority_order: source.headers || []
+              }
+            };
+          } else {
+            // This is a regular input source
+            console.log(`  ${index + 1}. Input Source:`, {
+              sourceName: source.sourceName,
+              sourceType: source.sourceType,
+              internalStepOrder: index + 1
+            });
 
-        // Map them to the workflow format
-        return versionedSources.map((source, index) => {
-          // Extract the version data that was stored during save
-          const { stepOrder, actionType, saveAsVersion, versionName, internalStepOrder, configJson } = source as any;
-
-          // Adjust internalStepOrder to come after all regular input sources
-          const adjustedInternalStepOrder = inputSourceCount + index + 1;
-
-          console.log(`  Version ${index + 1}:`, {
-            sourceName: source.sourceName,
-            versionName: versionName,
-            hasConfigJson: !!configJson,
-            originalInternalStepOrder: internalStepOrder || 'not set',
-            adjustedInternalStepOrder
-          });
-
-          return {
-            stepOrder: stepOrder || 1,
-            actionType: actionType || 'P',
-            saveAsVersion: saveAsVersion || 1,
-            versionName: versionName || source.sourceName,
-            internalStepOrder: adjustedInternalStepOrder,  // Updated to come after input sources
-            configJson: configJson || {
-              operation: source.versionConfig?.combineAs || 'union',
-              input_sources: [],
-              added_fields: [],
-              field_mappings: [],
-              merge_keys: source.headers || [],
-              priority_order: source.headers || []
-            }
-          };
+            return {
+              stepOrder: 1,
+              internalStepOrder: index + 1,  // Sequential based on creation order
+              actionType: 'I',
+              configJson: {
+                input_sources: [source.sourceName]
+              }
+            };
+          }
         });
       };
 
@@ -2958,15 +2796,16 @@ const RequestCreationPage: React.FC = () => {
         });
       };
 
-      // Extract Append configurations and versions for workflow array
-      const extractAppendConfigurationsForWorkflow = () => {
-        const appendWorkflowItems: any[] = [];
+      // Extract Append configurations and versions combined, sorted by creation order
+      const extractAppendItemsForWorkflow = () => {
         const stepOrder = getStepOrder('panel2');
+        const appendItems: any[] = [];
 
-        console.log('\n🔍 Extracting Append configurations for workflow:');
+        console.log('\n🔍 Extracting Append items (configs + versions) for workflow:');
         console.log('  Total append configurations:', appendConfigurations.length);
 
-        appendConfigurations.forEach((config, index) => {
+        // Add append configurations with their createdAt timestamps
+        appendConfigurations.forEach((config) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
             const source = inputSources.find(s => s.id === sourceId);
@@ -2977,20 +2816,25 @@ const RequestCreationPage: React.FC = () => {
           });
 
           // Transform append sources to the required format
-          // Include both input sources and append sources with appropriate source_type
-          console.log('  📋 Config field mappings:', config.fieldMappings);
-          console.log('  📋 Config append sources:', config.appendSources);
-
           const appendSourcesForConfig = (config.appendSources || [])
             .map((sourceId) => {
               // Get fields specific to this source from field mappings or appendFields
               const sourceFields = getFieldsForSource(sourceId, config.fieldMappings, config.appendFields);
-              console.log(`  🔍 Source ID: ${sourceId}, Fields found:`, sourceFields);
 
-              // First check if it's an input source
+              // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
+              const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
+              if (versionedSource) {
+                // All versioned sources are treated as 'input' type
+                return {
+                  source_type: 'input',
+                  source_name: versionedSource.sourceName,
+                  fields: sourceFields
+                };
+              }
+
+              // Check if it's a non-versioned input source
               const inputSource = allAvailableInputSources.find(s => s.id === sourceId);
               if (inputSource && !inputSource.isVersioned) {
-                // Check if it's from Input module (not from Append/Match/Suppress)
                 const createdByModuleId = (inputSource as any).createdByModuleId;
                 if (!createdByModuleId || createdByModuleId === 'panel1' || createdByModuleId.startsWith('panel1_')) {
                   return {
@@ -3008,10 +2852,6 @@ const RequestCreationPage: React.FC = () => {
                                           (customSource.createdByModuleId === 'panel2' ||
                                            customSource.createdByModuleId.startsWith('panel2_'));
 
-              // Check if it's a preconfigured append source (starts with 'append_')
-              const isPreconfiguredAppend = sourceId.startsWith('append_');
-
-              // If it's a custom append source
               if (isCustomAppendSource) {
                 const isSelfAppend = customSource?.sourceType === 'Self';
                 return {
@@ -3021,8 +2861,8 @@ const RequestCreationPage: React.FC = () => {
                 };
               }
 
-              // If it's a preconfigured append source
-              if (isPreconfiguredAppend) {
+              // Check if it's a preconfigured append source
+              if (sourceId.startsWith('append_')) {
                 const predefined = apiSources?.dbSource?.preconfiguredTables?.append?.find(
                   (table: any) => `append_${table?.tableId}` === sourceId
                 );
@@ -3034,17 +2874,15 @@ const RequestCreationPage: React.FC = () => {
                 };
               }
 
-              // Unknown source type
               console.log('⚠️ Unknown source type for sourceId:', sourceId);
               return null;
             })
-            .filter(Boolean) // Remove null entries
+            .filter(Boolean)
             .map((source, index) => ({
               ...source,
-              priority: index + 1 // Assign priority sequentially
+              priority: index + 1
             }));
 
-          // Transform field mappings for this config
           const fieldMappingsForConfig = transformFieldMappings(config.fieldMappings);
 
           const configJson = {
@@ -3055,72 +2893,76 @@ const RequestCreationPage: React.FC = () => {
             field_mappings: fieldMappingsForConfig
           };
 
-          console.log(`  Append Config ${index + 1}:`, {
-            id: config.id,
-            inputSources: config.inputSources.length,
-            appendSources: config.appendSources.length,
-            hasSelfAppend: configJson.is_self_append
-          });
-
-          appendWorkflowItems.push({
+          appendItems.push({
             stepOrder,
-            internalStepOrder: index + 1,
             actionType: 'A',
-            configJson
+            configJson,
+            createdAt: config.createdAt || 0,
+            itemType: 'config'
           });
         });
 
-        return appendWorkflowItems;
-      };
-
-      // Extract Append versions (versioned sources created by Append module)
-      const extractAppendVersionsForWorkflow = (configCount: number) => {
-        // Filter from versionedSources state, not inputSources
+        // Add append versions with their createdAt timestamps
         const appendVersions = versionedSources.filter(source =>
           source.isVersioned === true &&
           (source as any).sourceModule === 'Append'
         );
 
-        console.log('\n🔍 Extracting Append versions for workflow:');
-        console.log('  Total versioned sources:', versionedSources.length);
         console.log('  Append versions found:', appendVersions.length);
-        console.log('  Config count for offset:', configCount);
 
-        return appendVersions.map((source, index) => {
+        appendVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
 
-          // Calculate internalStepOrder as offset by the number of configs
-          const internalStepOrder = configCount + index + 1;
-
-          console.log(`  Append Version ${index + 1}:`, {
-            sourceName: source.sourceName,
-            versionName: versionName,
-            saveAsVersion: saveAsVersion,
-            stepOrder: stepOrder,
-            internalStepOrder: internalStepOrder,
-            hasFieldMappings: configJson?.field_mappings?.length || 0
-          });
-
-          return {
+          appendItems.push({
             stepOrder,
-            internalStepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson
-          };
+            configJson,
+            createdAt: (source as any).createdAt || 0,
+            itemType: 'version'
+          });
         });
+
+        // Sort by createdAt timestamp (creation order)
+        appendItems.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Assign sequential internalStepOrder based on sorted order
+        const workflowItems = appendItems.map((item, index) => {
+          const workflowItem: any = {
+            stepOrder: item.stepOrder,
+            internalStepOrder: index + 1,
+            actionType: item.actionType,
+            configJson: item.configJson
+          };
+
+          if (item.itemType === 'version') {
+            workflowItem.saveAsVersion = item.saveAsVersion;
+            workflowItem.versionName = item.versionName;
+          }
+
+          console.log(`  Append ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
+            internalStepOrder: index + 1,
+            createdAt: item.createdAt,
+            ...(item.itemType === 'version' && { versionName: item.versionName })
+          });
+
+          return workflowItem;
+        });
+
+        return workflowItems;
       };
 
-      // Extract Suppress configurations for workflow array
-      const extractSuppressConfigurationsForWorkflow = () => {
-        const suppressWorkflowItems: any[] = [];
+      // Extract Suppress configurations and versions combined, sorted by creation order
+      const extractSuppressItemsForWorkflow = () => {
         const stepOrder = getStepOrder('panel3');
+        const suppressItems: any[] = [];
 
-        console.log('\n🔍 Extracting Suppress configurations for workflow:');
+        console.log('\n🔍 Extracting Suppress items (configs + versions) for workflow:');
         console.log('  Total suppress configurations:', suppressConfigurations.length);
 
-        suppressConfigurations.forEach((config, index) => {
+        // Add suppress configurations with their createdAt timestamps
+        suppressConfigurations.forEach((config) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
             const source = inputSources.find(s => s.id === sourceId);
@@ -3133,7 +2975,17 @@ const RequestCreationPage: React.FC = () => {
           // Transform suppress sources to the required format
           const suppressSourcesForConfig = (config.suppressSources || [])
             .map((sourceId) => {
-              // First check if it's an input source
+              // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
+              const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
+              if (versionedSource) {
+                // All versioned sources are treated as 'input' type
+                return {
+                  source_type: 'input',
+                  source_name: versionedSource.sourceName
+                };
+              }
+
+              // Check if it's a non-versioned input source
               const inputSource = allAvailableInputSources.find(s => s.id === sourceId);
               if (inputSource && !inputSource.isVersioned) {
                 const createdByModuleId = (inputSource as any).createdByModuleId;
@@ -3145,7 +2997,6 @@ const RequestCreationPage: React.FC = () => {
                 }
               }
 
-              // Check if it's a custom suppress source
               const customSource = sharedCustomSources.find(s => s.id === sourceId);
               const isCustomSuppressSource = customSource &&
                                             customSource.createdByModuleId &&
@@ -3160,7 +3011,6 @@ const RequestCreationPage: React.FC = () => {
                 };
               }
 
-              // Check if it's a preconfigured suppress source
               if (sourceId.startsWith('suppress_')) {
                 const predefined = apiSources?.dbSource?.preconfiguredTables?.suppress?.find(
                   (table: any) => `suppress_${table?.tableId}` === sourceId
@@ -3183,66 +3033,76 @@ const RequestCreationPage: React.FC = () => {
             suppress_sources: suppressSourcesForConfig
           };
 
-          console.log(`  Suppress Config ${index + 1}:`, {
-            id: config.id,
-            inputSources: config.inputSources.length,
-            suppressSources: config.suppressSources.length
-          });
-
-          suppressWorkflowItems.push({
+          suppressItems.push({
             stepOrder,
-            internalStepOrder: index + 1,
             actionType: 'S',
-            configJson
+            configJson,
+            createdAt: config.createdAt || 0,
+            itemType: 'config'
           });
         });
 
-        return suppressWorkflowItems;
-      };
-
-      // Extract Suppress versions (versioned sources created by Suppress module)
-      const extractSuppressVersionsForWorkflow = (configCount: number) => {
+        // Add suppress versions with their createdAt timestamps
         const suppressVersions = versionedSources.filter(source =>
           source.isVersioned === true &&
           (source as any).sourceModule === 'Suppress'
         );
 
-        console.log('\n🔍 Extracting Suppress versions for workflow:');
         console.log('  Suppress versions found:', suppressVersions.length);
-        console.log('  Config count for offset:', configCount);
 
-        return suppressVersions.map((source, index) => {
+        suppressVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
-          const internalStepOrder = configCount + index + 1;
 
-          console.log(`  Suppress Version ${index + 1}:`, {
-            sourceName: source.sourceName,
-            versionName: versionName,
-            saveAsVersion: saveAsVersion,
-            stepOrder: stepOrder,
-            internalStepOrder: internalStepOrder
-          });
-
-          return {
+          suppressItems.push({
             stepOrder,
-            internalStepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson
-          };
+            configJson,
+            createdAt: (source as any).createdAt || 0,
+            itemType: 'version'
+          });
         });
+
+        // Sort by createdAt timestamp (creation order)
+        suppressItems.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Assign sequential internalStepOrder based on sorted order
+        const workflowItems = suppressItems.map((item, index) => {
+          const workflowItem: any = {
+            stepOrder: item.stepOrder,
+            internalStepOrder: index + 1,
+            actionType: item.actionType,
+            configJson: item.configJson
+          };
+
+          if (item.itemType === 'version') {
+            workflowItem.saveAsVersion = item.saveAsVersion;
+            workflowItem.versionName = item.versionName;
+          }
+
+          console.log(`  Suppress ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
+            internalStepOrder: index + 1,
+            createdAt: item.createdAt,
+            ...(item.itemType === 'version' && { versionName: item.versionName })
+          });
+
+          return workflowItem;
+        });
+
+        return workflowItems;
       };
 
-      // Extract Match configurations for workflow array
-      const extractMatchConfigurationsForWorkflow = () => {
-        const matchWorkflowItems: any[] = [];
+      // Extract Match configurations and versions combined, sorted by creation order
+      const extractMatchItemsForWorkflow = () => {
         const stepOrder = getStepOrder('panel4');
+        const matchItems: any[] = [];
 
-        console.log('\n🔍 Extracting Match configurations for workflow:');
+        console.log('\n🔍 Extracting Match items (configs + versions) for workflow:');
         console.log('  Total match configurations:', matchConfigurations.length);
 
-        matchConfigurations.forEach((config, index) => {
+        // Add match configurations with their createdAt timestamps
+        matchConfigurations.forEach((config) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
             const source = inputSources.find(s => s.id === sourceId);
@@ -3255,7 +3115,18 @@ const RequestCreationPage: React.FC = () => {
           // Transform match sources to the required format with priority
           const matchSourcesForConfig = (config.matchSources || [])
             .map((sourceId, priority) => {
-              // First check if it's an input source
+              // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
+              const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
+              if (versionedSource) {
+                // All versioned sources are treated as 'input' type
+                return {
+                  source_type: 'input',
+                  source_name: versionedSource.sourceName,
+                  priority: priority + 1
+                };
+              }
+
+              // Check if it's a non-versioned input source
               const inputSource = allAvailableInputSources.find(s => s.id === sourceId);
               if (inputSource && !inputSource.isVersioned) {
                 const createdByModuleId = (inputSource as any).createdByModuleId;
@@ -3268,7 +3139,6 @@ const RequestCreationPage: React.FC = () => {
                 }
               }
 
-              // Check if it's a custom match source
               const customSource = sharedCustomSources.find(s => s.id === sourceId);
               const isCustomMatchSource = customSource &&
                                          customSource.createdByModuleId &&
@@ -3284,7 +3154,6 @@ const RequestCreationPage: React.FC = () => {
                 };
               }
 
-              // Check if it's a preconfigured match source
               if (sourceId.startsWith('match_')) {
                 const predefined = apiSources?.dbSource?.preconfiguredTables?.match?.find(
                   (table: any) => `match_${table?.tableId}` === sourceId
@@ -3304,94 +3173,93 @@ const RequestCreationPage: React.FC = () => {
 
           const configJson = {
             input_sources: inputSourcesForConfig,
-            match_on_fields: config.matchOnFields || [],
             match_sources: matchSourcesForConfig,
             expand: config.expand || false,
-            match_type: config.matchType || 'full'
+            match_type: config.matchType || 'full',
+            ...(config.addFields && config.addFields.length > 0 && {
+              add_fields: config.addFields
+            })
           };
 
-          console.log(`  Match Config ${index + 1}:`, {
-            id: config.id,
-            inputSources: config.inputSources.length,
-            matchSources: config.matchSources.length,
-            expand: config.expand,
-            matchType: config.matchType
-          });
-
-          matchWorkflowItems.push({
+          matchItems.push({
             stepOrder,
-            internalStepOrder: index + 1,
             actionType: 'M',
-            configJson
+            configJson,
+            createdAt: config.createdAt || 0,
+            itemType: 'config'
           });
         });
 
-        return matchWorkflowItems;
-      };
-
-      // Extract Match versions (versioned sources created by Match module)
-      const extractMatchVersionsForWorkflow = (configCount: number) => {
+        // Add match versions with their createdAt timestamps
         const matchVersions = versionedSources.filter(source =>
           source.isVersioned === true &&
           (source as any).sourceModule === 'Match'
         );
 
-        console.log('\n🔍 Extracting Match versions for workflow:');
         console.log('  Match versions found:', matchVersions.length);
-        console.log('  Config count for offset:', configCount);
 
-        return matchVersions.map((source, index) => {
+        matchVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
-          const internalStepOrder = configCount + index + 1;
 
-          console.log(`  Match Version ${index + 1}:`, {
-            sourceName: source.sourceName,
-            versionName: versionName,
-            saveAsVersion: saveAsVersion,
-            stepOrder: stepOrder,
-            internalStepOrder: internalStepOrder
-          });
-
-          return {
+          matchItems.push({
             stepOrder,
-            internalStepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson
-          };
+            configJson,
+            createdAt: (source as any).createdAt || 0,
+            itemType: 'version'
+          });
         });
+
+        // Sort by createdAt timestamp (creation order)
+        matchItems.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Assign sequential internalStepOrder based on sorted order
+        const workflowItems = matchItems.map((item, index) => {
+          const workflowItem: any = {
+            stepOrder: item.stepOrder,
+            internalStepOrder: index + 1,
+            actionType: item.actionType,
+            configJson: item.configJson
+          };
+
+          if (item.itemType === 'version') {
+            workflowItem.saveAsVersion = item.saveAsVersion;
+            workflowItem.versionName = item.versionName;
+          }
+
+          console.log(`  Match ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
+            internalStepOrder: index + 1,
+            createdAt: item.createdAt,
+            ...(item.itemType === 'version' && { versionName: item.versionName })
+          });
+
+          return workflowItem;
+        });
+
+        return workflowItems;
       };
 
       // Build workflow array with all configurations and versions
-      // IMPORTANT: All input sources first, then all versions
-      const inputSourceWorkflow = extractInputSourcesForWorkflow();
-      const inputSourceCount = inputSourceWorkflow.length;
-
-      const inputVersions = extractInputVersionsForWorkflow(inputSourceCount);
-      const appendConfigs = extractAppendConfigurationsForWorkflow();
-      const appendVersions = extractAppendVersionsForWorkflow(appendConfigs.length);
-      const suppressConfigs = extractSuppressConfigurationsForWorkflow();
-      const suppressVersions = extractSuppressVersionsForWorkflow(suppressConfigs.length);
-      const matchConfigs = extractMatchConfigurationsForWorkflow();
-      const matchVersions = extractMatchVersionsForWorkflow(matchConfigs.length);
+      // IMPORTANT: Maintain creation order - sources and versions are interleaved as they were created
+      const inputSourcesAndVersions = extractInputSourcesAndVersionsForWorkflow();
+      const appendItems = extractAppendItemsForWorkflow();
+      const suppressItems = extractSuppressItemsForWorkflow();
+      const matchItems = extractMatchItemsForWorkflow();
 
       const workflowArray = [
-        ...inputSourceWorkflow,  // All input sources first
-        ...inputVersions,        // All input versions after
-        ...appendConfigs,
-        ...appendVersions,
-        ...suppressConfigs,
-        ...suppressVersions,
-        ...matchConfigs,
-        ...matchVersions
+        ...inputSourcesAndVersions,  // All input sources and versions in creation order
+        ...appendItems,              // Append configs and versions sorted by creation order
+        ...suppressItems,            // Suppress configs and versions sorted by creation order
+        ...matchItems                // Match configs and versions sorted by creation order
       ];
 
       // Log workflow array for debugging
       console.log('\n=== WORKFLOW ARRAY ===');
       console.log('Total workflow items:', workflowArray.length);
       console.log('  Input sources:', workflowArray.filter(w => w.actionType === 'I').length);
-      console.log('  Input versions:', workflowArray.filter(w => w.actionType === 'P').length);
+      console.log('  Input versions:', workflowArray.filter(w => w.actionType === 'I').length);
       console.log('  Append items:', workflowArray.filter(w => w.actionType === 'A').length);
       console.log('  Match items:', workflowArray.filter(w => w.actionType === 'M').length);
       console.log('  Suppress items:', workflowArray.filter(w => w.actionType === 'S').length);
@@ -3401,7 +3269,7 @@ const RequestCreationPage: React.FC = () => {
         if (item.actionType === 'I') {
           itemType = 'Input Source';
         } else if (item.saveAsVersion) {
-          itemType = `${item.actionType === 'P' ? 'Input' : item.actionType === 'A' ? 'Append' : item.actionType === 'M' ? 'Match' : 'Suppress'} Version`;
+          itemType = `${item.actionType === 'I' ? 'Input' : item.actionType === 'A' ? 'Append' : item.actionType === 'M' ? 'Match' : 'Suppress'} Version`;
         } else {
           itemType = `${item.actionType === 'A' ? 'Append' : item.actionType === 'M' ? 'Match' : 'Suppress'} Config`;
         }
@@ -3748,8 +3616,8 @@ const RequestCreationPage: React.FC = () => {
       const initialConfigs = moduleId === 'panel2' ? initialAppendConfigs : [];
       return <AppendModule
         availableInputSources={allAvailableInputSources}
-        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, fieldMappings) =>
-          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, fieldMappings)
+        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, fieldMappings, appendFields) =>
+          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, fieldMappings, appendFields)
         }
         initialConfigs={initialConfigs}
         apiSources={apiSources}
@@ -3757,6 +3625,8 @@ const RequestCreationPage: React.FC = () => {
         versionedSources={versionedSources.filter(v => v.sourceModule === 'Append' && v.createdByModuleId === moduleId)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
+        onUpdateVersion={handleUpdateVersion}
+        onDeleteVersion={handleDeleteVersion}
         sharedCustomSources={getAvailableCustomSourcesForModule(moduleId)}
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
@@ -3777,6 +3647,8 @@ const RequestCreationPage: React.FC = () => {
         versionedSources={versionedSources.filter(v => v.sourceModule === 'Suppress' && v.createdByModuleId === moduleId)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
+        onDeleteVersion={handleDeleteVersion}
+        appendConfigurations={appendConfigurations}
         onConfigurationsChange={setSuppressConfigurations}
         sharedCustomSources={getAvailableCustomSourcesForModule(moduleId)}
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
@@ -3788,8 +3660,8 @@ const RequestCreationPage: React.FC = () => {
       const initialConfigs = moduleId === 'panel4' ? initialMatchConfigs : [];
       return <MatchModule
         availableInputSources={allAvailableInputSources}
-        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) =>
-          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
+        onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, addFields) =>
+          handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, undefined, undefined, addFields)
         }
         initialConfigs={initialConfigs}
         apiSources={apiSources}
@@ -3797,6 +3669,9 @@ const RequestCreationPage: React.FC = () => {
         versionedSources={versionedSources.filter(v => v.sourceModule === 'Match' && v.createdByModuleId === moduleId)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
+        onDeleteVersion={handleDeleteVersion}
+        appendConfigurations={appendConfigurations}
+        onUpdateVersion={handleUpdateVersion}
         sharedCustomSources={getAvailableCustomSourcesForModule(moduleId)}
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
@@ -4682,6 +4557,7 @@ const RequestCreationPage: React.FC = () => {
           sourcesLoading={sourcesLoading}
           onConfigurationsChange={setOutputConfigurations}
           onTransformedDataChange={setTransformedOutputData}
+          appendConfigurations={appendConfigurations}
         />
       );
     } else if (moduleId === 'panel7') {
@@ -4715,10 +4591,10 @@ const RequestCreationPage: React.FC = () => {
                 mb: 0.5,
               }}
             >
-              {requestId ? 'Edit Request' : 'Create New Request'}
+              {requestId ? 'Edit Request' : duplicateId ? 'Duplicate Request' : 'Create New Request'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-              {requestId ? 'Update your processing request configuration' : 'Configure all modules for your processing request'}
+              {requestId ? 'Update your processing request configuration' : duplicateId ? 'Create a duplicate of the selected request' : 'Configure all modules for your processing request'}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.5} alignItems="center">
@@ -4833,7 +4709,7 @@ const RequestCreationPage: React.FC = () => {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-              Request Name1
+              Request Name
             </Typography>
             <Typography
               component="span"
@@ -5298,6 +5174,7 @@ const RequestCreationPage: React.FC = () => {
               </>
             ) : (
               <>
+              //  
                 {/* Step Header with Icon for Other Steps */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
                   <Box

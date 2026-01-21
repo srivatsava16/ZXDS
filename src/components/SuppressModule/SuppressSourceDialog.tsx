@@ -14,6 +14,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Alert,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
@@ -46,6 +47,7 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
   const [sourceType, setSourceType] = useState<'File' | 'Database'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
   const [sourceNameError, setSourceNameError] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   // Load editing source data when in edit mode
   useEffect(() => {
@@ -72,15 +74,31 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
       sourceName: name,
       allExistingSources: sourcesToCheck,
       editingSourceId: editingSource?.id,
-      moduleName: 'Suppress'
+      moduleName: 'Suppress',
+      apiSources: apiSources
     });
   };
 
+  // Reset dependent data when source type changes
+  const handleSourceTypeChange = (newSourceType: 'File' | 'Database') => {
+    // Only reset if actually changing (not initializing)
+    if (newSourceType !== sourceType && Object.keys(sourceData).length > 0) {
+      // Clear all dependent data when source type changes
+      setSourceData({});
+      setSourceNameError('');
+      setValidationError('');
+    }
+    setSourceType(newSourceType);
+  };
+
   const handleSave = () => {
+    // Clear previous validation errors
+    setValidationError('');
+
     // Validate source name
     const nameError = validateSourceName(sourceData.sourceName || '');
     setSourceNameError(nameError);
-    
+
     if (nameError) {
       return;
     }
@@ -88,15 +106,15 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
       if (!sourceData.headers || sourceData.headers.length === 0) {
-        alert('Please fetch top 10 records to extract headers before adding this suppress source.');
+        setValidationError('Please fetch top 10 records to extract headers before adding this suppress source.');
         return;
       }
     }
 
-    // Validation: For Database type sources, ensure basic configuration
+    // Validation: For Database type sources, headers must be extracted
     if (sourceType === 'Database') {
-      if (!sourceData.sourceName) {
-        alert('Please complete the database source configuration.');
+      if (!sourceData.headers || sourceData.headers.length === 0) {
+        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
         return;
       }
     }
@@ -117,12 +135,13 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
       filterQuery: sourceData.filterQuery,
-      filterConfig: sourceData.filterConfig,
+      filterJson: sourceData.filterJson,
       // Database specific fields
       database: sourceData.database,
       schema: sourceData.schema,
       table: sourceData.table,
       originalTableName: sourceData.originalTableName,
+      tableSourceId: sourceData.tableSourceId, // Store tableId for sourceOption in payload
       customTableMetadata: sourceData.customTableMetadata
     };
 
@@ -172,6 +191,13 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
       <Divider />
 
       <DialogContent sx={{ py: 2, px: 2.5 }}>
+        {/* Validation Error Alert */}
+        {validationError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setValidationError('')}>
+            {validationError}
+          </Alert>
+        )}
+
         {/* Source Type Selection */}
         <Box sx={{ mb: 2 }}>
           <FormControl component="fieldset">
@@ -184,7 +210,7 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
             <RadioGroup
               row
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value as 'File' | 'Database')}
+              onChange={(e) => handleSourceTypeChange(e.target.value as 'File' | 'Database')}
             >
               <FormControlLabel
                 value="File"
@@ -223,6 +249,7 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
             onChange={setSourceData}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
+            allExistingSources={allExistingSources.length > 0 ? allExistingSources : existingSources}
           />
         )}
       </DialogContent>

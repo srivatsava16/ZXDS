@@ -59,12 +59,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
              location.pathname.startsWith('/request/');
     }
 
-    // Universe Reports: highlight for /universeRequests/new and /universeRequests/view/:id
-    if (path === '/universeReports') {
-      return location.pathname === '/universeRequests/new' ||
-             location.pathname.startsWith('/universeRequests/view/');
-    }
-
     // User Management: highlight for all user management routes
     if (path === '/userManagement') {
       return location.pathname === '/createUser/new' ||
@@ -115,45 +109,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
         </Typography>
 
         <List sx={{ px: 2 }}>
-          {/* Universe Reports */}
-          <ListItem disablePadding sx={{ mb: 0.5 }}>
-            <ListItemButton
-              selected={isActive('/universeReports')}
-              onClick={() => handleNavigation('/universeReports')}
-              sx={{
-                borderRadius: 3,
-                py: 1.5,
-                transition: 'all 0.2s ease',
-                '&.Mui-selected': {
-                  background: 'linear-gradient(135deg, #296695 0%, #5B9BD5 100%)',
-                  color: 'white',
-                  boxShadow: '0 4px 12px rgba(41, 102, 149, 0.3)',
-                  '& .MuiListItemIcon-root': {
-                    color: 'white',
-                  },
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #1A4A6B 0%, #296695 100%)',
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: 'rgba(41, 102, 149, 0.08)',
-                  transform: 'translateX(4px)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40 }}>
-                <Language color={isActive('/universeReports') ? 'inherit' : 'primary'} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Universe Reports"
-                primaryTypographyProps={{
-                  fontWeight: isActive('/universeReports') ? 600 : 500,
-                  fontSize: '0.95rem',
-                }}
-              />
-            </ListItemButton>
-          </ListItem>
-
           {/* DATA PULL */}
           <ListItem disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
@@ -187,45 +142,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
                 primary="Data Requests"
                 primaryTypographyProps={{
                   fontWeight: isActive('/dataPullReports') ? 600 : 500,
-                  fontSize: '0.95rem',
-                }}
-              />
-            </ListItemButton>
-          </ListItem>
-
-          {/* Zip Radius Search */}
-          <ListItem disablePadding sx={{ mb: 0.5 }}>
-            <ListItemButton
-              selected={isActive('/zipRadiusSearch')}
-              onClick={() => handleNavigation('/zipRadiusSearch')}
-              sx={{
-                borderRadius: 3,
-                py: 1.5,
-                transition: 'all 0.2s ease',
-                '&.Mui-selected': {
-                  background: 'linear-gradient(135deg, #296695 0%, #5B9BD5 100%)',
-                  color: 'white',
-                  boxShadow: '0 4px 12px rgba(41, 102, 149, 0.3)',
-                  '& .MuiListItemIcon-root': {
-                    color: 'white',
-                  },
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #1A4A6B 0%, #296695 100%)',
-                  },
-                },
-                '&:hover': {
-                  backgroundColor: 'rgba(41, 102, 149, 0.08)',
-                  transform: 'translateX(4px)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40 }}>
-                <MyLocation color={isActive('/zipRadiusSearch') ? 'inherit' : 'primary'} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Zip Radius Search"
-                primaryTypographyProps={{
-                  fontWeight: isActive('/zipRadiusSearch') ? 600 : 500,
                   fontSize: '0.95rem',
                 }}
               />

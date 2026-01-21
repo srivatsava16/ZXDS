@@ -21,18 +21,23 @@ import {
   Button,
   InputAdornment,
   Collapse,
+  Autocomplete,
+  Checkbox,
+  Chip,
 } from '@mui/material';
-import { Search, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, MenuBook } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
-import HeaderSelector from '../shared/HeaderSelector';
 import { type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
+import { getReservedNamesFromAPI } from '../../utils/sourceValidation';
 
 interface DatabaseSourceConfigProps {
   data: Partial<InputSource>;
   onChange: (data: Partial<InputSource>) => void;
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
+  sourceNameError?: string;
+  allExistingSources?: InputSource[]; // For auto-generating unique source names
 }
 
 // Preconfigured database tables
@@ -80,12 +85,56 @@ const SNOWFLAKE_SOURCES = [
 
 // Note: All data should come from API - no mock fallbacks
 
-const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({ 
-  data, 
-  onChange, 
+const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
+  data,
+  onChange,
   apiSources = null,
-  sourcesLoading = false 
+  sourcesLoading = false,
+  sourceNameError = '',
+  allExistingSources = []
 }) => {
+  /**
+   * Generates a unique source name by checking against reserved names and existing sources
+   * If baseName conflicts, appends _1, _2, _3, etc. until unique
+   */
+  const generateUniqueSourceName = (baseName: string): string => {
+    if (!baseName || !baseName.trim()) {
+      return baseName;
+    }
+
+    const trimmedBase = baseName.trim();
+
+    // Get reserved names from API (file sources and table names)
+    const reservedNames = getReservedNamesFromAPI(apiSources);
+
+    // Get existing source names (excluding current source being edited)
+    const existingSourceNames = allExistingSources
+      .filter(source => data.id ? source.id !== data.id : true)
+      .map(source => source.sourceName.trim().toLowerCase());
+
+    // Check if base name is unique
+    const isNameTaken = (name: string): boolean => {
+      const nameLower = name.toLowerCase();
+      return reservedNames.includes(nameLower) || existingSourceNames.includes(nameLower);
+    };
+
+    // If base name is unique, return it
+    if (!isNameTaken(trimmedBase)) {
+      return trimmedBase;
+    }
+
+    // Otherwise, append _1, _2, _3, etc. until unique
+    let counter = 1;
+    let uniqueName = `${trimmedBase}_${counter}`;
+
+    while (isNameTaken(uniqueName)) {
+      counter++;
+      uniqueName = `${trimmedBase}_${counter}`;
+    }
+
+    return uniqueName;
+  };
+
   const [tableSelectionType, setTableSelectionType] = useState<'preconfigured' | 'custom'>(() => {
     // Determine initial table selection type based on data
     if (data && data.subSourceType === 'Custom Database') {
@@ -115,6 +164,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
   const [databaseSearch, setDatabaseSearch] = useState<string>('');
   const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
   const [isRestoringData, setIsRestoringData] = useState<boolean>(false);
+  const [customTableError, setCustomTableError] = useState<string>(''); // Error message for custom table
 
   // Use API preconfigured tables or fallback to defaults
   const availableTables = apiSources?.dbSource?.preconfiguredTables?.input || [];
@@ -448,7 +498,19 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
     // Find and store the tableId for this table
     const selectedTableObj = currentTables.find(table => table.name === tableName);
-    setSelectedTableId(selectedTableObj?.tableId);
+    const tableId = selectedTableObj?.tableId;
+
+    console.log('[DatabaseSourceConfig] Table selection changed:', {
+      tableName,
+      foundTable: !!selectedTableObj,
+      tableId,
+      currentTablesCount: currentTables.length,
+      currentTablesPreview: currentTables.slice(0, 3).map(t => ({ name: t.name, id: t.tableId })),
+      availableTablesCount: availableTables.length,
+      selectedTableObj: selectedTableObj
+    });
+
+    setSelectedTableId(tableId);
 
     setTop10Records([]);
     setShowTop10(false);
@@ -460,22 +522,48 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setAllAvailableHeaders([]);
     setSelectedHeaders([]);
 
-    // Auto-generate source name from table name
-    const autoSourceName = tableName;
+    // Reset filter query and config when table changes
+    setFilterQuery('');
+
+    // Auto-generate unique source name from table name
+    const autoSourceName = generateUniqueSourceName(tableName);
     setTableSourceName(autoSourceName);
 
-    onChange({
-      ...data,
+    // Build updated data, only include tableSourceId if it's defined
+    // Don't spread old data to avoid keeping stale fields
+    const updatedData: any = {
+      sourceType: 'Database',
       sourceName: autoSourceName,
       subSourceType: 'Database',
       headers: [], // Will be populated after Get Top 10 Records
       selectedHeaders: [], // Will be populated after Get Top 10 Records
       dataTypes: {}, // Will be populated after Get Top 10 Records
-      filterQuery,
+      filterQuery: '', // Reset filter when table changes
+      filterJson: null, // Reset filter config
       previewData: [], // Will be populated after Get Top 10 Records
       originalTableName: tableName, // Store original table name for restoration
-      tableSourceId: selectedTableObj?.tableId, // Store tableId for proper restoration and API calls
+      database: undefined,
+      schema: undefined,
+      table: tableName,
+      customTableMetadata: undefined,
+    };
+
+    // Only add tableSourceId if it's defined (not undefined)
+    if (tableId !== undefined) {
+      updatedData.tableSourceId = tableId;
+      console.log('[DatabaseSourceConfig] ✅ Adding tableSourceId to updatedData:', tableId);
+    } else {
+      console.warn('[DatabaseSourceConfig] ⚠️ tableId is undefined, not adding to updatedData. Check if API provided tableId in preconfiguredTables.');
+    }
+
+    console.log('[DatabaseSourceConfig] Calling onChange with data:', {
+      sourceName: updatedData.sourceName,
+      tableSourceId: updatedData.tableSourceId,
+      originalTableName: updatedData.originalTableName,
+      hasTableSourceId: 'tableSourceId' in updatedData
     });
+
+    onChange(updatedData);
   };
 
   const handleTableSourceNameChange = (name: string) => {
@@ -511,6 +599,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       return;
     }
 
+    // Clear any previous errors
+    setCustomTableError('');
     setIsLoadingRecords(true);
     
     try {
@@ -543,28 +633,66 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       // Make the API call
       const response: Top10RecordsResponse | any[] = await getTop10Records(payload);
 
-      // Handle both response formats:
-      // 1. Expected format: { columns: string[], data: object[] }
-      // 2. Actual format from API: object[] (plain array)
+      // Handle multiple response formats:
+      // 1. New format: { separator: string, data: object[] }
+      // 2. Legacy format: { columns: string[], data: object[] }
+      // 3. Plain array: object[] (fallback)
       let columns: string[];
       let responseData: Record<string, any>[];
 
-      if (Array.isArray(response)) {
-        // Response is a plain array - extract columns from first object
+      if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
+        // New format: { separator: string, data: object[] } or { data: object[] }
+        responseData = response.data;
+
+        if (responseData.length === 0) {
+          const errorMsg = 'No data found in the table. Please check the table name.';
+          if (tableSelectionType === 'custom') {
+            setCustomTableError(errorMsg);
+          } else {
+            alert(errorMsg);
+          }
+          setIsLoadingRecords(false);
+          return;
+        }
+
+        // Extract columns from first data object
+        columns = Object.keys(responseData[0]);
+      } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
+        // Legacy format: { columns: string[], data: object[] }
+        if (!response.columns || !Array.isArray(response.columns) || response.columns.length === 0) {
+          const errorMsg = 'Invalid response format: missing columns.';
+          if (tableSelectionType === 'custom') {
+            setCustomTableError(errorMsg);
+          } else {
+            alert(errorMsg);
+          }
+          setIsLoadingRecords(false);
+          return;
+        }
+        columns = response.columns;
+        responseData = response.data;
+      } else if (Array.isArray(response)) {
+        // Plain array fallback: object[]
         if (response.length === 0) {
-          alert('No data found in the table. Please check the table name.');
+          const errorMsg = 'No data found in the table. Please check the table name.';
+          if (tableSelectionType === 'custom') {
+            setCustomTableError(errorMsg);
+          } else {
+            alert(errorMsg);
+          }
           setIsLoadingRecords(false);
           return;
         }
         columns = Object.keys(response[0]);
         responseData = response;
-      } else if (response && response.columns && response.data) {
-        // Response has the expected format
-        columns = response.columns;
-        responseData = response.data;
       } else {
         // Invalid format
-        alert('Received invalid data from server. Please try again.');
+        const errorMsg = 'Received invalid data from server. Please try again.';
+        if (tableSelectionType === 'custom') {
+          setCustomTableError(errorMsg);
+        } else {
+          alert(errorMsg);
+        }
         setIsLoadingRecords(false);
         return;
       }
@@ -602,11 +730,11 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
       setSelectedHeaders(finalSelectedHeaders);
 
-      // Auto-generate source name if not already set
+      // Auto-generate unique source name if not already set
       let autoSourceName = tableSourceName;
       if (!autoSourceName) {
         if (tableSelectionType === 'preconfigured') {
-          autoSourceName = selectedTable;
+          autoSourceName = generateUniqueSourceName(selectedTable);
         } else {
           // For custom table, use just the table name (not the full path)
           autoSourceName = customTableName;
@@ -615,7 +743,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       }
 
       // Update parent component data
-      onChange({
+      const updatedDataFromTop10: any = {
         ...data,
         sourceName: autoSourceName,
         subSourceType: tableSelectionType === 'preconfigured' ? 'Database' : 'Custom Database',
@@ -624,22 +752,38 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         dataTypes: actualColumns.reduce((acc, col) => ({ ...acc, [col]: 'String' }), {}),
         previewData: responseData,
         filterQuery,
-        // Add tableId for preconfigured tables
-        ...(tableSelectionType === 'preconfigured' && {
-          originalTableName: selectedTable,
-          tableSourceId: selectedTableId
-        }),
-        // Add metadata for custom table restoration
-        ...(tableSelectionType === 'custom' && {
-          customTableMetadata: {
-            source: selectedSource,
-            database: selectedDatabase,
-            schema: selectedSchema, // Already contains ID from handleSchemaChange
-            tableName: customTableName,
-            tableSourceName: autoSourceName
-          }
-        })
+      };
+
+      // Add tableId for preconfigured tables - only if tableSourceId is defined
+      if (tableSelectionType === 'preconfigured') {
+        updatedDataFromTop10.originalTableName = selectedTable;
+        if (selectedTableId !== undefined) {
+          updatedDataFromTop10.tableSourceId = selectedTableId;
+          console.log('[DatabaseSourceConfig - handleGetTop10Records] ✅ Adding tableSourceId:', selectedTableId);
+        } else {
+          console.warn('[DatabaseSourceConfig - handleGetTop10Records] ⚠️ selectedTableId is undefined for preconfigured table:', selectedTable);
+        }
+      }
+
+      // Add metadata for custom table restoration
+      if (tableSelectionType === 'custom') {
+        updatedDataFromTop10.customTableMetadata = {
+          source: selectedSource,
+          database: selectedDatabase,
+          schema: selectedSchema, // Already contains ID from handleSchemaChange
+          tableName: customTableName,
+          tableSourceName: autoSourceName
+        };
+      }
+
+      console.log('[DatabaseSourceConfig - handleGetTop10Records] Final updatedData:', {
+        hasTableSourceId: 'tableSourceId' in updatedDataFromTop10,
+        tableSourceId: updatedDataFromTop10.tableSourceId,
+        tableSelectionType,
+        selectedTableId
       });
+
+      onChange(updatedDataFromTop10);
     } catch (error) {
 
       // Only show mock data fallback for preconfigured tables
@@ -691,10 +835,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
         setSelectedHeaders(finalSelectedHeaders);
 
-        // Auto-generate source name if not already set
+        // Auto-generate unique source name if not already set
         let autoSourceName = tableSourceName;
         if (!autoSourceName) {
-          autoSourceName = selectedTable;
+          autoSourceName = generateUniqueSourceName(selectedTable);
           setTableSourceName(autoSourceName);
         }
 
@@ -710,8 +854,19 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           filterQuery,
         });
       } else {
-        // For custom tables, show error
-        alert('Please enter a valid file name');
+        // For custom tables, show inline error
+        let errorMsg = 'Failed to fetch table data. Please check your table configuration.';
+
+        // Try to extract error message from the error object
+        if (error && typeof error === 'object') {
+          if ((error as any).response?.data?.message) {
+            errorMsg = (error as any).response.data.message;
+          } else if ((error as any).message) {
+            errorMsg = (error as any).message;
+          }
+        }
+
+        setCustomTableError(errorMsg);
 
         // Reset state on error
         setFields([]);
@@ -749,6 +904,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setTop10Records([]);
     setShowTop10(false);
     setIsLoadingRecords(false);
+    setCustomTableError(''); // Clear error when source changes
+    // Reset filter query and config when source changes
+    setFilterQuery('');
   };
 
   const handleDatabaseChange = (database: string) => {
@@ -761,6 +919,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setTop10Records([]);
     setShowTop10(false);
     setIsLoadingRecords(false);
+    setCustomTableError(''); // Clear error when database changes
+    // Reset filter query and config when database changes
+    setFilterQuery('');
   };
 
   const handleSchemaChange = (schemaValue: string) => {
@@ -775,6 +936,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setTop10Records([]);
     setShowTop10(false);
     setIsLoadingRecords(false);
+    setCustomTableError(''); // Clear error when schema changes
+    // Reset filter query and config when schema changes
+    setFilterQuery('');
   };
 
   const handleCustomTableNameChange = (tableName: string) => {
@@ -782,6 +946,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setTop10Records([]);
     setShowTop10(false);
     setIsLoadingRecords(false);
+    setCustomTableError(''); // Clear error when user modifies table name
 
     // Clear fields and headers when table name changes
     // Fields will only be set after Get Top 10 Records is called
@@ -789,13 +954,25 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setAllAvailableHeaders([]);
     setSelectedHeaders([]);
 
+    // Reset filter query and config when custom table name changes
+    setFilterQuery('');
+
+    // Don't spread old data to avoid keeping stale fields
     onChange({
-      ...data,
+      sourceType: 'Database',
       sourceName: tableName.trim() ? (tableSourceName || tableName) : '',
       subSourceType: 'Custom Database',
       headers: [],
+      selectedHeaders: [],
       dataTypes: {},
-      filterQuery,
+      previewData: [],
+      filterQuery: '', // Reset filter when table changes
+      filterJson: null, // Reset filter config
+      database: selectedDatabase,
+      schema: selectedSchema,
+      table: tableName,
+      originalTableName: undefined,
+      tableSourceId: undefined,
       customTableMetadata: {
         source: selectedSource,
         database: selectedDatabase,
@@ -819,18 +996,32 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setTableSourceName('');
     setDatabaseSearch('');
     setFields([]);
+    setAllAvailableHeaders([]);
+    setSelectedHeaders([]);
     setTop10Records([]);
     setShowTop10(false);
     setIsLoadingRecords(false);
+    setCustomTableError(''); // Clear error when table selection type changes
+    // Reset filter query and config when table selection type changes
+    setFilterQuery('');
 
-    // Clear data
+    // Clear data - explicitly clear ALL fields, don't spread old data
     onChange({
-      ...data,
+      sourceType: 'Database',
       sourceName: '',
       subSourceType: type === 'preconfigured' ? 'Database' : 'Custom Database',
       headers: [],
+      selectedHeaders: [],
       dataTypes: {},
-      filterQuery,
+      previewData: [],
+      filterQuery: '',
+      filterJson: null,
+      database: undefined,
+      schema: undefined,
+      table: undefined,
+      originalTableName: undefined,
+      tableSourceId: undefined,
+      customTableMetadata: undefined,
     });
   };
 
@@ -934,6 +1125,24 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     </MenuItem>
                   ))}
               </Select>
+              <Tooltip title="View Table Dictionary" arrow>
+                <IconButton
+                  size="small"
+                  disabled={!selectedTable}
+                  sx={{
+                    color: selectedTable ? 'primary.main' : 'action.disabled',
+                    border: '1px solid',
+                    borderColor: selectedTable ? 'primary.main' : 'action.disabled',
+                    borderRadius: '4px',
+                    '&:hover': {
+                      backgroundColor: 'primary.light',
+                      borderColor: 'primary.dark',
+                    },
+                  }}
+                >
+                  <MenuBook fontSize="small" />
+                </IconButton>
+              </Tooltip>
               <Button
                 variant="outlined"
                 size="small"
@@ -1037,17 +1246,128 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Header Selection - Only show after Get Top 10 Records is fetched or in edit mode */}
-          {((showTop10 && top10Records.length > 0) || (data && data.subSourceType === 'Database' && data.sourceName)) && allAvailableHeaders.length > 0 && (
-            <HeaderSelector
-              availableHeaders={allAvailableHeaders}
-              selectedHeaders={selectedHeaders}
-              onHeadersChange={handleHeaderSelectionChange}
-              disabled={false}
-            />
+          {allAvailableHeaders.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  Select Headers
+                  <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
+                    ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+                  </Typography>
+                </Typography>
+              </Box>
+              <Autocomplete
+                multiple
+                options={['__SELECT_ALL__', ...allAvailableHeaders]}
+                value={selectedHeaders}
+                onChange={(event, newValue) => {
+                  // Check if "Select All" was clicked
+                  if (newValue.includes('__SELECT_ALL__')) {
+                    // Toggle: if all are selected, deselect all; otherwise select all
+                    if (selectedHeaders.length === allAvailableHeaders.length) {
+                      handleHeaderSelectionChange([]);
+                    } else {
+                      handleHeaderSelectionChange(allAvailableHeaders);
+                    }
+                  } else {
+                    handleHeaderSelectionChange(newValue);
+                  }
+                }}
+                disableCloseOnSelect
+                getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
+                renderOption={(props, option, { selected }) => {
+                  if (option === '__SELECT_ALL__') {
+                    const allSelected = selectedHeaders.length === allAvailableHeaders.length;
+                    const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                    return (
+                      <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                        <Checkbox
+                          icon={<CheckBoxOutlineBlank fontSize="small" />}
+                          checkedIcon={<CheckBox fontSize="small" />}
+                          indeterminateIcon={<CheckBox fontSize="small" />}
+                          style={{ marginRight: 8 }}
+                          checked={allSelected}
+                          indeterminate={someSelected}
+                        />
+                        Select All
+                      </li>
+                    );
+                  }
+                  return (
+                    <li {...props}>
+                      <Checkbox
+                        icon={<CheckBoxOutlineBlank fontSize="small" />}
+                        checkedIcon={<CheckBox fontSize="small" />}
+                        style={{ marginRight: 8 }}
+                        checked={selected}
+                      />
+                      {option}
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder={selectedHeaders.length === 0 ? "Select headers..." : ""}
+                    size="small"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.slice(0, 3).map((option, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={option}
+                      label={option}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.75rem',
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                        '& .MuiChip-deleteIcon': {
+                          color: 'rgba(255, 255, 255, 0.7)',
+                          '&:hover': {
+                            color: 'white',
+                          },
+                        },
+                      }}
+                    />
+                  )).concat(
+                    value.length > 3
+                      ? [
+                          <Chip
+                            key="more"
+                            label={`+${value.length - 3} more`}
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: '0.75rem',
+                              backgroundColor: 'text.secondary',
+                              color: 'white',
+                            }}
+                          />
+                        ]
+                      : []
+                  )
+                }
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                  },
+                }}
+              />
+              {selectedHeaders.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                    Selected headers will be included in the data source. Unselected headers will be excluded from processing.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           )}
 
           {/* Filters Module for Preconfigured Table - Only show after Get Top 10 Records is fetched or in edit mode */}
-          {((showTop10 && top10Records.length > 0) || (data && data.subSourceType === 'Database' && data.sourceName)) && fields.length > 0 && selectedHeaders.length > 0 && (
+          {fields.length > 0 && selectedHeaders.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <FilterBuilder 
                 headers={selectedHeaders} 
@@ -1061,10 +1381,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 onConfigChange={(config) => {
                   onChange({
                     ...data,
-                    filterConfig: config,
+                    filterJson: config,
                   });
                 }}
-                initialConfig={data.filterConfig}
+                initialConfig={data.filterJson}
                 showDataType={false} 
               />
               {/* Display current filter query if in edit mode and has saved filter */}
@@ -1085,7 +1405,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Table Source Name - Only shown after Get Top 10 Records is clicked, appears after Filters */}
-          {((showTop10 && top10Records.length > 0) || (data && data.subSourceType === 'Database' && data.sourceName)) && (
+          {allAvailableHeaders.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
                 Table Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -1096,15 +1416,14 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 placeholder="Enter unique source name for this table"
                 value={tableSourceName}
                 onChange={(e) => handleTableSourceNameChange(e.target.value)}
+                error={!!sourceNameError}
+                helperText={sourceNameError || 'Provide a unique name to identify this source within the request'}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     backgroundColor: 'white',
                   },
                 }}
               />
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', mt: 0.5, display: 'block' }}>
-                Provide a unique name to identify this source within the request
-              </Typography>
             </Box>
           )}
         </>
@@ -1247,6 +1566,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   placeholder="Enter table name"
                   value={customTableName}
                   onChange={(e) => handleCustomTableNameChange(e.target.value)}
+                  error={!!customTableError}
                   sx={{
                     flex: 1,
                     '& .MuiOutlinedInput-root': {
@@ -1268,18 +1588,144 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   {isLoadingRecords ? 'Loading...' : 'Get Top 10 Records'}
                 </Button>
               </Box>
+
+              {/* Inline Error Message */}
+              {customTableError && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'error.main',
+                    mt: 0.5,
+                    display: 'block',
+                    fontSize: '0.75rem'
+                  }}
+                >
+                  {customTableError}
+                </Typography>
+              )}
             </Box>
           )}
 
 
           {/* Header Selection for Custom Table */}
-          {(allAvailableHeaders.length > 0 || (data && data.headers && data.headers.length > 0 && data.subSourceType === 'Custom Database')) && (
-            <HeaderSelector
-              availableHeaders={allAvailableHeaders.length > 0 ? allAvailableHeaders : (data.headers || [])}
-              selectedHeaders={selectedHeaders.length > 0 ? selectedHeaders : (data.headers || [])}
-              onHeadersChange={handleHeaderSelectionChange}
-              disabled={false}
-            />
+          {allAvailableHeaders.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  Select Headers
+                  <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
+                    ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+                  </Typography>
+                </Typography>
+              </Box>
+              <Autocomplete
+                multiple
+                options={['__SELECT_ALL__', ...allAvailableHeaders]}
+                value={selectedHeaders}
+                onChange={(event, newValue) => {
+                  // Check if "Select All" was clicked
+                  if (newValue.includes('__SELECT_ALL__')) {
+                    // Toggle: if all are selected, deselect all; otherwise select all
+                    if (selectedHeaders.length === allAvailableHeaders.length) {
+                      handleHeaderSelectionChange([]);
+                    } else {
+                      handleHeaderSelectionChange(allAvailableHeaders);
+                    }
+                  } else {
+                    handleHeaderSelectionChange(newValue);
+                  }
+                }}
+                disableCloseOnSelect
+                getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
+                renderOption={(props, option, { selected }) => {
+                  if (option === '__SELECT_ALL__') {
+                    const allSelected = selectedHeaders.length === allAvailableHeaders.length;
+                    const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                    return (
+                      <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                        <Checkbox
+                          icon={<CheckBoxOutlineBlank fontSize="small" />}
+                          checkedIcon={<CheckBox fontSize="small" />}
+                          indeterminateIcon={<CheckBox fontSize="small" />}
+                          style={{ marginRight: 8 }}
+                          checked={allSelected}
+                          indeterminate={someSelected}
+                        />
+                        Select All
+                      </li>
+                    );
+                  }
+                  return (
+                    <li {...props}>
+                      <Checkbox
+                        icon={<CheckBoxOutlineBlank fontSize="small" />}
+                        checkedIcon={<CheckBox fontSize="small" />}
+                        style={{ marginRight: 8 }}
+                        checked={selected}
+                      />
+                      {option}
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder={(selectedHeaders.length > 0 ? selectedHeaders : (data.headers || [])).length === 0 ? "Select headers..." : ""}
+                    size="small"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.slice(0, 3).map((option, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={option}
+                      label={option}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.75rem',
+                        backgroundColor: 'primary.main',
+                        color: 'white',
+                        '& .MuiChip-deleteIcon': {
+                          color: 'rgba(255, 255, 255, 0.7)',
+                          '&:hover': {
+                            color: 'white',
+                          },
+                        },
+                      }}
+                    />
+                  )).concat(
+                    value.length > 3
+                      ? [
+                          <Chip
+                            key="more"
+                            label={`+${value.length - 3} more`}
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: '0.75rem',
+                              backgroundColor: 'text.secondary',
+                              color: 'white',
+                            }}
+                          />
+                        ]
+                      : []
+                  )
+                }
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                  },
+                }}
+              />
+              {(selectedHeaders.length > 0 ? selectedHeaders : (data.headers || [])).length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                    Selected headers will be included in the data source. Unselected headers will be excluded from processing.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           )}
 
           {/* Top 10 Records Preview - Inline for Custom Table */}
@@ -1383,10 +1829,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 onConfigChange={(config) => {
                   onChange({
                     ...data,
-                    filterConfig: config,
+                    filterJson: config,
                   });
                 }}
-                initialConfig={data.filterConfig}
+                initialConfig={data.filterJson}
                 showDataType={false} 
               />
               {/* Display current filter query if in edit mode and has saved filter */}
@@ -1407,7 +1853,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Source Name for Custom Table */}
-          {customTableName && (fields.length > 0 || (data && data.subSourceType === 'Custom Database')) && (
+          {customTableName && fields.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
                 Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -1418,15 +1864,14 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 placeholder="Enter unique source name for this table"
                 value={tableSourceName}
                 onChange={(e) => handleTableSourceNameChange(e.target.value)}
+                error={!!sourceNameError}
+                helperText={sourceNameError || `Provide a unique name to identify this source within the request (Auto-generated from table name: ${customTableName})`}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     backgroundColor: 'white',
                   },
                 }}
               />
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', mt: 0.5, display: 'block' }}>
-                Provide a unique name to identify this source within the request (Auto-generated from table name: {customTableName})
-              </Typography>
             </Box>
           )}
         </Box>

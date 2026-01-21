@@ -42,7 +42,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import OutputModule from '../../../components/OutputModule/OutputModule';
 import StatsConfigDialog from '../../../components/StatsConfigDialog/StatsConfigDialog';
-import { getAllReports, getMockReportsData, type Report as ApiReport } from '../../../services/api';
+import { getAllReports, type Report as ApiReport } from '../../../services/api';
 
 interface ReportData {
   id: number;
@@ -60,6 +60,7 @@ interface ReportData {
 
 interface ApiResponse {
   success: boolean;
+  totalRequests: number;
   data: ReportData[];
   Counts: {
     TodayRequests: number;
@@ -68,12 +69,6 @@ interface ApiResponse {
     Completed: number;
   };
 }
-
-// Get today's date for sample data
-const today = new Date().toISOString().split('T')[0];
-
-// Get mock API response from service
-const mockApiResponse: ApiResponse = getMockReportsData();
 
 const ReportPage: React.FC = () => {
   const navigate = useNavigate();
@@ -86,67 +81,55 @@ const ReportPage: React.FC = () => {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsRequestId, setStatsRequestId] = useState<number | null>(null);
 
-  // New API-related state - Initialize with mock data
-  const [reports, setReports] = useState<ReportData[]>(mockApiResponse.data);
+  // API-related state - Initialize with empty data
+  const [reports, setReports] = useState<ReportData[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [apiCounts, setApiCounts] = useState<{
     TodayRequests: number;
     Waiting: number;
     Inprogress: number;
     Completed: number;
-  } | null>(mockApiResponse.Counts);
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
 
-  // Load reports from API
-  const loadReports = async () => {
-    // Prevent multiple simultaneous API calls, but allow initial load
-    if (loading && hasInitialLoaded) return;
-
+  // Load reports from API with pagination
+  const loadReports = async (offset: number = 0, limit: number = 10) => {
     try {
       setLoading(true);
       setError(null);
 
+      const response: any = await getAllReports({ offset, limit });
 
-      const response: any = await getAllReports();
-
-
-      // Handle new API response format
+      // Handle API response format
       if (response && response.success) {
-
-
-
-        // Set reports even if data array is empty
+        // Set reports and total count from API
         setReports(response.data || []);
+        setTotalCount(parseInt(response.totalRequests) || 0);
         setApiCounts(response.Counts || null);
-
-        if (!response.data || response.data.length === 0) {
-
-        }
       } else {
-        // If API returns unsuccessful response, use mock data
-
-        const fallbackData = getMockReportsData();
-        setReports(fallbackData.data);
-        setApiCounts(fallbackData.Counts);
+        // If API returns unsuccessful response, show error
+        setError('Failed to load reports. Please try again.');
+        setReports([]);
+        setTotalCount(0);
+        setApiCounts(null);
       }
-    } catch (err) {
-
-      setError('Failed to load reports from API, showing cached data');
-      // Use the centralized mock data when API fails
-      const fallbackData = getMockReportsData();
-      setReports(fallbackData.data);
-      setApiCounts(fallbackData.Counts);
+    } catch (err: any) {
+      console.error('Error loading reports:', err);
+      setError(err?.message || 'Failed to load reports. Please try again.');
+      setReports([]);
+      setTotalCount(0);
+      setApiCounts(null);
     } finally {
       setLoading(false);
-      setHasInitialLoaded(true);
-
     }
   };
 
+  // Load reports when component mounts or pagination changes
   useEffect(() => {
-    loadReports();
-  }, []); // Empty dependency array ensures it only runs once on mount
+    const offset = page * rowsPerPage;
+    loadReports(offset, rowsPerPage);
+  }, [page, rowsPerPage]);
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -168,6 +151,11 @@ const ReportPage: React.FC = () => {
 
   const handleNewRequest = () => {
     navigate('/dataPullRequests/new');
+  };
+
+  const handleDuplicate = (requestId: number) => {
+    // Navigate to creation page with duplicate parameter
+    navigate(`/dataPullRequests/new?duplicate=${requestId}`);
   };
 
   const handleOpenFileGeneration = (requestId: number) => {
@@ -292,7 +280,7 @@ const ReportPage: React.FC = () => {
           </Box>
           <Stack direction="row" spacing={1}>
             <IconButton
-              onClick={loadReports}
+              onClick={() => loadReports(page * rowsPerPage, rowsPerPage)}
               disabled={loading}
               sx={{
                 border: '1px solid',
@@ -387,9 +375,7 @@ const ReportPage: React.FC = () => {
           </TableHead>
           <TableBody>
             {reports && reports.length > 0 ? (
-              reports
-                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                .map((row) => (
+              reports.map((row) => (
                   <TableRow
                     key={row.id}
                     hover
@@ -453,7 +439,7 @@ const ReportPage: React.FC = () => {
                         <span>
                           <IconButton
                             size="small"
-                            disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
+                            // disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
                             onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
                             sx={{
                               color: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'primary.main' : 'text.disabled',
@@ -475,7 +461,7 @@ const ReportPage: React.FC = () => {
                       <Tooltip title="Duplicate request" arrow>
                         <IconButton
                           size="small"
-                          onClick={() => {}}
+                          onClick={() => handleDuplicate(row.id)}
                           sx={{
                             color: 'primary.main',
                             '&:hover': {
@@ -591,7 +577,7 @@ const ReportPage: React.FC = () => {
         <TablePagination
           rowsPerPageOptions={[5, 10, 25]}
           component="div"
-          count={reports?.length || 0}
+          count={totalCount}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={handleChangePage}

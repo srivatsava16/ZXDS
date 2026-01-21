@@ -107,12 +107,14 @@ export interface Top10RecordsRequest {
   [key: string]: unknown;
 }
 
-// API can return either format:
-// 1. { columns: string[], data: Record<string, any>[] }
-// 2. Record<string, any>[] (plain array)
+// API can return multiple formats:
+// 1. New format: { separator?: string, data: Record<string, any>[] }
+// 2. Legacy format: { columns: string[], data: Record<string, any>[] }
+// 3. Plain array: Record<string, any>[] (fallback)
 export interface Top10RecordsResponse {
-  columns: string[];
+  columns?: string[];
   data: Record<string, any>[];
+  separator?: string;
 }
 
 export async function getRequestInputs(): Promise<RequestInputsResponse> {

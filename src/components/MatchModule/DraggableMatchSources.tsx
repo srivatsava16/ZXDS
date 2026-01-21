@@ -16,12 +16,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Box, Typography, Chip } from '@mui/material';
-import { DragIndicator } from '@mui/icons-material';
+import { Box, Typography, Chip, IconButton, Tooltip } from '@mui/material';
+import { DragIndicator, Delete } from '@mui/icons-material';
 
 interface DraggableMatchSourcesProps {
   selectedSources: string[];
   onReorder: (newOrder: string[]) => void;
+  onDelete: (id: string) => void;
   getSourceName: (id: string) => string;
 }
 
@@ -29,9 +30,10 @@ interface SortableItemProps {
   id: string;
   sourceName: string;
   index: number;
+  onDelete: (id: string) => void;
 }
 
-const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) => {
+const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index, onDelete }) => {
   const {
     attributes,
     listeners,
@@ -71,12 +73,15 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) =>
           '& .drag-handle': {
             color: '#3B82F6',
           },
+          '& .delete-button': {
+            opacity: 1,
+          },
         },
       }}
-      {...attributes}
-      {...listeners}
     >
       <Box
+        {...attributes}
+        {...listeners}
         className="drag-handle"
         sx={{
           display: 'flex',
@@ -86,6 +91,7 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) =>
           borderRadius: 0.75,
           p: 0.5,
           transition: 'all 0.2s ease',
+          cursor: isDragging ? 'grabbing' : 'grab',
         }}
       >
         <DragIndicator
@@ -113,21 +119,45 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) =>
           },
         }}
       />
-      <Typography
-        variant="body2"
-        sx={{
-          flex: 1,
-          fontSize: '0.8rem',
-          fontWeight: 500,
-          color: isDragging ? '#3B82F6' : '#2D3748',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          transition: 'color 0.2s ease',
-        }}
-      >
-        {sourceName}
-      </Typography>
+      <Tooltip title={sourceName} arrow placement="top">
+        <Typography
+          variant="body2"
+          sx={{
+            flex: 1,
+            fontSize: '0.8rem',
+            fontWeight: 500,
+            color: isDragging ? '#3B82F6' : '#2D3748',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            transition: 'color 0.2s ease',
+          }}
+        >
+          {sourceName}
+        </Typography>
+      </Tooltip>
+      <Tooltip title="Remove from priority list" arrow>
+        <IconButton
+          className="delete-button"
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(id);
+          }}
+          sx={{
+            opacity: 0.6,
+            transition: 'all 0.2s ease',
+            color: '#EF4444',
+            flexShrink: 0,
+            '&:hover': {
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              color: '#DC2626',
+            },
+          }}
+        >
+          <Delete sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 };
@@ -135,6 +165,7 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) =>
 const DraggableMatchSources: React.FC<DraggableMatchSourcesProps> = ({
   selectedSources,
   onReorder,
+  onDelete,
   getSourceName,
 }) => {
   const sensors = useSensors(
@@ -193,6 +224,7 @@ const DraggableMatchSources: React.FC<DraggableMatchSourcesProps> = ({
               id={sourceId}
               sourceName={getSourceName(sourceId)}
               index={index}
+              onDelete={onDelete}
             />
           ))}
         </SortableContext>

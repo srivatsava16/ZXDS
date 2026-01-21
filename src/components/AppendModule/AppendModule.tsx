@@ -24,7 +24,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Menu,
 } from '@mui/material';
 import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
@@ -51,6 +50,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   getSourceNameById,
   onUpdateVersionName,
   onUpdateVersion,
+  onDeleteVersion,
   sharedCustomSources = [],
   onAddSharedCustomSource,
   onEditSharedCustomSource,
@@ -141,6 +141,43 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   // Get predefined sources from API or use fallback
   const PREDEFINED_SOURCES = getPredefinedSources(apiSources);
 
+  // Helper function to get all fields for a source
+  const getSourceFields = (sourceId: string): string[] => {
+    // Check predefined sources
+    const predefined = PREDEFINED_SOURCES.find(src => src.id === sourceId);
+    if (predefined) {
+      return predefined.fields || [];
+    }
+
+    // Check custom append sources
+    const customSource = customAppendSources.find(src => src.id === sourceId);
+    if (customSource) {
+      return customSource.selectedHeaders || customSource.headers || [];
+    }
+
+    // Check versioned sources and regular input sources
+    const versionedSource = availableInputSources.find(src => src.id === sourceId);
+    if (versionedSource) {
+      return versionedSource.selectedHeaders || versionedSource.headers || [];
+    }
+
+    return [];
+  };
+
+  // Helper function to check if a source contains all selected match keys
+  const sourceHasAllMatchKeys = (sourceId: string): boolean => {
+    // If no match keys are selected, all sources are enabled
+    if (selectedAppendOnFields.length === 0) {
+      return true;
+    }
+
+    // Get the fields for this source
+    const sourceFields = getSourceFields(sourceId);
+
+    // Check if all selected match keys exist in the source fields
+    return selectedAppendOnFields.every(matchKey => sourceFields.includes(matchKey));
+  };
+
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
     if (initialConfigs && initialConfigs?.length > 0) {
@@ -154,6 +191,24 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       onConfigurationsChange(configs);
     }
   }, [configs, onConfigurationsChange]);
+
+  // Auto-deselect append sources that don't have all selected match keys
+  useEffect(() => {
+    if (selectedAppendOnFields.length > 0 && selectedAppendSources.length > 0) {
+      // Filter out sources that don't have all match keys using helper function
+      const validSources = selectedAppendSources.filter(sourceId => {
+        const sourceFields = getSourceFields(sourceId);
+        return selectedAppendOnFields.every(matchKey => sourceFields.includes(matchKey));
+      });
+
+      // Update if any sources were filtered out
+      if (validSources.length !== selectedAppendSources.length) {
+        setSelectedAppendSources(validSources);
+        // Also clear append fields since sources changed
+        setSelectedAppendFields([]);
+      }
+    }
+  }, [selectedAppendOnFields]); // Only run when match keys change
 
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
@@ -269,14 +324,16 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     setSelectedAppendSources(newOrder);
   };
 
-  // Version menu state
-  const [versionMenuAnchorEl, setVersionMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const versionMenuOpen = Boolean(versionMenuAnchorEl);
+  // Handle deletion of append source from priority list
+  const handleDeleteAppendSource = (id: string) => {
+    const updatedSelection = selectedAppendSources.filter(sourceId => sourceId !== id);
+    setSelectedAppendSources(updatedSelection);
+    if (updatedSelection.length === 0) {
+      setSelectedAppendFields([]);
+    }
+  };
 
   const handleCreateVersion = () => {
-    // Close menu first
-    setVersionMenuAnchorEl(null);
-    
     // Validation
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source before creating versions');
@@ -286,6 +343,14 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       alert('Please select at least one Append Source before creating versions');
       return;
     }
+    if (selectedAppendOnFields.length === 0) {
+      alert('Please select at least one Match Key field before creating versions');
+      return;
+    }
+    if (selectedAppendFields.length === 0) {
+      alert('Please select at least one Field to Append before creating versions');
+      return;
+    }
 
     // Create versioned sources (n × m combinations)
     if (onCreateVersionedSource) {
@@ -293,25 +358,23 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         'Append',
         selectedInputSources,
         selectedAppendSources,
-        selectedAppendOnFields,
-        fieldMappings
+        selectedAppendOnFields,  // Match Keys
+        fieldMappings,
+        selectedAppendFields  // Fields to Append
       );
     }
   };
 
-  const handleVersionMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setVersionMenuAnchorEl(event.currentTarget);
-  };
+  // Filter self-append sources from shared custom sources
+  const selfAppendSources = sharedCustomSources.filter(source => source.sourceType === 'Self');
 
-  const handleVersionMenuClose = () => {
-    setVersionMenuAnchorEl(null);
-  };
-
-  // Combine configurations and versions for unified display
+  // Combine configurations, versions, and self-append sources for unified display
+  // Sort by creation time to show items in the order they were created
   const combinedItems = [
-    ...configs.map(config => ({ type: 'config' as const, data: config })),
-    ...versionedSources.map(version => ({ type: 'version' as const, data: version }))
-  ];
+    ...configs.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
+    ...versionedSources.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 })),
+    ...selfAppendSources.map(selfSource => ({ type: 'self' as const, data: selfSource, createdAt: (selfSource as any).createdAt || 0 }))
+  ].sort((a, b) => a.createdAt - b.createdAt);
 
 
 
@@ -412,7 +475,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             {editingConfigId ? 'Edit Append Configuration' : 'Create Append Configuration'}
           </Typography>
           {editingConfigId && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block !important', mt: 0.5 }}>
               Editing existing configuration - make changes and click Update
             </Typography>
           )}
@@ -444,7 +507,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 size="small"
                 sx={{
                   ml: 1,
-                  height: 18,
+                  height: '18px !important',
                   fontSize: '0.65rem',
                   backgroundColor: '#10B981',
                   color: 'white',
@@ -475,44 +538,26 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             >
               Add Append Source
             </Button>
-            <Tooltip title="Version Actions" arrow>
-              <IconButton
-                size="small"
-                onClick={handleVersionMenuOpen}
-                sx={{
-                  color: '#296695',
-                  border: '2px solid #296695',
-                  borderRadius: 1,
-                  '&:hover': {
-                    backgroundColor: 'rgba(41, 102, 149, 0.08)',
-                    borderColor: '#1e4d6f',
-                  },
-                }}
-              >
-                <AccountTree fontSize="small" />
-              </IconButton>
+            <Tooltip title="Create Version" arrow>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleCreateVersion}
+                  disabled={!onCreateVersionedSource}
+                  sx={{
+                    color: '#296695',
+                    border: '2px solid #296695',
+                    borderRadius: 1,
+                    '&:hover': {
+                      backgroundColor: 'rgba(41, 102, 149, 0.08)',
+                      borderColor: '#1e4d6f',
+                    },
+                  }}
+                >
+                  <AccountTree fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
-            <Menu
-              anchorEl={versionMenuAnchorEl}
-              open={versionMenuOpen}
-              onClose={handleVersionMenuClose}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'left',
-              }}
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'left',
-              }}
-            >
-              <MenuItem 
-                onClick={handleCreateVersion}
-                disabled={!onCreateVersionedSource}
-              >
-                <AccountTree sx={{ fontSize: 16, mr: 1 }} />
-                Create Version
-              </MenuItem>
-            </Menu>
           </Box>
         </Box>
       </Box>
@@ -543,7 +588,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   fontWeight: 700,
                   mr: 1,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
@@ -582,15 +627,33 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     );
                   }
                   return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                       {selected.map((value) => (
-                        <Chip
-                          key={value}
-                          label={getSourceName(value)}
-                          size="small"
-                          color="primary"
-                          sx={{ height: 20, fontSize: '0.7rem' }}
-                        />
+                        <Tooltip key={value} title={getSourceName(value)} arrow>
+                          <Chip
+                            label={getSourceName(value)}
+                            size="small"
+                            color="primary"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   );
@@ -698,7 +761,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   fontWeight: 700,
                   mr: 1,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -736,15 +799,33 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     );
                   }
                   return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                       {selected.map((value) => (
-                        <Chip
-                          key={value}
-                          label={value}
-                          size="small"
-                          color="info"
-                          sx={{ height: 20, fontSize: '0.7rem' }}
-                        />
+                        <Tooltip key={value} title={value} arrow>
+                          <Chip
+                            label={value}
+                            size="small"
+                            color="info"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   );
@@ -857,7 +938,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   fontWeight: 700,
                   mr: 1,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -874,11 +955,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 onChange={(e) => {
                   const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                   if (value.includes('select-all-append-sources')) {
-                    if (selectedAppendSources.length === filteredAppendSources.length) {
+                    // Only select sources that have all match keys (enabled sources)
+                    const enabledSources = filteredAppendSources.filter(s => sourceHasAllMatchKeys(s.id));
+                    if (selectedAppendSources.length === enabledSources.length) {
                       setSelectedAppendSources([]);
                       setSelectedAppendFields([]);
                     } else {
-                      setSelectedAppendSources(filteredAppendSources.map(s => s.id));
+                      setSelectedAppendSources(enabledSources.map(s => s.id));
                     }
                   } else {
                     setSelectedAppendSources(value);
@@ -896,15 +979,34 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     );
                   }
                   return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                       {selected.map((value) => (
-                        <Chip
-                          key={value}
-                          label={getSourceName(value)}
-                          size="small"
-                          color="success"
-                          sx={{ height: 20, fontSize: '0.7rem', color: '#fff' }}
-                        />
+                        <Tooltip key={value} title={getSourceName(value)} arrow>
+                          <Chip
+                            label={getSourceName(value)}
+                            size="small"
+                            color="success"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              color: '#fff',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   );
@@ -956,76 +1058,127 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   <em>Select Append Sources</em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredAppendSources.length > 0 && (
-                  <MenuItem
-                    value="select-all-append-sources"
-                    sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
-                  >
-                    <Checkbox
-                      checked={
-                        filteredAppendSources.length > 0 &&
-                        filteredAppendSources.every(src => selectedAppendSources.includes(src.id))
-                      }
-                      indeterminate={
-                        filteredAppendSources.some(src => selectedAppendSources.includes(src.id)) &&
-                        !filteredAppendSources.every(src => selectedAppendSources.includes(src.id))
-                      }
-                      size="small"
-                    />
-                    <ListItemText primary="Select All" />
-                  </MenuItem>
-                )}
+                {filteredAppendSources.length > 0 && (() => {
+                  // Only count enabled sources for Select All
+                  const enabledSources = filteredAppendSources.filter(s => sourceHasAllMatchKeys(s.id));
+                  return enabledSources.length > 0 ? (
+                    <MenuItem
+                      value="select-all-append-sources"
+                      sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
+                    >
+                      <Checkbox
+                        checked={
+                          enabledSources.length > 0 &&
+                          enabledSources.every(src => selectedAppendSources.includes(src.id))
+                        }
+                        indeterminate={
+                          enabledSources.some(src => selectedAppendSources.includes(src.id)) &&
+                          !enabledSources.every(src => selectedAppendSources.includes(src.id))
+                        }
+                        size="small"
+                      />
+                      <ListItemText primary="Select All (Enabled)" />
+                    </MenuItem>
+                  ) : null;
+                })()}
                 {filteredAppendSources.map((source) => {
                   const isCustomSource = customAppendSources.some(cs => cs.id === source.id);
+                  const hasAllMatchKeys = sourceHasAllMatchKeys(source.id);
+                  const isDisabled = !hasAllMatchKeys;
+                  const sourceFields = getSourceFields(source.id);
+
                   return (
-                    <MenuItem key={source.id} value={source.id}>
-                      <Checkbox checked={selectedAppendSources.indexOf(source.id) > -1} size="small" />
-                      <ListItemText primary={source.name} />
-                      {isCustomSource && (
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Tooltip title="View Details" arrow>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const customSource = customAppendSources.find(cs => cs.id === source.id);
-                                if (customSource) {
-                                  setViewingSource(customSource);
-                                }
-                              }}
-                              sx={{
-                                color: '#296695',
-                                '&:hover': {
-                                  backgroundColor: 'rgba(41, 102, 149, 0.08)',
-                                },
-                              }}
-                            >
-                              <Visibility fontSize="small" sx={{ fontSize: '0.8rem' }} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit Source" arrow>
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const customSource = customAppendSources.find(cs => cs.id === source.id);
-                                if (customSource) {
-                                  setEditingSource(customSource);
-                                  setDialogOpen(true);
-                                }
-                              }}
-                              sx={{
-                                color: '#10B981',
-                                '&:hover': {
-                                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                                },
-                              }}
-                            >
-                              <Edit fontSize="small" sx={{ fontSize: '0.8rem' }} />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      )}
+                    <MenuItem
+                      key={source.id}
+                      value={source.id}
+                      disabled={isDisabled}
+                      sx={isDisabled ? {
+                        opacity: 0.5,
+                        cursor: 'not-allowed',
+                        '&:hover': {
+                          backgroundColor: 'transparent'
+                        }
+                      } : {}}
+                    >
+                      <Checkbox
+                        checked={selectedAppendSources.indexOf(source.id) > -1}
+                        size="small"
+                        disabled={isDisabled}
+                      />
+                      <ListItemText
+                        primary={source.name}
+                        secondary={isDisabled ? 'Missing required match keys' : undefined}
+                        secondaryTypographyProps={{ sx: { fontSize: '0.65rem', color: 'error.main' } }}
+                      />
+                      {/* View Fields Icon */}
+                      <Box
+                        sx={{
+                          pointerEvents: 'auto', // Allow interaction even when MenuItem is disabled
+                        }}
+                      >
+                        <Tooltip
+                          title={
+                            sourceFields.length > 0 ? (
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Available Fields ({sourceFields.length}):
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 300, overflowY: 'auto' }}>
+                                  {sourceFields.map((field, idx) => (
+                                    <Chip
+                                      key={idx}
+                                      label={field}
+                                      size="small"
+                                      sx={{
+                                        backgroundColor: selectedAppendOnFields.includes(field) ? '#10B98120' : '#E5E7EB',
+                                        color: selectedAppendOnFields.includes(field) ? '#10B981' : '#374151',
+                                        border: selectedAppendOnFields.includes(field) ? '1px solid #10B981' : '1px solid transparent',
+                                        fontSize: '0.65rem',
+                                        height: '20px',
+                                        fontWeight: selectedAppendOnFields.includes(field) ? 600 : 400,
+                                      }}
+                                    />
+                                  ))}
+                                </Box>
+                                {selectedAppendOnFields.length > 0 && (
+                                  <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', color: '#9CA3AF' }}>
+                                    Green = Match keys present
+                                  </Typography>
+                                )}
+                              </Box>
+                            ) : (
+                              'No fields available'
+                            )
+                          }
+                          arrow
+                          placement="left"
+                          enterDelay={200}
+                          PopperProps={{
+                            sx: {
+                              '& .MuiTooltip-tooltip': {
+                                maxWidth: 450,
+                              }
+                            }
+                          }}
+                        >
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                            sx={{
+                              color: isDisabled ? '#9CA3AF' : '#296695',
+                              padding: '4px',
+                              pointerEvents: 'auto', // Ensure icon can be clicked even when parent is disabled
+                              '&:hover': {
+                                backgroundColor: isDisabled ? 'rgba(156, 163, 175, 0.08)' : 'rgba(41, 102, 149, 0.08)',
+                              },
+                            }}
+                          >
+                            <Visibility sx={{ fontSize: '0.9rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </MenuItem>
                   );
                 })}
@@ -1043,6 +1196,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 selectedSources={selectedAppendSources}
                 allSources={allAppendSources}
                 onReorder={handleReorderAppendSources}
+                onDelete={handleDeleteAppendSource}
                 getSourceName={getSourceName}
               />
             )}
@@ -1070,7 +1224,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   fontWeight: 700,
                   mr: 1,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -1107,15 +1261,34 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     );
                   }
                   return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                       {selected.map((value) => (
-                        <Chip
-                          key={value}
-                          label={value}
-                          size="small"
-                          color="warning"
-                          sx={{ height: 20, fontSize: '0.7rem', color: '#fff' }}
-                        />
+                        <Tooltip key={value} title={value} arrow>
+                          <Chip
+                            label={value}
+                            size="small"
+                            color="warning"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              color: '#fff',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   );
@@ -1218,7 +1391,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               onClick={() => handleAddOrUpdateConfig(fieldMappings)}
               sx={{
                 width: 48,
-                height: 48,
+                height: '48px !important',
                 backgroundColor: '#10B981',
                 color: 'white',
                 boxShadow: '0 4px 16px rgba(16, 185, 129, 0.3)',
@@ -1274,6 +1447,14 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   sx={{ fontWeight: 600 }}
                 />
               )}
+              {selfAppendSources.length > 0 && (
+                <Chip
+                  label={`${selfAppendSources.length} self source${selfAppendSources.length !== 1 ? 's' : ''}`}
+                  size="small"
+                  color="secondary"
+                  sx={{ fontWeight: 600 }}
+                />
+              )}
             </Box>
           </Box>
           <TableContainer
@@ -1291,26 +1472,31 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Name / Details</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Input Sources</TableCell>
-                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Append On Fields</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Match Keys</TableCell>
                   <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Append Sources</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Fields to Append</TableCell>
                   <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {combinedItems.map((item) => {
                   const isVersion = item.type === 'version';
+                  const isSelf = item.type === 'self';
                   const config = item.type === 'config' ? item.data : null;
                   const version = item.type === 'version' ? item.data : null;
+                  const selfSource = item.type === 'self' ? item.data : null;
 
                   return (
                   <TableRow
-                    key={isVersion ? version?.id : config?.id}
+                    key={isSelf ? selfSource?.id : isVersion ? version?.id : config?.id}
                     hover
                     sx={{
-                      backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.04)' :
+                      backgroundColor: isSelf ? 'rgba(156, 39, 176, 0.02)' :
+                                       !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.04)' :
                                        isVersion ? 'rgba(16, 185, 129, 0.02)' : 'transparent',
                       '&:hover': {
-                        backgroundColor: !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.08)' :
+                        backgroundColor: isSelf ? 'rgba(156, 39, 176, 0.06)' :
+                                         !isVersion && editingConfigId === config?.id ? 'rgba(41, 102, 149, 0.08)' :
                                          isVersion ? 'rgba(16, 185, 129, 0.06)' : 'rgba(41, 102, 149, 0.04)',
                       },
                     }}
@@ -1318,19 +1504,45 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     {/* Type Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
                       <Chip
-                        label={isVersion ? 'Version' : 'Config'}
+                        label={isSelf ? 'Self' : isVersion ? 'Version' : 'Config'}
                         size="small"
-                        color={isVersion ? 'success' : 'primary'}
-                        sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
+                        color={isSelf ? 'secondary' : isVersion ? 'success' : 'primary'}
+                        sx={{ fontWeight: 600, height: '22px !important', fontSize: '0.7rem' }}
                       />
                     </TableCell>
 
                     {/* Name / Details Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                          {version?.versionLabel || version?.sourceName || '--'}
-                        </Typography>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      {isSelf ? (
+                        <Tooltip title={selfSource?.sourceName || '--'} arrow placement="top">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.75rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {selfSource?.sourceName || '--'}
+                          </Typography>
+                        </Tooltip>
+                      ) : isVersion ? (
+                        <Tooltip title={version?.versionLabel || version?.sourceName || '--'} arrow placement="top">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.75rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {version?.versionLabel || version?.sourceName || '--'}
+                          </Typography>
+                        </Tooltip>
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                           Configuration #{configs.indexOf(config!) + 1}
@@ -1339,36 +1551,102 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </TableCell>
 
                     {/* Input Sources Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      {isSelf ? (
+                        selfSource?.selfConfig?.input_source_names && selfSource.selfConfig.input_source_names.length > 0 ? (
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Input Sources ({selfSource.selfConfig.input_source_names.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {selfSource.selfConfig.input_source_names.join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${selfSource.selfConfig.input_source_names.length} source${selfSource.selfConfig.input_source_names.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#9C27B020',
+                                  color: '#9C27B0',
+                                  border: '1px solid #9C27B040',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {selfSource.selfConfig.input_source_names.join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : isVersion ? (
                         version?.baseInputSources && version.baseInputSources.length > 0 ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#29669520',
-                                color: '#296695',
-                                border: '1px solid #29669540',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {version.baseInputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {version.baseInputSources.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Input Sources ({version.baseInputSources.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#29669520',
+                                  color: '#296695',
+                                  border: '1px solid #29669540',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             --
@@ -1389,7 +1667,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1398,8 +1676,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 color: '#296695',
                                 border: '1px solid #29669540',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1410,10 +1689,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.inputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {config.inputSources.length > 2 ? '...' : ''}
+                              {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1424,18 +1703,68 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                       )}
                     </TableCell>
 
-                    {/* Append On Fields Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
+                    {/* Match Keys Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      {isSelf ? (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                           --
                         </Typography>
+                      ) : isVersion ? (
+                        version?.operationFields && version.operationFields.length > 0 ? (
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Match Keys ({version.operationFields.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.operationFields.join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.operationFields.length} field${version.operationFields.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#0EA5E920',
+                                  color: '#0EA5E9',
+                                  border: '1px solid #0EA5E940',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.operationFields.join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
                       ) : config && config.appendOnFields && config.appendOnFields.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Append On Fields ({config.appendOnFields.length}):
+                                Match Keys ({config.appendOnFields.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
                                 {config.appendOnFields.join(', ')}
@@ -1445,7 +1774,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.appendOnFields.length} field${config.appendOnFields.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1454,8 +1783,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 color: '#0EA5E9',
                                 border: '1px solid #0EA5E940',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1466,10 +1796,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.appendOnFields.slice(0, 2).join(', ')}
-                              {config.appendOnFields.length > 2 ? '...' : ''}
+                              {config.appendOnFields.join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1481,36 +1811,56 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </TableCell>
 
                     {/* Append Sources Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      {isSelf ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : isVersion ? (
                         version?.operationSources && version.operationSources.length > 0 ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#10B98120',
-                                color: '#10B981',
-                                border: '1px solid #10B98140',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {version.operationSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {version.operationSources.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Append Sources ({version.operationSources.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#10B98120',
+                                  color: '#10B981',
+                                  border: '1px solid #10B98140',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             --
@@ -1521,7 +1871,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Append Sources (Priority Order):
+                                Append Sources ({config.appendSources.length} - Priority Order):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
                                 {config.appendSources.map((id: string, idx: number) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
@@ -1531,7 +1881,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.appendSources.length} source${config.appendSources.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1540,8 +1890,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 color: '#10B981',
                                 border: '1px solid #10B98140',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1552,10 +1903,100 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.appendSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {config.appendSources.length > 2 ? '...' : ''}
+                              {config.appendSources.map((id: string) => getSourceName(id)).join(', ')}
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      )}
+                    </TableCell>
+
+                    {/* Fields to Append Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {isSelf ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      ) : isVersion ? (
+                        version?.appendFields && version.appendFields.length > 0 ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${version.appendFields.length} field${version.appendFields.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#F59E0B20',
+                                color: '#F59E0B',
+                                border: '1px solid #F59E0B40',
+                                fontWeight: 600,
+                                height: '20px !important',
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                              }}
+                            >
+                              {version.appendFields.slice(0, 2).join(', ')}
+                              {version.appendFields.length > 2 ? '...' : ''}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
+                      ) : config && config.appendFields && config.appendFields.length > 0 ? (
+                        <Tooltip
+                          title={
+                            <Box sx={{ maxWidth: 400 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
+                                Fields to Append ({config.appendFields.length}):
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block' }}>
+                                {config.appendFields.join(', ')}
+                              </Typography>
+                            </Box>
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              label={`${config.appendFields.length} field${config.appendFields.length !== 1 ? 's' : ''}`}
+                              size="small"
+                              sx={{
+                                backgroundColor: '#F59E0B20',
+                                color: '#F59E0B',
+                                border: '1px solid #F59E0B40',
+                                fontWeight: 600,
+                                height: '20px !important',
+                                fontSize: '0.65rem',
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.7rem',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                              }}
+                            >
+                              {config.appendFields.slice(0, 2).join(', ')}
+                              {config.appendFields.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1568,23 +2009,50 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
                     {/* Actions Column */}
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
+                      {isSelf ? (
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                          <Tooltip title="View Details" arrow>
+                          <Tooltip title="Edit" arrow>
                             <IconButton
                               size="small"
-                              onClick={() => handleViewVersion(version)}
+                              onClick={() => {
+                                setEditingSource(selfSource);
+                                setDialogOpen(true);
+                              }}
                               sx={{
-                                color: '#296695',
+                                color: 'info.main',
                                 padding: '3px',
                                 '&:hover': {
-                                  backgroundColor: 'rgba(41, 102, 149, 0.12)',
+                                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
                                 },
                               }}
                             >
-                              <Visibility sx={{ fontSize: 16 }} />
+                              <Edit sx={{ fontSize: 16 }} />
                             </IconButton>
                           </Tooltip>
+                          <Tooltip title="Delete" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete the self append source "${selfSource?.sourceName}"?`)) {
+                                  if (onDeleteSharedCustomSource && selfSource?.id) {
+                                    onDeleteSharedCustomSource(selfSource.id);
+                                  }
+                                }
+                              }}
+                              sx={{
+                                color: 'error.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                },
+                              }}
+                            >
+                              <Delete sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      ) : isVersion ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                           <Tooltip title="Edit" arrow>
                             <IconButton
                               size="small"
@@ -1598,6 +2066,28 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                               }}
                             >
                               <Edit sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete version "${version?.versionLabel || version?.sourceName}"? This action cannot be undone.`)) {
+                                  // Call delete handler if available
+                                  if (onDeleteVersion) {
+                                    onDeleteVersion(version.id);
+                                  }
+                                }
+                              }}
+                              sx={{
+                                color: 'error.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                },
+                              }}
+                            >
+                              <Delete sx={{ fontSize: 16 }} />
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -1637,6 +2127,159 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   </TableRow>
                   );
                 })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* Custom Append Sources List */}
+      {customAppendSources.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
+              Configured Custom Append Sources
+            </Typography>
+            <Chip
+              label={`${customAppendSources.length} custom source${customAppendSources.length !== 1 ? 's' : ''}`}
+              size="small"
+              color="secondary"
+              sx={{ fontWeight: 600 }}
+            />
+          </Box>
+          <TableContainer
+            component={Paper}
+            sx={{
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              overflow: 'hidden',
+            }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Source Name</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Fields</TableCell>
+                  <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {customAppendSources.map((customSource) => (
+                  <TableRow
+                    key={customSource.id}
+                    hover
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(156, 39, 176, 0.04)',
+                      },
+                    }}
+                  >
+                    {/* Source Name Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Tooltip title={customSource.sourceName} arrow placement="top">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 250,
+                          }}
+                        >
+                          {customSource.sourceName}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+
+                    {/* Type Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Chip
+                        label={customSource.sourceType}
+                        size="small"
+                        color="secondary"
+                        sx={{ fontWeight: 600, height: '22px !important', fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+
+                    {/* Fields Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {customSource.selectedHeaders && customSource.selectedHeaders.length > 0 ? (
+                        <Tooltip
+                          title={
+                            <Box sx={{ maxWidth: 400 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                Fields ({customSource.selectedHeaders.length}):
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block' }}>
+                                {customSource.selectedHeaders.join(', ')}
+                              </Typography>
+                            </Box>
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <Chip
+                            label={`${customSource.selectedHeaders.length} field${customSource.selectedHeaders.length !== 1 ? 's' : ''}`}
+                            size="small"
+                            sx={{
+                              backgroundColor: '#9C27B020',
+                              color: '#9C27B0',
+                              border: '1px solid #9C27B040',
+                              fontWeight: 600,
+                              height: '20px !important',
+                              fontSize: '0.65rem',
+                            }}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      )}
+                    </TableCell>
+
+                    {/* Actions Column */}
+                    <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                        <Tooltip title="Edit Source" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingSource(customSource);
+                              setDialogOpen(true);
+                            }}
+                            sx={{
+                              color: 'warning.main',
+                              '&:hover': {
+                                backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                              },
+                            }}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Source" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => onDeleteSharedCustomSource?.(customSource.id)}
+                            sx={{
+                              color: 'error.main',
+                              '&:hover': {
+                                backgroundColor: 'rgba(211, 47, 47, 0.08)',
+                              },
+                            }}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1938,7 +2581,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         }}
         version={editingVersion}
         availableInputSources={availableInputSources}
-        availableAppendSources={[...PREDEFINED_SOURCES, ...customAppendSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        availableAppendSources={[
+          ...PREDEFINED_SOURCES.map(s => ({ id: s.id, name: s.name, fields: s.fields })),
+          ...customAppendSources.map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] })),
+          ...availableInputSources.filter(src => src.isVersioned).map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] }))
+        ]}
+        apiSources={apiSources}
+        allExistingSources={[...availableInputSources, ...(sharedCustomSources || [])]}
         onSave={handleSaveVersion}
       />
 

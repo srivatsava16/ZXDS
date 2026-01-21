@@ -20,13 +20,17 @@ import {
 } from '@mui/material';
 import { Close, Save } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
+import type { RequestInputsResponse } from '../../services/api';
+import { validateUniqueSourceName } from '../../utils/sourceValidation';
 
 interface MatchVersionModalProps {
   open: boolean;
   onClose: () => void;
   version: any | null;
   availableInputSources: InputSource[];
-  availableMatchSources: Array<{ id: string; name: string }>;
+  availableMatchSources: Array<{ id: string; name: string; fields?: string[] }>;
+  apiSources?: RequestInputsResponse | null;
+  allExistingSources?: InputSource[];
   onSave: (updatedVersion: any) => void;
 }
 
@@ -36,25 +40,73 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   version,
   availableInputSources,
   availableMatchSources,
+  apiSources = null,
+  allExistingSources = [],
   onSave,
 }) => {
   const [versionName, setVersionName] = useState('');
+  const [versionNameError, setVersionNameError] = useState('');
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedMatchSources, setSelectedMatchSources] = useState<string[]>([]);
+  const [selectedAddFields, setSelectedAddFields] = useState<string[]>([]);
+
+  // Filter out the currently editing version from available input sources
+  const filteredAvailableInputSources = availableInputSources.filter(source => {
+    // If we're editing a version, exclude it from the dropdown
+    if (version && version.id) {
+      return source.id !== version.id;
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (version && open) {
+      console.log('[MatchVersionModal] Loading version data:', {
+        version,
+        addFields: version.addFields,
+        configJsonAddFields: version.configJson?.add_fields
+      });
+
       setVersionName(version.sourceName || version.versionLabel || '');
       setSelectedInputSources(version.baseInputSources || []);
       setSelectedMatchSources(version.operationSources || []);
+
+      // Get add fields from version property, or from first match source's fields array
+      let addFields = version.addFields || [];
+      if (addFields.length === 0 && version.configJson?.match_sources?.length > 0) {
+        addFields = version.configJson.match_sources[0]?.fields || [];
+      }
+
+      console.log('[MatchVersionModal] Setting state:', {
+        addFields,
+        loadedFrom: version.addFields ? 'version.addFields' : 'match_sources[0].fields'
+      });
+
+      setSelectedAddFields(addFields);
     }
   }, [version, open]);
 
   const handleSave = () => {
     if (!versionName.trim()) {
-      alert('Please enter a version name');
+      setVersionNameError('Please enter a version name');
       return;
     }
+
+    // Validate version name against API reserved names and existing sources
+    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const validationError = validateUniqueSourceName({
+      sourceName: versionName.trim(),
+      allExistingSources: sourcesToCheck,
+      editingSourceId: version?.id,
+      moduleName: 'Match Version',
+      apiSources: apiSources
+    });
+
+    if (validationError) {
+      setVersionNameError(validationError);
+      return;
+    }
+
     if (selectedInputSources.length === 0) {
       alert('Please select at least one input source');
       return;
@@ -70,8 +122,14 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
       versionLabel: versionName.trim(),
       baseInputSources: selectedInputSources,
       operationSources: selectedMatchSources,
+      addFields: selectedAddFields,
+      configJson: {
+        ...version.configJson,
+        // add_fields will be set within each match_sources.fields by handleUpdateVersion
+      },
     };
 
+    console.log('[MatchVersionModal] Saving updated version:', updatedVersion);
     onSave(updatedVersion);
   };
 
@@ -84,6 +142,30 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
 
     return id;
   };
+
+  // Get available Add Fields from selected match sources
+  const getAvailableAddFields = (): string[] => {
+    if (selectedMatchSources.length === 0) return [];
+
+    const selectedSources = availableMatchSources.filter(src => selectedMatchSources.includes(src.id));
+    if (selectedSources.length === 0) return [];
+
+    // If only one source, return all its fields
+    if (selectedSources.length === 1) {
+      return (selectedSources[0] as any).fields || [];
+    }
+
+    // If multiple sources, return common fields (intersection)
+    const firstSourceFields = (selectedSources[0] as any).fields || [];
+    return firstSourceFields.filter((field: string) =>
+      selectedSources.slice(1).every(src => {
+        const srcFields = (src as any).fields || [];
+        return srcFields.includes(field);
+      })
+    );
+  };
+
+  const availableAddFields = getAvailableAddFields();
 
   return (
     <Dialog
@@ -129,8 +211,13 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
               fullWidth
               size="small"
               value={versionName}
-              onChange={(e) => setVersionName(e.target.value)}
+              onChange={(e) => {
+                setVersionName(e.target.value);
+                setVersionNameError(''); // Clear error when user types
+              }}
               placeholder="Enter version name..."
+              error={!!versionNameError}
+              helperText={versionNameError}
               sx={{
                 '& .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0, 0, 0, 0.15)',
@@ -170,7 +257,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                   },
                 }}
               >
-                {availableInputSources.map((source) => (
+                {filteredAvailableInputSources.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
                     <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} />
                     <ListItemText primary={source.sourceName} />
@@ -215,6 +302,56 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                   <MenuItem key={source.id} value={source.id}>
                     <Checkbox checked={selectedMatchSources.indexOf(source.id) > -1} />
                     <ListItemText primary={source.name} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Add Fields Selection */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+              Add Fields
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                multiple
+                value={selectedAddFields}
+                onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                input={<OutlinedInput />}
+                disabled={availableAddFields.length === 0}
+                displayEmpty
+                renderValue={(selected) => {
+                  if (selected.length === 0) {
+                    return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
+                      {availableAddFields.length === 0 ? 'No common fields available' : 'Select fields...'}
+                    </Typography>;
+                  }
+                  return (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((value) => (
+                        <Chip
+                          key={value}
+                          label={value}
+                          size="small"
+                          color="secondary"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Box>
+                  );
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(0, 0, 0, 0.15)',
+                  },
+                }}
+              >
+                {availableAddFields.map((field) => (
+                  <MenuItem key={field} value={field}>
+                    <Checkbox checked={selectedAddFields.indexOf(field) > -1} />
+                    <ListItemText primary={field} />
                   </MenuItem>
                 ))}
               </Select>

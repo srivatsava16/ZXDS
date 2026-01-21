@@ -78,7 +78,7 @@ const UniversalPullRequestViewPage: React.FC = () => {
   }, [requestId]);
 
   const handleBack = () => {
-    navigate('/universeReports');
+    navigate('/dataPullReports');
   };
 
   const handleEdit = () => {

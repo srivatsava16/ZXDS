@@ -14,6 +14,7 @@ import {
   FormLabel,
   IconButton,
   Divider,
+  Alert,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
@@ -46,6 +47,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
   const [sourceNameError, setSourceNameError] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   // Track the initial sourceType from edit mode to avoid clearing on first load
   const initialSourceTypeRef = useRef<'File' | 'Database' | 'Self' | null>(null);
@@ -118,7 +120,8 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       sourceName: name,
       allExistingSources: sourcesToCheck,
       editingSourceId: initialSource?.id,
-      moduleName: 'Input'
+      moduleName: 'Input',
+      apiSources: apiSources
     });
   };
 
@@ -150,6 +153,8 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       ? apiSource.selectedColumns.split(',').map((col: string) => col.trim()).filter((col: string) => col.length > 0)
       : apiSource.columns || [];
 
+      
+
     return {
       id: apiSource.id || Date.now().toString(),
       sourceType: 'File',
@@ -164,7 +169,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       fileSourceId: apiSource.dataSourceId,
       filterQuery: apiSource.filters || '',
       //extras
-      filterConfig: apiSource?.filterConfig || null, // Use as-is (field names already in correct format)
+      filterJson: apiSource?.filterJson || null, // Use as-is (field names already in correct format)
       customHeaders: apiSource?.customHeaders || '',
       subSourceType: apiSource?.subSourceType || ''
     };
@@ -198,16 +203,19 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       filters: source.filterQuery || '',
       //extras
       customHeaders : source.customHeaders || '',
-      filterConfig: source.filterConfig || null, // Send as-is (field names are custom if custom headers exist)
+      filterJson: source.filterJson || null, // Send as-is (field names are custom if custom headers exist)
       subSourceType: source.subSourceType
     };
   };
 
   const handleSave = (shouldClose: boolean = true) => {
+    // Clear previous validation errors
+    setValidationError('');
+
     // Validate source name
     const nameError = validateSourceName(sourceData.sourceName || '');
     setSourceNameError(nameError);
-    
+
     if (nameError) {
       return;
     }
@@ -215,7 +223,15 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
       if (!sourceData.headers || sourceData.headers.length === 0) {
-        alert('Please fetch top 10 records to extract headers before adding this input source.');
+        setValidationError('Please fetch top 10 records to extract headers before adding this input source.');
+        return;
+      }
+    }
+
+    // Validation: For Database type sources, headers must be extracted
+    if (sourceType === 'Database') {
+      if (!sourceData.headers || sourceData.headers.length === 0) {
+        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
         return;
       }
     }
@@ -238,13 +254,23 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       fileSource: sourceData.fileSource,
       fileSourceId: sourceData.fileSourceId,
       filterQuery: sourceData.filterQuery,
-      filterConfig: sourceData.filterConfig,
+      filterJson: sourceData.filterJson,
       database: sourceData.database,
       schema: sourceData.schema,
       table: sourceData.table,
       customTableMetadata: sourceData.customTableMetadata,
-      originalTableName: sourceData.originalTableName // Save original table name for restoration
+      originalTableName: sourceData.originalTableName, // Save original table name for restoration
+      tableSourceId: sourceData.tableSourceId // Save table ID for sourceOption in payload
     };
+
+    console.log('[SourceConfigDialog - handleSave] Creating source object:', {
+      sourceType,
+      sourceName: source.sourceName,
+      subSourceType: source.subSourceType,
+      hasTableSourceId: 'tableSourceId' in sourceData,
+      tableSourceId: sourceData.tableSourceId,
+      originalTableName: sourceData.originalTableName
+    });
 
 
     // DON'T transform File source to API format yet - keep it in UI format for local state
@@ -307,6 +333,13 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       <Divider />
 
       <DialogContent sx={{ py: 2, px: 2.5 }}>
+        {/* Validation Error Alert */}
+        {validationError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setValidationError('')}>
+            {validationError}
+          </Alert>
+        )}
+
         {/* Source Type Selection */}
         <Box sx={{ mb: 2 }}>
           <FormControl component="fieldset" sx={{ width: '100%' }}>
@@ -355,9 +388,18 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
         ) : (
           <DatabaseSourceConfig
             data={sourceData}
-            onChange={setSourceData}
+            onChange={(data) => {
+              setSourceData(data);
+              // Clear source name error when user starts typing
+              if (sourceNameError && data.sourceName) {
+                const error = validateSourceName(data.sourceName);
+                setSourceNameError(error);
+              }
+            }}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
+            sourceNameError={sourceNameError}
+            allExistingSources={allExistingSources.length > 0 ? allExistingSources : existingSources}
           />
         )}
       </DialogContent>

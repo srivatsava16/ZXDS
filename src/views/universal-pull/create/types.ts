@@ -89,7 +89,10 @@ export interface VersionedSource extends InputSource {
   baseInputSources: string[];
   operationSources: string[];
   operationFields?: string[];
+  appendFields?: string[];  // Fields to Append for Append module
+  addFields?: string[];     // Add Fields for Match module
   combinedHeaders?: string[];
+  createdAt?: number; // Timestamp for sorting by creation order
 }
 
 export interface ModuleConfig {

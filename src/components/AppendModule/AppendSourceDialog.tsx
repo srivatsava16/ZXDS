@@ -14,6 +14,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Alert,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
@@ -47,6 +48,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
   const [sourceNameError, setSourceNameError] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   // Load editing source data when in edit mode
   useEffect(() => {
@@ -73,57 +75,83 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       sourceName: name,
       allExistingSources: sourcesToCheck,
       editingSourceId: editingSource?.id,
-      moduleName: 'Append'
+      moduleName: 'Append',
+      apiSources: apiSources
     });
   };
 
-  const handleSave = () => {
-    // Validate source name
-    const nameError = validateSourceName(sourceData.sourceName || '');
-    setSourceNameError(nameError);
+  // Reset dependent data when source type changes
+  const handleSourceTypeChange = (newSourceType: 'File' | 'Database' | 'Self') => {
+    // Only reset if actually changing (not initializing)
+    if (newSourceType !== sourceType && Object.keys(sourceData).length > 0) {
+      // Clear all dependent data when source type changes
+      setSourceData({});
+      setSourceNameError('');
+      setValidationError('');
+    }
+    setSourceType(newSourceType);
+  };
 
-    if (nameError) {
-      return;
+  const handleSave = () => {
+    // Clear previous validation errors
+    setValidationError('');
+
+    // Validate source name (skip for Self type as it's auto-generated)
+    if (sourceType !== 'Self') {
+      const nameError = validateSourceName(sourceData.sourceName || '');
+      setSourceNameError(nameError);
+
+      if (nameError) {
+        return;
+      }
     }
 
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
       if (!sourceData.headers || sourceData.headers.length === 0) {
-        alert('Please fetch top 10 records to extract headers before adding this append source.');
+        setValidationError('Please fetch top 10 records to extract headers before adding this append source.');
         return;
       }
     }
 
-    // Validation: For Database type sources, ensure basic configuration
+    // Validation: For Database type sources, headers must be extracted
     if (sourceType === 'Database') {
-      if (!sourceData.sourceName) {
-        alert('Please complete the database source configuration.');
+      if (!sourceData.headers || sourceData.headers.length === 0) {
+        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
         return;
       }
     }
 
     // Validation: For Self type sources, ensure required fields
     if (sourceType === 'Self') {
-      if (!sourceData.sourceName) {
-        alert('Please provide a source name.');
-        return;
-      }
       if (!sourceData.selfConfig?.input_source_names || sourceData.selfConfig.input_source_names.length === 0) {
-        alert('Please select at least one input source.');
+        setValidationError('Please select at least one input source.');
         return;
       }
       if (!sourceData.selfConfig?.generated_column) {
-        alert('Please provide a generated column name.');
+        setValidationError('Please provide a generated column name.');
         return;
       }
       if (!sourceData.selfConfig?.assignment_sets || sourceData.selfConfig.assignment_sets.length === 0) {
-        alert('Please add at least one assignment condition.');
+        setValidationError('Please add at least one assignment condition.');
+        return;
+      }
+      // Validate auto-generated source name
+      if (!sourceData.sourceName) {
+        setValidationError('Source name was not auto-generated. Please ensure both input sources and generated column are configured.');
+        return;
+      }
+      // Validate uniqueness of auto-generated source name
+      const nameError = validateSourceName(sourceData.sourceName);
+      if (nameError) {
+        setValidationError(nameError);
         return;
       }
     }
 
+    const timestamp = Date.now();
     const source: InputSource = {
-      id: editingSource?.id || Date.now().toString(),
+      id: editingSource?.id || timestamp.toString(),
       sourceType,
       sourceName: sourceData.sourceName || '',
       subSourceType: sourceData.subSourceType || '',
@@ -138,17 +166,20 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       dataTypes: sourceData.dataTypes,
       previewData: sourceData.previewData,
       filterQuery: sourceData.filterQuery,
-      filterConfig: sourceData.filterConfig,
+      filterJson: sourceData.filterJson,
       // Database specific fields
       database: sourceData.database,
       schema: sourceData.schema,
       table: sourceData.table,
       originalTableName: sourceData.originalTableName,
+      tableSourceId: sourceData.tableSourceId, // Store tableId for sourceOption in payload
       customTableMetadata: sourceData.customTableMetadata,
       // Self source specific fields
       selfConfig: sourceData.selfConfig,
-      isSelfSource: sourceData.isSelfSource
-    };
+      isSelfSource: sourceData.isSelfSource,
+      // Timestamp for creation order sorting
+      createdAt: (editingSource as any)?.createdAt || timestamp
+    } as any;
 
 
     onSave(source);
@@ -197,6 +228,13 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       <Divider />
 
       <DialogContent sx={{ py: 2, px: 2.5 }}>
+        {/* Validation Error Alert */}
+        {validationError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setValidationError('')}>
+            {validationError}
+          </Alert>
+        )}
+
         {/* Source Type Selection */}
         <Box sx={{ mb: 2 }}>
           <FormControl component="fieldset">
@@ -209,7 +247,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
             <RadioGroup
               row
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value as 'File' | 'Database' | 'Self')}
+              onChange={(e) => handleSourceTypeChange(e.target.value as 'File' | 'Database' | 'Self')}
             >
               <FormControlLabel
                 value="File"
@@ -254,18 +292,12 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
             onChange={setSourceData}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
+            allExistingSources={allExistingSources.length > 0 ? allExistingSources : availableInputSources}
           />
         ) : (
           <SelfSourceConfig
             data={sourceData}
-            onChange={(data) => {
-              setSourceData(data);
-              // Clear source name error when user starts typing
-              if (sourceNameError && data.sourceName) {
-                const error = validateSourceName(data.sourceName);
-                setSourceNameError(error);
-              }
-            }}
+            onChange={setSourceData}
             availableInputSources={availableInputSources}
           />
         )}

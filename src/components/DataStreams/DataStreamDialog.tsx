@@ -25,7 +25,7 @@ import { Close, Visibility, VisibilityOff } from '@mui/icons-material';
 interface DataStream {
   id: string;
   name: string;
-  sourceType: 'AWS S3' | 'SFTP';
+  sourceType: 'AWS S3' | 'SFTP' | 'NFS';
   host?: string;
   port?: string;
   username?: string;
@@ -54,7 +54,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
   editingStream,
 }) => {
   const [name, setName] = useState('');
-  const [sourceType, setSourceType] = useState<'AWS S3' | 'SFTP'>('AWS S3');
+  const [sourceType, setSourceType] = useState<'AWS S3' | 'SFTP' | 'NFS'>('AWS S3');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('22');
   const [username, setUsername] = useState('');
@@ -99,12 +99,12 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       return;
     }
 
-    if (sourceType === 'SFTP') {
-      if (!host.trim() || !username.trim() || !password.trim()) {
-        alert('Please complete all SFTP fields');
+    if (sourceType === 'SFTP' || sourceType === 'NFS') {
+      if (!defaultPath.trim()) {
+        alert(`Please complete all ${sourceType} fields`);
         return;
       }
-    } else {
+    } else if (sourceType === 'AWS S3') {
       if (!accessKey.trim() || !secretKey.trim() || !defaultBucket.trim()) {
         alert('Please complete all AWS S3 fields');
         return;
@@ -115,7 +115,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       id: editingStream?.id || Date.now().toString(),
       name,
       sourceType,
-      ...(sourceType === 'SFTP'
+      ...(sourceType === 'SFTP' || sourceType === 'NFS'
         ? { host, port, username, password, defaultPath }
         : { accessKey, secretKey, defaultBucket, defaultPath }),
       createdBy: editingStream?.createdBy || 'Current User',
@@ -202,7 +202,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
             <RadioGroup
               row
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value as 'AWS S3' | 'SFTP')}
+              onChange={(e) => setSourceType(e.target.value as 'AWS S3' | 'SFTP' | 'NFS')}
             >
               <FormControlLabel
                 value="AWS S3"
@@ -214,6 +214,12 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
                 value="SFTP"
                 control={<Radio size="small" />}
                 label="SFTP"
+                sx={{ mr: 3 }}
+              />
+              <FormControlLabel
+                value="NFS"
+                control={<Radio size="small" />}
+                label="NFS"
               />
             </RadioGroup>
           </FormControl>
@@ -222,7 +228,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
         <Divider sx={{ my: 2 }} />
 
         {/* Conditional Fields based on Source Type */}
-        {sourceType === 'SFTP' ? (
+        {sourceType === 'SFTP' || sourceType === 'NFS' ? (
           <>
             {/* SFTP Fields */}
             <Box sx={{ mb: 2.5 }}>

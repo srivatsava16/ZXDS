@@ -2,6 +2,41 @@ import type { InputSource } from '../../InputModule/InputModule';
 import type { RequestInputsResponse } from '../../../services/api';
 import type { PredefinedSource } from '../types';
 
+interface AppendConfig {
+  id: string;
+  inputSources: string[];
+  appendFields?: string[];
+}
+
+/**
+ * Helper to get all fields for a source (original + appended fields)
+ */
+const getSourceFieldsWithAppends = (
+  source: InputSource,
+  appendConfigurations: AppendConfig[],
+  availableInputSources: InputSource[]
+): string[] => {
+  // Start with original headers
+  const originalHeaders = source.selectedHeaders || source.headers || [];
+  const allFields = new Set<string>(originalHeaders);
+
+  // Find all append configurations where this source is an input source
+  appendConfigurations.forEach(config => {
+    // Check if this source is one of the input sources for this append config
+    const isInputSource = config.inputSources.some(inputSourceId => {
+      const inputSource = availableInputSources.find(s => s.id === inputSourceId);
+      return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
+    });
+
+    // If this source is used in the append config, add the appended fields
+    if (isInputSource && config.appendFields) {
+      config.appendFields.forEach(field => allFields.add(field));
+    }
+  });
+
+  return Array.from(allFields);
+};
+
 /**
  * Get predefined match sources from API or fallback to default
  */
@@ -22,7 +57,8 @@ export const getPredefinedSources = (apiSources?: RequestInputsResponse | null):
 export const getMatchOnFields = (
   sourceIds: string[],
   availableInputSources: InputSource[],
-  fieldMappings?: Array<{ id: string; fieldName: string; selectedSources: string[]; selectedColumns: string[] }>
+  fieldMappings?: Array<{ id: string; fieldName: string; selectedSources: string[]; selectedColumns: string[] }>,
+  appendConfigurations: AppendConfig[] = []
 ): string[] => {
   if (sourceIds.length === 0) return [];
 
@@ -33,7 +69,7 @@ export const getMatchOnFields = (
   const fieldsMap = new Map<string, string>();
 
   selectedSources.forEach(source => {
-    const headers = source?.selectedHeaders ?? source?.headers ?? [];
+    const headers = getSourceFieldsWithAppends(source, appendConfigurations, availableInputSources); // Include appended fields
 
     headers.forEach(field => {
       const sourceFieldKey = `${source.id}::${field}`;

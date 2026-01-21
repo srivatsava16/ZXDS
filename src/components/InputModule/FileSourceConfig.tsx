@@ -18,19 +18,16 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   IconButton,
   InputAdornment,
   Collapse,
   Chip,
+  Autocomplete,
+  Checkbox,
 } from '@mui/material';
-import { Close, Search, ExpandMore, ExpandLess, Edit } from '@mui/icons-material';
+import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
-import HeaderSelector from '../shared/HeaderSelector';
 import {  type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
 
 interface FileSourceConfigProps {
@@ -74,35 +71,34 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [delimiter, setDelimiter] = useState<string>(data.delimiter || ',');
   const [hasHeader, setHasHeader] = useState<boolean>(data.hasHeader ?? true);
   const [previewData, setPreviewData] = useState<any[]>(data.previewData || []);
+  const [originalPreviewData, setOriginalPreviewData] = useState<any[]>([]); // Store original data for re-transformation
   const [headers, setHeaders] = useState<string[]>(data.headers || []);
   const [allAvailableHeaders, setAllAvailableHeaders] = useState<string[]>(data.headers || []);
   const [selectedHeaders, setSelectedHeaders] = useState<string[]>(data.headers || []);
   const [headersFetched, setHeadersFetched] = useState<boolean>(false); // Track if we've fetched headers from data source
   const [dataTypes, setDataTypes] = useState<Record<string, string>>(data.dataTypes || {});
   const [filterQuery, setFilterQuery] = useState<string>(data.filterQuery || '');
-  const [filterConfig, setFilterConfig] = useState<any>(data.filterConfig || null);
+  const [filterJson, setFilterConfig] = useState<any>(data.filterJson || null);
   const [customHeader, setCustomHeader] = useState<string>('');
   const [customDelimiter, setCustomDelimiter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedColumn, setSelectedColumn] = useState<string>('all');
   const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState<boolean>(true);
-  
-  // Custom Headers Modal State
-  const [customHeadersModalOpen, setCustomHeadersModalOpen] = useState<boolean>(false);
+
+  // Custom Headers State (always visible, no modal)
   const [customHeadersInput, setCustomHeadersInput] = useState<string>(data.customHeaders || '');
-  
+  const [customHeadersError, setCustomHeadersError] = useState<string>('');
+  const isUpdatingCustomHeaders = useRef(false); // Flag to prevent useEffect override
+
   const prevDataLengthRef = useRef(Object.keys(data).length);
 
-  // Initialize edit mode data - ensure custom headers are properly set
+  // Initialize custom headers input from data (for display only)
   useEffect(() => {
     if (data.customHeaders) {
       setCustomHeadersInput(data.customHeaders);
     }
-    if (data.hasHeader !== undefined) {
-      setHasHeader(data.hasHeader);
-    }
-  }, [data.customHeaders, data.hasHeader]);
+  }, [data.customHeaders]);
 
   // Use API sources or fallback to defaults
   const currentSources = apiSources?.fileSource || DEFAULT_SOURCES;
@@ -145,6 +141,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setDelimiter(',');
       setHasHeader(true);
       setPreviewData([]);
+      setOriginalPreviewData([]);
       setHeaders([]);
       setAllAvailableHeaders([]);
       setSelectedHeaders([]);
@@ -157,6 +154,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setIsLoadingRecords(false);
       setHeadersFetched(false); // Reset headers fetched flag
       setIsSourceInitialized(false); // Reset source initialization flag
+      setCustomHeadersInput('');
+      setCustomHeadersError('');
     }
 
     prevDataLengthRef.current = currentDataLength;
@@ -189,22 +188,31 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setDelimiter(data.delimiter || ',');
       setHasHeader(data.hasHeader ?? true);
       setPreviewData(data.previewData || []);
-      // Always restore the full headers list to maintain dropdown options
-      setHeaders(data.headers || []);
-      // Always set allAvailableHeaders to the full headers list from data
-      // This ensures all headers are visible in edit mode
-      setAllAvailableHeaders(data.headers || []);
 
-      // Restore selectedHeaders from data.selectedHeaders if available, otherwise use all headers
-      if (data.selectedHeaders && data.selectedHeaders.length > 0) {
-        setSelectedHeaders(data.selectedHeaders);
-      } else {
-        // Fallback to all headers if no specific selection is stored
-        setSelectedHeaders(data.headers || []);
+      // IMPORTANT: data.headers should contain custom headers if they were applied
+      // Always use data.headers as the source of truth
+      // But don't override if we're currently updating custom headers
+      if (!isUpdatingCustomHeaders.current) {
+        const headersFromData = data.headers || [];
+        setHeaders(headersFromData);
+        setAllAvailableHeaders(headersFromData);
+
+        // Restore selectedHeaders from data.selectedHeaders if available, otherwise use all headers
+        if (data.selectedHeaders && data.selectedHeaders.length > 0) {
+          setSelectedHeaders(data.selectedHeaders);
+        } else {
+          // Fallback to all headers if no specific selection is stored
+          setSelectedHeaders(headersFromData);
+        }
       }
       setDataTypes(data.dataTypes || {});
       setFilterQuery(data.filterQuery || '');
-      setFilterConfig(data.filterConfig || null);
+      setFilterConfig(data.filterJson || null);
+
+      // Reset the flag after state is synced
+      if (isUpdatingCustomHeaders.current) {
+        isUpdatingCustomHeaders.current = false;
+      }
     }
   }, [data]); // Remove currentSources dependency to prevent re-sync when API sources load
 
@@ -309,14 +317,44 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       const response: Top10RecordsResponse | any[] = await getTop10Records(payload);
 
 
-      // Handle both response formats:
-      // 1. Expected format: { columns: string[], data: object[] }
-      // 2. Actual format from API: object[] (plain array)
+      // Handle multiple response formats:
+      // 1. New format: { separator: string, data: object[] }
+      // 2. Legacy format: { columns: string[], data: object[] }
+      // 3. Plain array: object[] (fallback)
       let columns: string[];
       let responseData: Record<string, any>[];
+      let responseSeparator: string | undefined;
 
-      if (Array.isArray(response)) {
-        // Response is a plain array - extract columns from first object
+      if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
+        // New format: { separator: string, data: object[] }
+        responseData = response.data;
+
+        if (responseData.length === 0) {
+          alert('No data found in the file. Please check the file format.');
+          setIsLoadingRecords(false);
+          return;
+        }
+
+        // Extract columns from first data object
+        columns = Object.keys(responseData[0]);
+
+        // Extract separator if provided
+        if ('separator' in response && typeof response.separator === 'string') {
+          responseSeparator = response.separator;
+          // Update delimiter state with the separator from response
+          setDelimiter(responseSeparator);
+        }
+      } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
+        // Legacy format: { columns: string[], data: object[] }
+        if (!response.columns || !Array.isArray(response.columns) || response.columns.length === 0) {
+          alert('Invalid response format: missing columns.');
+          setIsLoadingRecords(false);
+          return;
+        }
+        columns = response.columns;
+        responseData = response.data;
+      } else if (Array.isArray(response)) {
+        // Plain array fallback: object[]
         if (response.length === 0) {
           alert('No data found in the file. Please check the file format.');
           setIsLoadingRecords(false);
@@ -324,10 +362,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         }
         columns = Object.keys(response[0]);
         responseData = response;
-      } else if (response && response.columns && response.data) {
-        // Response has the expected format
-        columns = response.columns;
-        responseData = response.data;
       } else {
         // Invalid format
         alert('Received invalid data from server. Please try again.');
@@ -350,15 +384,41 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         return;
       }
 
-      setPreviewData(responseData);
+      // Store original headers and preview data for validation and re-transformation
       setHeaders(columns);
-      setAllAvailableHeaders(columns);
-      setSelectedHeaders(columns); // Initially select all headers
+      setOriginalPreviewData(responseData); // Always store original data
       setHeadersFetched(true);
+
+      // Check if custom headers are already provided and valid
+      const hasValidCustomHeaders = customHeadersInput.trim() &&
+        customHeadersInput.split(',').map(h => h.trim()).filter(h => h.length > 0).length === columns.length;
+
+      let finalHeaders = columns;
+      let finalPreviewData = responseData;
+
+      if (hasValidCustomHeaders) {
+        // Use custom headers
+        const customHeadersList = customHeadersInput.split(',').map(h => h.trim()).filter(h => h.length > 0);
+        finalHeaders = customHeadersList;
+        setCustomHeadersError('');
+
+        // Transform preview data to use custom headers
+        finalPreviewData = responseData.map(row => {
+          const newRow: Record<string, any> = {};
+          columns.forEach((originalHeader, index) => {
+            newRow[customHeadersList[index]] = row[originalHeader];
+          });
+          return newRow;
+        });
+      }
+
+      setPreviewData(finalPreviewData);
+      setAllAvailableHeaders(finalHeaders);
+      setSelectedHeaders(finalHeaders); // Initially select all headers
 
       // Initialize data types for all columns (default to 'String')
       const initialDataTypes: Record<string, string> = {};
-      columns.forEach(header => {
+      finalHeaders.forEach(header => {
         initialDataTypes[header] = 'String';
       });
       setDataTypes(initialDataTypes);
@@ -366,13 +426,21 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Auto-populate source name from filename (without extension)
       const autoSourceName = fileName.split('/').pop()?.split('\\').pop()?.replace(/\.[^/.]+$/, '') || '';
 
-      updateParentData({
-        previewData: responseData,
-        headers: columns, // Save full headers initially
-        selectedHeaders: columns, // Initially all headers are selected
+      // Prepare update object
+      const updateObj: any = {
+        previewData: finalPreviewData,
+        headers: finalHeaders, // Save final headers (custom or original)
+        selectedHeaders: finalHeaders, // Initially all headers are selected
         dataTypes: initialDataTypes,
         sourceName: autoSourceName,
-      });
+      };
+
+      // Include delimiter if it was provided in the response
+      if (responseSeparator !== undefined) {
+        updateObj.delimiter = responseSeparator;
+      }
+
+      updateParentData(updateObj);
 
     } catch (error: any) {
 
@@ -391,6 +459,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
       // Reset state on error
       setPreviewData([]);
+      setOriginalPreviewData([]);
       setHeaders([]);
       setAllAvailableHeaders([]);
       setSelectedHeaders([]);
@@ -403,45 +472,122 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
   const handleHeaderChange = (value: boolean) => {
     setHasHeader(value);
-    if (!value) {
-      // Open custom headers modal when "No" is selected
-      setCustomHeadersModalOpen(true);
-    } else {
-      // Clear custom headers when "Yes" is selected and update parent
-      updateParentData({ hasHeader: value, customHeaders: '' });
-    }
-  };
-
-  const handleSaveCustomHeaders = () => {
-    // Update parent data with custom headers
+    // Update parent data with current custom headers (if any)
     updateParentData({
-      hasHeader: false,
+      hasHeader: value,
       customHeaders: customHeadersInput.trim()
     });
-    
-    setCustomHeadersModalOpen(false);
   };
 
-  const handleCancelCustomHeaders = () => {
-    // Reset to Yes when canceled
-    setHasHeader(true);
-    setCustomHeadersInput('');
-    setCustomHeadersModalOpen(false);
-    updateParentData({ hasHeader: true, customHeaders: '' });
-  };
+  const handleCustomHeadersChange = (value: string) => {
+    setCustomHeadersInput(value);
 
-  const handleEditCustomHeaders = () => {
-    // Set current custom headers in input and open modal
-    const currentHeaders = data.customHeaders || customHeadersInput || '';
-    setCustomHeadersInput(currentHeaders);
-    setCustomHeadersModalOpen(true);
+    // Validate custom headers count against original headers
+    const trimmedValue = value.trim();
+    if (trimmedValue && headers.length > 0) {
+      const customHeadersList = trimmedValue.split(',').map(h => h.trim()).filter(h => h.length > 0);
+      const originalHeadersCount = headers.length;
+
+      if (customHeadersList.length !== originalHeadersCount) {
+        setCustomHeadersError(
+          `Error: File has ${originalHeadersCount} headers. You must enter exactly ${originalHeadersCount} comma-separated custom headers.`
+        );
+        // Update parent data with error state but don't transform
+        updateParentData({
+          hasHeader,
+          customHeaders: trimmedValue
+        });
+      } else {
+        // Set flag to prevent useEffect from overriding our changes
+        isUpdatingCustomHeaders.current = true;
+
+        setCustomHeadersError('');
+
+        // Update allAvailableHeaders and selectedHeaders with custom headers
+        setAllAvailableHeaders(customHeadersList);
+        setSelectedHeaders(customHeadersList);
+
+        let transformedData: any[] = [];
+        let updatedDataTypes: Record<string, string> = {};
+
+        // Transform preview data if original data exists
+        if (originalPreviewData.length > 0 && headers.length > 0) {
+          // Transform original preview data to use custom headers
+          transformedData = originalPreviewData.map(row => {
+            const newRow: Record<string, any> = {};
+            headers.forEach((originalHeader, index) => {
+              if (index < customHeadersList.length) {
+                newRow[customHeadersList[index]] = row[originalHeader];
+              }
+            });
+            return newRow;
+          });
+
+          setPreviewData(transformedData);
+
+          // Update data types with new headers
+          customHeadersList.forEach(header => {
+            updatedDataTypes[header] = 'String';
+          });
+          setDataTypes(updatedDataTypes);
+        }
+
+        // Update parent data with transformed headers and data
+        updateParentData({
+          hasHeader,
+          customHeaders: trimmedValue,
+          headers: customHeadersList, // Use custom headers
+          selectedHeaders: customHeadersList, // Use custom headers
+          previewData: transformedData.length > 0 ? transformedData : previewData,
+          dataTypes: Object.keys(updatedDataTypes).length > 0 ? updatedDataTypes : dataTypes
+        });
+      }
+    } else {
+      setCustomHeadersError('');
+      // Reset to original headers if custom headers are cleared
+      if (!trimmedValue && headers.length > 0) {
+        setAllAvailableHeaders(headers);
+        setSelectedHeaders(headers);
+
+        let restoredData = previewData;
+        let restoredDataTypes: Record<string, string> = {};
+
+        // Restore original preview data if it exists
+        if (originalPreviewData.length > 0) {
+          restoredData = originalPreviewData;
+          setPreviewData(originalPreviewData);
+
+          // Reset data types to original headers
+          headers.forEach(header => {
+            restoredDataTypes[header] = 'String';
+          });
+          setDataTypes(restoredDataTypes);
+        }
+
+        // Update parent data with original headers
+        updateParentData({
+          hasHeader,
+          customHeaders: '',
+          headers: headers, // Use original headers
+          selectedHeaders: headers, // Use original headers
+          previewData: restoredData,
+          dataTypes: Object.keys(restoredDataTypes).length > 0 ? restoredDataTypes : dataTypes
+        });
+      } else {
+        // Just update custom headers field
+        updateParentData({
+          hasHeader,
+          customHeaders: trimmedValue
+        });
+      }
+    }
   };
 
   const handleHeaderSelectionChange = (newSelectedHeaders: string[]) => {
     
     setSelectedHeaders(newSelectedHeaders);
     // Don't update headers state - keep it as the original full list for data processing
-    // Only selectedHeaders should track user selection for the HeaderSelector component
+    // Only selectedHeaders should track user selection for the Select Headers dropdown
     
     // Update data types to only include selected headers
     const updatedDataTypes: Record<string, string> = {};
@@ -466,17 +612,19 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       fileName,
       delimiter,
       hasHeader,
-      // Don't force headers to be selectedHeaders - let the caller decide
-      headers: selectedHeaders || [],
-      dataTypes,
-      previewData,
-      selectedHeaders,
+      customHeaders: customHeadersInput.trim(),
+      // IMPORTANT: headers should always contain ALL available headers (original or custom)
+      // selectedHeaders tracks which ones are actually selected
+      headers: updates.headers !== undefined ? updates.headers : (allAvailableHeaders || []),
+      dataTypes: updates.dataTypes !== undefined ? updates.dataTypes : dataTypes,
+      previewData: updates.previewData !== undefined ? updates.previewData : previewData,
+      selectedHeaders: updates.selectedHeaders !== undefined ? updates.selectedHeaders : selectedHeaders,
       filterQuery,
-      filterConfig,
-      ...updates, // Apply updates last to ensure they override local state
+      filterJson,
+      ...updates, // Apply updates last to ensure they override everything
     };
-    
-    
+
+
     onChange(finalData);
   };
 
@@ -515,9 +663,26 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               const sourceName = e.target.value;
               setSelectedSource(sourceName);
               const sourceId = getSourceId(sourceName);
-              updateParentData({ 
+
+              // Reset preview data and headers when file source changes
+              setPreviewData([]);
+              setOriginalPreviewData([]);
+              setHeaders([]);
+              setAllAvailableHeaders([]);
+              setSelectedHeaders([]);
+              setHeadersFetched(false);
+              setDataTypes({});
+              setCustomHeadersInput('');
+              setCustomHeadersError('');
+
+              updateParentData({
                 fileSource: sourceName,
-                fileSourceId: sourceId
+                fileSourceId: sourceId,
+                headers: [],
+                selectedHeaders: [],
+                previewData: [],
+                dataTypes: {},
+                customHeaders: ''
               });
             }}
             displayEmpty
@@ -572,7 +737,27 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                     if (file) {
                       setFileName(file.name);
                       setFilePath(file.name);
-                      updateParentData({ fileName: file.name, filePath: file.name });
+
+                      // Reset preview data and headers when file name changes
+                      setPreviewData([]);
+                      setOriginalPreviewData([]);
+                      setHeaders([]);
+                      setAllAvailableHeaders([]);
+                      setSelectedHeaders([]);
+                      setHeadersFetched(false);
+                      setDataTypes({});
+                      setCustomHeadersInput('');
+                      setCustomHeadersError('');
+
+                      updateParentData({
+                        fileName: file.name,
+                        filePath: file.name,
+                        headers: [],
+                        selectedHeaders: [],
+                        previewData: [],
+                        dataTypes: {},
+                        customHeaders: ''
+                      });
                     }
                   }}
                 />
@@ -587,7 +772,27 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                 const newValue = e.target.value;
                 setFileName(newValue);
                 setFilePath(newValue);
-                updateParentData({ fileName: newValue, filePath: newValue });
+
+                // Reset preview data and headers when file name changes
+                setPreviewData([]);
+                setOriginalPreviewData([]);
+                setHeaders([]);
+                setAllAvailableHeaders([]);
+                setSelectedHeaders([]);
+                setHeadersFetched(false);
+                setDataTypes({});
+                setCustomHeadersInput('');
+                setCustomHeadersError('');
+
+                updateParentData({
+                  fileName: newValue,
+                  filePath: newValue,
+                  headers: [],
+                  selectedHeaders: [],
+                  previewData: [],
+                  dataTypes: {},
+                  customHeaders: ''
+                });
               }}
               sx={{ flex: '0 0 75%' }}
             />
@@ -608,16 +813,185 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       </Box>
 
+      {/* Sections below are only shown after successful Get Top 10 Records */}
+      {headersFetched && (
+        <>
+          {/* Header Yes/No */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
+              Header
+            </Typography>
+            <RadioGroup
+              row
+              value={hasHeader ? 'yes' : 'no'}
+              onChange={(e) => handleHeaderChange(e.target.value === 'yes')}
+            >
+              <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" sx={{ mr: 2 }} />
+              <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
+            </RadioGroup>
+          </Box>
+
+          {/* Custom Headers Text Area */}
+          <Box sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
+          Custom Headers
+        </Typography>
+        <TextField
+          fullWidth
+          placeholder="e.g., Name, Email, Phone, Address (comma-separated)"
+          value={customHeadersInput}
+          onChange={(e) => handleCustomHeadersChange(e.target.value)}
+          multiline
+          rows={3}
+          size="small"
+          error={!!customHeadersError}
+          helperText={customHeadersError || "Enter custom header names separated by commas. These will be used as column headers for your data."}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              backgroundColor: 'white',
+            },
+          }}
+        />
+        {customHeadersInput && !customHeadersError && (
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.5, display: 'block', color: 'text.secondary' }}>
+              Preview:
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {customHeadersInput
+                .split(',')
+                .map(header => header.trim())
+                .filter(header => header.length > 0)
+                .map((header, index) => (
+                  <Chip key={index} label={header} size="small" color="primary" variant="outlined" />
+                ))
+              }
+            </Box>
+          </Box>
+        )}
+      </Box>
+        </>
+      )}
+
       {/* Header Selection */}
       {allAvailableHeaders.length > 0 && (
-        <>
-          <HeaderSelector
-            availableHeaders={allAvailableHeaders}
-            selectedHeaders={selectedHeaders}
-            onHeadersChange={handleHeaderSelectionChange}
-            disabled={false}
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              Select Headers
+              <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
+                ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+              </Typography>
+            </Typography>
+          </Box>
+          <Autocomplete
+            multiple
+            options={['__SELECT_ALL__', ...allAvailableHeaders]}
+            value={selectedHeaders}
+            onChange={(event, newValue) => {
+              // Check if "Select All" was clicked
+              if (newValue.includes('__SELECT_ALL__')) {
+                // Toggle: if all are selected, deselect all; otherwise select all
+                if (selectedHeaders.length === allAvailableHeaders.length) {
+                  handleHeaderSelectionChange([]);
+                } else {
+                  handleHeaderSelectionChange(allAvailableHeaders);
+                }
+              } else {
+                handleHeaderSelectionChange(newValue);
+              }
+            }}
+            disableCloseOnSelect
+            getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
+            renderOption={(props, option, { selected }) => {
+              if (option === '__SELECT_ALL__') {
+                const allSelected = selectedHeaders.length === allAvailableHeaders.length;
+                const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                return (
+                  <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                    <Checkbox
+                      icon={<CheckBoxOutlineBlank fontSize="small" />}
+                      checkedIcon={<CheckBox fontSize="small" />}
+                      indeterminateIcon={<CheckBox fontSize="small" />}
+                      style={{ marginRight: 8 }}
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                    />
+                    Select All
+                  </li>
+                );
+              }
+              return (
+                <li {...props}>
+                  <Checkbox
+                    icon={<CheckBoxOutlineBlank fontSize="small" />}
+                    checkedIcon={<CheckBox fontSize="small" />}
+                    style={{ marginRight: 8 }}
+                    checked={selected}
+                  />
+                  {option}
+                </li>
+              );
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder={selectedHeaders.length === 0 ? "Select headers..." : ""}
+                size="small"
+              />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.slice(0, 3).map((option, index) => (
+                <Chip
+                  {...getTagProps({ index })}
+                  key={option}
+                  label={option}
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.75rem',
+                    backgroundColor: 'primary.main',
+                    color: 'white',
+                    '& .MuiChip-deleteIcon': {
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      '&:hover': {
+                        color: 'white',
+                      },
+                    },
+                  }}
+                />
+              )).concat(
+                value.length > 3
+                  ? [
+                      <Chip
+                        key="more"
+                        label={`+${value.length - 3} more`}
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: '0.75rem',
+                          backgroundColor: 'text.secondary',
+                          color: 'white',
+                        }}
+                      />
+                    ]
+                  : []
+              )
+            }
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'white',
+              },
+            }}
           />
-        </>
+          {selectedHeaders.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                Selected headers will be included in the data source. Unselected headers will be excluded from processing.
+              </Typography>
+            </Box>
+          )}
+        </Box>
       )}
 
       {/* Preview Data Table */}
@@ -730,11 +1104,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       )}
 
-      {/* Delimiter Selection */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-          Delimiter (Auto-detected, can be changed)
-        </Typography>
+      {/* Delimiter Selection - Only shown after successful Get Top 10 Records */}
+      {headersFetched && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
+            Delimiter (Auto-detected, can be changed)
+          </Typography>
         <RadioGroup
           row
           value={delimiter}
@@ -780,98 +1155,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             />
           </Box>
         )}
-      </Box>
-
-      {/* Header Yes/No */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-          Header
-        </Typography>
-        <RadioGroup
-          row
-          value={hasHeader ? 'yes' : 'no'}
-          onChange={(e) => handleHeaderChange(e.target.value === 'yes')}
-        >
-          <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" sx={{ mr: 2 }} />
-          <FormControlLabel value="no" control={<Radio size="small" />} label="No" />
-        </RadioGroup>
-      </Box>
-
-      {/* Custom Headers Modal */}
-      <Dialog
-        open={customHeadersModalOpen}
-        onClose={handleCancelCustomHeaders}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">Custom Header Names</Typography>
-            <IconButton onClick={handleCancelCustomHeaders} size="small">
-              <Close />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Enter custom header names separated by commas. These will be used as column headers for your data.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Header Names (comma-separated)"
-            placeholder="e.g., Name, Email, Phone, Address"
-            value={customHeadersInput}
-            onChange={(e) => setCustomHeadersInput(e.target.value)}
-            multiline
-            rows={3}
-            sx={{ mb: 2 }}
-          />
-          {customHeadersInput && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>Preview Headers:</Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {customHeadersInput
-                  .split(',')
-                  .map(header => header.trim())
-                  .filter(header => header.length > 0)
-                  .map((header, index) => (
-                    <Chip key={index} label={header} size="small" />
-                  ))
-                }
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCancelCustomHeaders}>Cancel</Button>
-          <Button 
-            onClick={handleSaveCustomHeaders} 
-            variant="contained"
-            disabled={!customHeadersInput.trim()}
-          >
-            Save Headers
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Show current custom headers with edit option */}
-      {(!hasHeader || !data.hasHeader) && (data.customHeaders || customHeadersInput) && (
-        <Box sx={{ mb: 2, p: 2, backgroundColor: 'rgba(25, 118, 210, 0.08)', borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>Custom Headers Configured</Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {data.customHeaders || customHeadersInput}
-              </Typography>
-            </Box>
-            <Button 
-              size="small" 
-              onClick={handleEditCustomHeaders}
-              startIcon={<Edit />}
-            >
-              Edit Headers
-            </Button>
-          </Box>
         </Box>
       )}
 
@@ -881,14 +1164,14 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           <FilterBuilder 
             headers={allAvailableHeaders} 
             initialValue={data.filterQuery}
-            initialConfig={data.filterConfig}
+            initialConfig={data.filterJson}
             onFilterChange={(query) => {
               setFilterQuery(query);
               updateParentData({ filterQuery: query });
             }}
             onConfigChange={(config) => {
               setFilterConfig(config);
-              updateParentData({ filterConfig: config });
+              updateParentData({ filterJson: config });
             }}
           />
         </Box>

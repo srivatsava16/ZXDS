@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -103,10 +103,18 @@ interface StatsConfiguration {
   breakdownBy: string[];
 }
 
+interface InputSource {
+  id: string;
+  sourceName: string;
+  headers?: string[];
+  [key: string]: any;
+}
+
 interface StatsConfigDialogProps {
   open: boolean;
   onClose: () => void;
   requestId: number | null;
+  availableInputSources?: InputSource[];
 }
 
 // Data combination options
@@ -135,7 +143,12 @@ const US_STATES_SAMPLE = [
   { state: 'Pennsylvania', count: 7650, decile: 7 },
 ];
 
-const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, requestId }) => {
+const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
+  open,
+  onClose,
+  requestId,
+  availableInputSources = []
+}) => {
   // Tab state
   const [activeTab, setActiveTab] = useState(0);
 
@@ -158,6 +171,63 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
   const [countsOnSearch, setCountsOnSearch] = useState('');
   const [breakdownBySearch, setBreakdownBySearch] = useState('');
+
+  // Calculate available fields based on selected input sources
+  const availableFields = useMemo(() => {
+    if (selectedInputSources.length === 0) {
+      return [];
+    }
+
+    // Find the selected source objects from availableInputSources
+    const selectedSourceObjects = selectedInputSources
+      .map(sourceName => availableInputSources.find(src => src.sourceName === sourceName))
+      .filter(src => src && src.headers);
+
+    if (selectedSourceObjects.length === 0) {
+      return [];
+    }
+
+    if (selectedSourceObjects.length === 1) {
+      // Single source: return all its headers
+      return selectedSourceObjects[0]?.headers || [];
+    }
+
+    // Multiple sources: return only COMMON headers (intersection)
+    const allSourceFieldSets: Set<string>[] = [];
+
+    selectedSourceObjects.forEach(source => {
+      if (source?.headers) {
+        const sourceFields = new Set<string>();
+        source.headers.forEach(field => {
+          sourceFields.add(field.toLowerCase()); // Case-insensitive comparison
+        });
+        allSourceFieldSets.push(sourceFields);
+      }
+    });
+
+    if (allSourceFieldSets.length === 0) {
+      return [];
+    }
+
+    // Find intersection of all field sets
+    const intersection = Array.from(allSourceFieldSets[0]).filter(field => {
+      return allSourceFieldSets.every(fieldSet => fieldSet.has(field));
+    });
+
+    // Map back to original casing from the first source
+    const resultFields: string[] = [];
+    const firstSource = selectedSourceObjects[0];
+
+    if (firstSource?.headers) {
+      firstSource.headers.forEach(field => {
+        if (intersection.includes(field.toLowerCase())) {
+          resultFields.push(field);
+        }
+      });
+    }
+
+    return resultFields;
+  }, [selectedInputSources, availableInputSources]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -269,15 +339,15 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
   };
 
   // Filtered lists
-  const filteredInputSources = SAMPLE_INPUT_SOURCES.filter(source =>
+  const filteredInputSources = (availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES).filter(source =>
     source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
-  const filteredCountsOn = SAMPLE_FIELDS.filter(field =>
+  const filteredCountsOn = availableFields.filter(field =>
     field.toLowerCase().includes(countsOnSearch.toLowerCase())
   );
 
-  const filteredBreakdownBy = SAMPLE_FIELDS.filter(field =>
+  const filteredBreakdownBy = availableFields.filter(field =>
     field.toLowerCase().includes(breakdownBySearch.toLowerCase())
   );
 
@@ -355,7 +425,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
         const maxCount = Math.max(...US_STATES_SAMPLE.map(s => s.count));
         return (
           <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, backgroundColor: 'white' }}>
-            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, height: 200, pb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, height: '200px !important', pb: 1 }}>
               {US_STATES_SAMPLE.map((state, index) => {
                 const barHeight = (state.count / maxCount) * 160;
                 return (
@@ -510,7 +580,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                           <Box
                             sx={{
                               width: 10,
-                              height: 10,
+                              height: '10px !important',
                               backgroundColor: colors[index % colors.length],
                               borderRadius: 0.5,
                             }}
@@ -682,7 +752,30 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {selected.map((value) => (
-                        <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+                        <Tooltip key={value} title={value} arrow>
+                          <Chip
+                            label={value}
+                            size="small"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   )}
@@ -847,7 +940,33 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                           {selected.map((value) => (
-                            <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                            <Tooltip key={value} title={value} arrow>
+                              <Chip
+                                label={value}
+                                size="small"
+                                sx={{
+                                  maxWidth: '150px !important',
+                              minWidth: '50px',
+                                  height: '20px !important',
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden !important',
+                                  flexShrink: '0 !important',
+                                  backgroundColor: '#8B5CF620',
+                                  color: '#8B5CF6',
+                                  fontWeight: 600,
+                                  '& .MuiChip-label': {
+                                    display: 'block !important',
+                                    overflow: 'hidden !important',
+                                    textOverflow: 'ellipsis !important',
+                                    whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                                  }
+                                }}
+                              />
+                            </Tooltip>
                           ))}
                         </Box>
                       )}
@@ -921,7 +1040,33 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                           {selected.map((value) => (
-                            <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
+                            <Tooltip key={value} title={value} arrow>
+                              <Chip
+                                label={value}
+                                size="small"
+                                sx={{
+                                  maxWidth: '150px !important',
+                              minWidth: '50px',
+                                  height: '20px !important',
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden !important',
+                                  flexShrink: '0 !important',
+                                  backgroundColor: '#8B5CF620',
+                                  color: '#8B5CF6',
+                                  fontWeight: 600,
+                                  '& .MuiChip-label': {
+                                    display: 'block !important',
+                                    overflow: 'hidden !important',
+                                    textOverflow: 'ellipsis !important',
+                                    whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                                  }
+                                }}
+                              />
+                            </Tooltip>
                           ))}
                         </Box>
                       )}
@@ -971,7 +1116,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                     onClick={handleAddStatsConfiguration}
                     sx={{
                       width: 48,
-                      height: 48,
+                      height: '48px !important',
                       backgroundColor: '#8B5CF6',
                       color: 'white',
                       boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
@@ -1027,7 +1172,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                                     <Chip
                                       label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
                                       size="small"
-                                      sx={{ backgroundColor: '#8B5CF620', color: '#8B5CF6', border: '1px solid #8B5CF640', fontWeight: 600, height: 20, fontSize: '0.65rem' }}
+                                      sx={{ backgroundColor: '#8B5CF620', color: '#8B5CF6', border: '1px solid #8B5CF640', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
                                     />
                                   </Box>
                                 </Tooltip>
@@ -1040,7 +1185,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                                     <Chip
                                       label={`${config.countsOn.length} field${config.countsOn.length !== 1 ? 's' : ''}`}
                                       size="small"
-                                      sx={{ backgroundColor: '#10B98120', color: '#10B981', border: '1px solid #10B98140', fontWeight: 600, height: 20, fontSize: '0.65rem' }}
+                                      sx={{ backgroundColor: '#10B98120', color: '#10B981', border: '1px solid #10B98140', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
                                     />
                                   </Box>
                                 </Tooltip>
@@ -1051,7 +1196,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                                 label={config.isDistinct ? 'Yes' : 'No'}
                                 size="small"
                                 sx={{
-                                  height: 20,
+                                  height: '20px !important',
                                   fontSize: '0.65rem',
                                   backgroundColor: config.isDistinct ? '#10B98120' : '#6B728020',
                                   color: config.isDistinct ? '#10B981' : '#6B7280',
@@ -1067,7 +1212,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({ open, onClose, re
                                     <Chip
                                       label={`${config.breakdownBy.length} field${config.breakdownBy.length !== 1 ? 's' : ''}`}
                                       size="small"
-                                      sx={{ backgroundColor: '#F59E0B20', color: '#F59E0B', border: '1px solid #F59E0B40', fontWeight: 600, height: 20, fontSize: '0.65rem' }}
+                                      sx={{ backgroundColor: '#F59E0B20', color: '#F59E0B', border: '1px solid #F59E0B40', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
                                     />
                                   </Box>
                                 </Tooltip>

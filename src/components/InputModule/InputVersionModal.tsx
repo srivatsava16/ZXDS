@@ -61,6 +61,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { validateMappingFieldName, validateUniqueSourceName, getReservedNamesFromAPI } from '../../utils/sourceValidation';
+import type { RequestInputsResponse } from '../../services/api';
 
 interface FieldMapping {
   id: string;
@@ -103,6 +105,7 @@ interface InputVersionModalProps {
   availableSources: InputSource[];
   editingVersion?: InputSource | null;
   currentVersionCount?: number;
+  apiSources?: RequestInputsResponse | null;
   onSave: (versionData: {
     stepOrder: number;
     actionType: string;
@@ -184,6 +187,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   availableSources,
   editingVersion,
   currentVersionCount = 0,
+  apiSources = null,
   onSave,
 }) => {
   const [versionName, setVersionName] = useState('');
@@ -194,6 +198,15 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   const [combineAs, setCombineAs] = useState<'merge' | 'union' | 'intersect'>('merge');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
   const [error, setError] = useState('');
+
+  // Filter out the currently editing version from available sources
+  const filteredAvailableSources = availableSources.filter(source => {
+    // If we're editing a version, exclude it from the dropdown
+    if (editingVersion && editingVersion.id) {
+      return source.id !== editingVersion.id;
+    }
+    return true;
+  });
 
   // Helper function to get headers from source (handles both UI and API format)
   const getSourceHeaders = (source: any): string[] => {
@@ -479,7 +492,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       console.log('Version Modal - Common Headers (including nested and mappings):', headers);
 
       setAvailableHeaders(headers);
-      setSelectedHeaders(headers); // Auto-select all available headers
+
+      // Always auto-select all available headers when sources change
+      // This ensures the Select Headers state reflects the current available headers
+      setSelectedHeaders(headers);
       setOrderedHeaders(headers);
     } else {
       setAvailableHeaders([]);
@@ -565,7 +581,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         console.log('  Total columns (after nested):', columns.length);
       }
     } else {
-      // If multiple sources selected, show only common columns (intersection - including nested fields)
+      // If multiple sources selected, show ALL columns from ALL sources (union - including nested fields)
       const sourcesData = mappingSelectedSources.map(sourceId => {
         const source = availableSources.find(s => s.id === sourceId);
         const regularHeaders = source ? getSourceHeaders(source) : [];
@@ -580,18 +596,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         };
       });
 
-      // Find common headers across all selected sources (case-insensitive)
-      const firstSourceHeaders = sourcesData[0]?.headers || [];
-      const commonHeaders = firstSourceHeaders.filter(header => {
-        const headerLower = header.toLowerCase();
-        return sourcesData.every(src =>
-          src.headers.some(h => h.toLowerCase() === headerLower)
-        );
-      });
-
-      // Add common columns from each source
-      commonHeaders.forEach(header => {
-        sourcesData.forEach(src => {
+      // Add ALL columns from ALL sources
+      sourcesData.forEach(src => {
+        src.headers.forEach(header => {
           columns.push({
             value: `${src.id}::${header}`,
             label: `${src.name} → ${header}`
@@ -622,6 +629,19 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     }
     if (mappingSelectedColumns.length === 0) {
       alert('Please select at least one column');
+      return;
+    }
+
+    // Validate for duplicate field mapping names (case-insensitive)
+    const validationError = validateMappingFieldName(
+      mappingFieldName,
+      fieldMappings,
+      editingMappingId,
+      'Field mapping'
+    );
+
+    if (validationError) {
+      alert(validationError);
       return;
     }
 
@@ -679,6 +699,20 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return;
     }
 
+    // Validate for duplicate nested field names (case-insensitive) within the same source
+    const nestedFieldsForSource = nestedFields.filter(nf => nf.sourceId === nestedFieldSourceId);
+    const validationError = validateMappingFieldName(
+      nestedFieldName,
+      nestedFieldsForSource,
+      editingNestedFieldId,
+      'Nested field'
+    );
+
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
     if (editingNestedFieldId) {
       // Update existing nested field
       setNestedFields(nestedFields.map(nf =>
@@ -726,22 +760,17 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return;
     }
 
-    // Check for duplicate version name
-    const duplicateVersion = availableSources.find(
-      source =>
-        source.isVersioned &&
-        source.sourceName.toLowerCase() === versionName.trim().toLowerCase() &&
-        (!editingVersion || source.id !== editingVersion.id) // Exclude current version when editing
-    );
+    // Use centralized validation to check against API reserved names and existing sources
+    const validationError = validateUniqueSourceName({
+      sourceName: versionName.trim(),
+      allExistingSources: availableSources as any,
+      editingSourceId: editingVersion?.id,
+      moduleName: 'Input Version',
+      apiSources: apiSources
+    });
 
-    if (duplicateVersion) {
-      console.warn('⚠️ Duplicate version name detected:', {
-        attemptedName: versionName.trim(),
-        existingVersionId: duplicateVersion.id,
-        isEditing: !!editingVersion,
-        editingVersionId: editingVersion?.id
-      });
-      setError(`Version name "${versionName.trim()}" already exists. Please choose a unique name.`);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -758,14 +787,17 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return;
     }
 
+    // Prepare the ordered selected headers (needed for input_sources, merge keys, and priority order)
+    const orderedSelectedHeaders = orderedHeaders.filter(h => selectedHeaders.includes(h));
+
     // Transform selected sources into input_sources format
+    // IMPORTANT: We need to send ONLY the user's selected headers, not all available headers
     const input_sources = selectedSources.map(srcId => {
       const src = availableSources.find(s => s.id === srcId);
-      const sourceHeaders = getSourceHeaders(src as any);
 
       return {
         source_name: src?.sourceName || srcId,
-        columns: sourceHeaders // All columns from the source
+        columns: orderedSelectedHeaders // Only the headers user selected and ordered
       };
     });
 
@@ -806,9 +838,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       'intersect': 'intersect'
     };
 
-    // Prepare the ordered selected headers for merge keys and priority order
-    const orderedSelectedHeaders = orderedHeaders.filter(h => selectedHeaders.includes(h));
-
     // Transform field mappings to the new format with pipe-separated source mappings
     const field_mappings = fieldMappings.map(mapping => {
       // Convert selectedColumns format from "sourceId::columnName" to "SourceName.columnName"
@@ -834,7 +863,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     // Prepare version data in the required format
     const versionData = {
       stepOrder: 1,
-      actionType: 'P',
+      actionType: 'I',
       saveAsVersion: 1,
       versionName: versionName,
       internalStepOrder: internalStepOrder,
@@ -963,33 +992,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         )}
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {/* Row 1: Version Name and Input Sources */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            {/* Version Name */}
-            <Box>
-              <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
-                Version Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
-              </Typography>
-              <TextField
-                label=""
-                value={versionName}
-                onChange={(e) => {
-                  setVersionName(e.target.value);
-                  setError(''); // Clear error when user types
-                }}
-                fullWidth
-                size="small"
-                placeholder="Enter name for this version"
-                error={!!error && error.includes('already exists')}
-                helperText={error && error.includes('already exists') ? error : ''}
-                sx={{
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(0, 0, 0, 0.15)',
-                  },
-                }}
-              />
-            </Box>
-
+          {/* Row 1: Input Sources */}
+          <Box>
             {/* Input Sources Selection */}
             <Box>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
@@ -1005,7 +1009,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {(selected as string[]).map((value) => {
-                        const source = availableSources.find(s => s.id === value);
+                        const source = filteredAvailableSources.find(s => s.id === value);
                         return (
                           <Chip
                             key={value}
@@ -1025,7 +1029,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                     },
                   }}
                 >
-                  {availableSources.map((source) => {
+                  {filteredAvailableSources.map((source) => {
                     const headers = getSourceHeaders(source);
                     return (
                       <MenuItem key={source.id} value={source.id}>
@@ -1043,14 +1047,14 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           </Box>
 
           {/* Nested Fields Configuration Accordion */}
-          <Accordion disabled={selectedSources.length === 0 || (selectedSources.length > 1 && availableHeaders.length === 0)}>
+          <Accordion disabled={selectedSources.length === 0}>
             <AccordionSummary
               expandIcon={<ExpandMore />}
               aria-controls="nested-fields-content"
               id="nested-fields-header"
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Nested Fields Configuration
+                New Fields Configuration
                 {nestedFields.length > 0 && (
                   <Chip
                     label={nestedFields.length}
@@ -1080,7 +1084,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748' }}>
-                    {editingNestedFieldId ? 'Edit Nested Field' : 'Add Nested Field'}
+                    {editingNestedFieldId ? 'Edit New Field' : 'Add New Field'}
                   </Typography>
 
                   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
@@ -1194,7 +1198,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                       },
                     }}
                   >
-                    {editingNestedFieldId ? 'Update Nested Field' : 'Add Nested Field'}
+                    {editingNestedFieldId ? 'Update New Field' : 'Add New Field'}
                   </Button>
                 </Paper>
 
@@ -1202,7 +1206,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                 {nestedFields.length > 0 && (
                   <Paper sx={{ p: 2, backgroundColor: '#F9FAFB', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748' }}>
-                      Current Nested Fields ({nestedFields.length})
+                      Current New Fields ({nestedFields.length})
                     </Typography>
 
                     <Box sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
@@ -1283,7 +1287,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           </Accordion>
 
           {/* Field Mapping Accordion */}
-          <Accordion disabled={selectedSources.length === 0 || (selectedSources.length > 1 && availableHeaders.length === 0)}>
+          <Accordion disabled={selectedSources.length === 0}>
             <AccordionSummary
               expandIcon={<ExpandMore />}
               aria-controls="field-mapping-content"
@@ -1579,31 +1583,24 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
             </AccordionDetails>
           </Accordion>
 
-          {/* No Common Headers Warning */}
-          {selectedSources.length > 1 && availableHeaders.length === 0 && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                No Common Headers Found
-              </Typography>
-              <Typography variant="caption">
-                The selected sources do not have any fields in common. Please select sources with at least one matching field name to create a version. Nested Fields and Field Mapping are disabled when there are no common headers.
-              </Typography>
-            </Alert>
-          )}
-
           {/* Headers Selection */}
           {availableHeaders.length > 0 && (
-            <Box>
+            <Box key={`headers-box-${selectedSources.join('-')}-${availableHeaders.length}`}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
                 Select Headers
               </Typography>
               {selectedSources.length > 1 && (
-                <Alert severity="info" sx={{ mb: 1, py: 0, fontSize: '0.75rem' }}>
+                <Alert
+                  key={`alert-${selectedSources.length}-${availableHeaders.length}`}
+                  severity="info"
+                  sx={{ mb: 1, py: 0, fontSize: '0.75rem' }}
+                >
                   Showing {availableHeaders.length} common field{availableHeaders.length !== 1 ? 's' : ''} found across all {selectedSources.length} selected sources
                 </Alert>
               )}
               <FormControl fullWidth size="small">
                 <Select
+                  key={`select-headers-${selectedSources.join('-')}-${availableHeaders.length}`}
                   multiple
                   value={selectedHeaders}
                   onChange={handleHeadersChange}
@@ -1699,6 +1696,31 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                 label={<Typography variant="body2">Intersect</Typography>}
               />
             </RadioGroup>
+          </Box>
+
+          {/* Version Name - Moved to the end */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+              Version Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
+            </Typography>
+            <TextField
+              label=""
+              value={versionName}
+              onChange={(e) => {
+                setVersionName(e.target.value);
+                setError(''); // Clear error when user types
+              }}
+              fullWidth
+              size="small"
+              placeholder="Enter name for this version"
+              error={!!error && error.includes('already exists')}
+              helperText={error && error.includes('already exists') ? error : ''}
+              sx={{
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(0, 0, 0, 0.15)',
+                },
+              }}
+            />
           </Box>
         </Box>
       </DialogContent>

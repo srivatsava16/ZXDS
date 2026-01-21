@@ -96,6 +96,7 @@ export interface VersionedSource {
   operationFields?: string[];
   headers?: string[];
   dataTypes?: Record<string, string>;
+  configJson?: any;
 }
 
 // Filter types

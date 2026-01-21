@@ -28,7 +28,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Menu,
 } from '@mui/material';
 import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
@@ -56,11 +55,13 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   getSourceNameById,
   onUpdateVersionName,
   onUpdateVersion,
+  onDeleteVersion,
   sharedCustomSources = [],
   onAddSharedCustomSource,
   onEditSharedCustomSource,
   onDeleteSharedCustomSource,
-  onConfigurationsChange
+  onConfigurationsChange,
+  appendConfigurations = []
 }) => {
   // Use custom hooks for state management
   const matchConfig = useMatchConfig(initialConfigs);
@@ -134,6 +135,54 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);
 
+  // Helper function to get all fields for a match source
+  const getMatchSourceFields = (sourceId: string): string[] => {
+    // Check if it's a predefined match source (from API)
+    if (sourceId.startsWith('match_')) {
+      const tableId = parseInt(sourceId.replace('match_', ''));
+      const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
+        table => table.tableId === tableId
+      );
+      if (matchTable?.columns) {
+        return matchTable.columns.map(col => col.name);
+      }
+      return [];
+    }
+
+    // Check custom match sources
+    const customSource = customSources.customMatchSources.find((src: any) => src.id === sourceId);
+    if (customSource) {
+      return customSource.selectedHeaders || customSource.headers || [];
+    }
+
+    // Check versioned sources and regular input sources
+    const versionedSource = availableInputSources.find(src => src.id === sourceId);
+    if (versionedSource) {
+      return versionedSource.selectedHeaders || versionedSource.headers || [];
+    }
+
+    return [];
+  };
+
+  // Helper function to check if a source contains all selected match on fields
+  const sourceHasAllMatchOnFields = (sourceId: string): boolean => {
+    // If no match on fields are selected, all sources are enabled
+    if (matchConfig.selectedMatchOnFields.length === 0) {
+      return true;
+    }
+
+    // Get the fields for this source
+    const sourceFields = getMatchSourceFields(sourceId);
+
+    // If source has no fields (couldn't retrieve from API or custom sources), disable it
+    if (sourceFields.length === 0) {
+      return false;
+    }
+
+    // Check if all selected match on fields exist in the source fields
+    return matchConfig.selectedMatchOnFields.every(matchKey => sourceFields.includes(matchKey));
+  };
+
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
     if (initialConfigs && initialConfigs.length > 0) {
@@ -148,6 +197,24 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     }
   }, [matchConfig.configs, onConfigurationsChange]);
 
+  // Auto-deselect match sources that don't have all selected match on fields
+  useEffect(() => {
+    if (matchConfig.selectedMatchOnFields.length > 0 && matchConfig.selectedMatchSources.length > 0) {
+      // Filter out sources that don't have all match on fields
+      const validSources = matchConfig.selectedMatchSources.filter(sourceId => {
+        const sourceFields = getMatchSourceFields(sourceId);
+        return matchConfig.selectedMatchOnFields.every(matchKey => sourceFields.includes(matchKey));
+      });
+
+      // Update if any sources were filtered out
+      if (validSources.length !== matchConfig.selectedMatchSources.length) {
+        matchConfig.setSelectedMatchSources(validSources);
+        // Also clear add fields since sources changed
+        matchConfig.setSelectedAddFields([]);
+      }
+    }
+  }, [matchConfig.selectedMatchOnFields]); // Only run when match on fields change
+
   // Search states for each dropdown
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
   const [matchOnFieldsSearch, setMatchOnFieldsSearch] = useState('');
@@ -157,6 +224,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   // Handle reordering of match sources via drag-and-drop
   const handleReorderMatchSources = (newOrder: string[]) => {
     matchConfig.setSelectedMatchSources(newOrder);
+  };
+
+  // Handle deletion of match source from priority list
+  const handleDeleteMatchSource = (id: string) => {
+    const updatedSelection = matchConfig.selectedMatchSources.filter(sourceId => sourceId !== id);
+    matchConfig.setSelectedMatchSources(updatedSelection);
   };
 
   const handleCreateVersion = () => {
@@ -176,16 +249,18 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         'Match',
         matchConfig.selectedInputSources,
         matchConfig.selectedMatchSources,
-        matchConfig.selectedMatchOnFields
+        matchConfig.selectedMatchOnFields,
+        matchConfig.selectedAddFields  // Pass Add Fields for Match module
       );
     }
   };
 
   // Combine configurations and versions for unified display
+  // Sort by creation time to show items in the order they were created
   const combinedItems = [
-    ...matchConfig.configs.map(config => ({ type: 'config' as const, data: config })),
-    ...versionedSources.map(version => ({ type: 'version' as const, data: version }))
-  ];
+    ...matchConfig.configs.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
+    ...versionedSources.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 }))
+  ].sort((a, b) => a.createdAt - b.createdAt);
 
   const getSourceName = (id: string): string => {
     const inputSource = availableInputSources.find(src => src.id === id);
@@ -200,7 +275,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     return id;
   };
 
-  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources, fieldMappings);
+  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources, fieldMappings, appendConfigurations);
 
   // Extract versioned sources from availableInputSources
   const localVersionedSources = availableInputSources.filter(src =>
@@ -284,7 +359,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
             {matchConfig.editingConfigId ? 'Edit Match Configuration' : 'Create Match Configuration'}
           </Typography>
           {matchConfig.editingConfigId && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block !important', mt: 0.5 }}>
               Editing existing configuration - make changes and click Update
             </Typography>
           )}
@@ -316,7 +391,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 size="small"
                 sx={{
                   ml: 1,
-                  height: 18,
+                  height: '18px !important',
                   fontSize: '0.65rem',
                   backgroundColor: '#FCD34D',
                   color: 'white',
@@ -348,44 +423,26 @@ const MatchModule: React.FC<MatchModuleProps> = ({
             >
               Add Custom Match Source
             </Button>
-            <Tooltip title="Version Actions" arrow>
-              <IconButton
-                size="small"
-                onClick={handleVersionMenuOpen}
-                sx={{
-                  color: '#F59E0B',
-                  border: '2px solid #F59E0B',
-                  borderRadius: 1,
-                  '&:hover': {
-                    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                    borderColor: '#D97706',
-                  },
-                }}
-              >
-                <AccountTree fontSize="small" />
-              </IconButton>
+            <Tooltip title="Create Version" arrow>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleCreateVersion}
+                  disabled={!onCreateVersionedSource}
+                  sx={{
+                    color: '#F59E0B',
+                    border: '2px solid #F59E0B',
+                    borderRadius: 1,
+                    '&:hover': {
+                      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                      borderColor: '#D97706',
+                    },
+                  }}
+                >
+                  <AccountTree fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
-            <Menu
-              anchorEl={versionMenuAnchorEl}
-              open={versionMenuOpen}
-              onClose={handleVersionMenuClose}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'left',
-              }}
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'left',
-              }}
-            >
-              <MenuItem 
-                onClick={handleCreateVersion}
-                disabled={!onCreateVersionedSource}
-              >
-                <AccountTree sx={{ fontSize: 16, mr: 1 }} />
-                Create Version
-              </MenuItem>
-            </Menu>
           </Box>
         </Box>
       </Box>
@@ -416,7 +473,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 fontWeight: 700,
                 mr: 1,
                 width: 24,
-                height: 24,
+                height: '24px !important',
               }}
             />
             <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
@@ -455,15 +512,33 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   );
                 }
                 return (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                     {selected.map((value) => (
-                      <Chip
-                        key={value}
-                        label={getSourceName(value)}
-                        size="small"
-                        color="primary"
-                        sx={{ height: 20, fontSize: '0.7rem' }}
-                      />
+                      <Tooltip key={value} title={getSourceName(value)} arrow>
+                        <Chip
+                          label={getSourceName(value)}
+                          size="small"
+                          color="primary"
+                          sx={{
+                            maxWidth: '150px !important',
+                              minWidth: '50px',
+                            height: '20px !important',
+                            fontSize: '0.7rem',
+                            overflow: 'hidden !important',
+                            flexShrink: '0 !important',
+                            '& .MuiChip-label': {
+                              display: 'block !important',
+                              overflow: 'hidden !important',
+                              textOverflow: 'ellipsis !important',
+                              whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                            }
+                          }}
+                        />
+                      </Tooltip>
                     ))}
                   </Box>
                 );
@@ -558,7 +633,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 fontWeight: 700,
                 mr: 1,
                 width: 24,
-                height: 24,
+                height: '24px !important',
               }}
             />
             <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -596,22 +671,35 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   );
                 }
                 return (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                     {selected.map((value) => (
-                      <Chip
-                        key={value}
-                        label={value}
-                        size="small"
-                        sx={{
-                          height: 20,
-                          fontSize: '0.7rem',
-                          backgroundColor: '#FCD34D',
-                          color: '#fff',
-                          '& .MuiChip-label': {
-                            color: '#fff'
-                          }
-                        }}
-                      />
+                      <Tooltip key={value} title={value} arrow>
+                        <Chip
+                          label={value}
+                          size="small"
+                          sx={{
+                            maxWidth: '150px !important',
+                              minWidth: '50px',
+                            height: '20px !important',
+                            fontSize: '0.7rem',
+                            overflow: 'hidden !important',
+                            flexShrink: '0 !important',
+                            backgroundColor: '#FCD34D',
+                            color: '#fff',
+                            '& .MuiChip-label': {
+                              display: 'block !important',
+                              color: '#fff',
+                              overflow: 'hidden !important',
+                              textOverflow: 'ellipsis !important',
+                              whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                            }
+                          }}
+                        />
+                      </Tooltip>
                     ))}
                   </Box>
                 );
@@ -716,7 +804,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   color: 'white',
                   fontWeight: 700,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748', overflow: 'visible', textOverflow: 'clip', whiteSpace: 'nowrap' }}>
@@ -730,28 +818,30 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               <Box sx={{ width: '1px', height: '20px', backgroundColor: 'divider', mx: 0.5 }} />
 
               {/* Options inline with label */}
-              {/* Expand Checkbox */}
-              <FormGroup>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={matchConfig.expand}
-                      onChange={(e) => matchConfig.setExpand(e.target.checked)}
-                      sx={{
-                        padding: '2px',
-                        '& .MuiSvgIcon-root': { fontSize: 18 }
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                      Expand
-                    </Typography>
-                  }
-                  sx={{ margin: 0 }}
-                />
-              </FormGroup>
+              {/* Expand Checkbox - Hidden when Full Match is selected */}
+              {matchConfig.matchType !== 'full' && (
+                <FormGroup>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={matchConfig.expand}
+                        onChange={(e) => matchConfig.setExpand(e.target.checked)}
+                        sx={{
+                          padding: '2px',
+                          '& .MuiSvgIcon-root': { fontSize: 18 }
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
+                        Expand
+                      </Typography>
+                    }
+                    sx={{ margin: 0 }}
+                  />
+                </FormGroup>
+              )}
 
               {/* Full Match / Any Match Radio Buttons - Hidden when Expand is enabled */}
               {!matchConfig.expand && (
@@ -810,10 +900,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               onChange={(e) => {
                 const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
                 if (value.includes('select-all-match-sources')) {
-                  if (matchConfig.selectedMatchSources.length === filteredMatchSources.length) {
+                  // Only select sources that have all match on fields (enabled sources)
+                  const enabledSources = filteredMatchSources.filter(s => sourceHasAllMatchOnFields(s.id));
+                  if (matchConfig.selectedMatchSources.length === enabledSources.length) {
                     matchConfig.setSelectedMatchSources([]);
                   } else {
-                    matchConfig.setSelectedMatchSources(filteredMatchSources.map(s => s.id));
+                    matchConfig.setSelectedMatchSources(enabledSources.map(s => s.id));
                   }
                 } else {
                   matchConfig.setSelectedMatchSources(value);
@@ -830,22 +922,35 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   );
                 }
                 return (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                     {selected.map((value) => (
-                      <Chip
-                        key={value}
-                        label={getSourceName(value)}
-                        size="small"
-                        sx={{
-                          height: 20,
-                          fontSize: '0.7rem',
-                          backgroundColor: '#FCD34D',
-                          color: '#fff',
-                          '& .MuiChip-label': {
-                            color: '#fff'
-                          }
-                        }}
-                      />
+                      <Tooltip key={value} title={getSourceName(value)} arrow>
+                        <Chip
+                          label={getSourceName(value)}
+                          size="small"
+                          sx={{
+                            maxWidth: '150px !important',
+                              minWidth: '50px',
+                            height: '20px !important',
+                            fontSize: '0.7rem',
+                            overflow: 'hidden !important',
+                            flexShrink: '0 !important',
+                            backgroundColor: '#FCD34D',
+                            color: '#fff',
+                            '& .MuiChip-label': {
+                              display: 'block !important',
+                              color: '#fff',
+                              overflow: 'hidden !important',
+                              textOverflow: 'ellipsis !important',
+                              whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                            }
+                          }}
+                        />
+                      </Tooltip>
                     ))}
                   </Box>
                 );
@@ -892,17 +997,29 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 />
               </MenuItem>
               {/* Select All Option */}
-              <MenuItem
-                value="select-all-match-sources"
-                sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
-              >
-                <Checkbox
-                  checked={filteredMatchSources.length > 0 && matchConfig.selectedMatchSources.length === filteredMatchSources.length}
-                  indeterminate={matchConfig.selectedMatchSources.length > 0 && matchConfig.selectedMatchSources.length < filteredMatchSources.length}
-                  size="small"
-                />
-                <ListItemText primary="Select All" />
-              </MenuItem>
+              {(() => {
+                // Only count enabled sources for Select All
+                const enabledSources = filteredMatchSources.filter(s => sourceHasAllMatchOnFields(s.id));
+                return enabledSources.length > 0 ? (
+                  <MenuItem
+                    value="select-all-match-sources"
+                    sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
+                  >
+                    <Checkbox
+                      checked={
+                        enabledSources.length > 0 &&
+                        enabledSources.every(src => matchConfig.selectedMatchSources.includes(src.id))
+                      }
+                      indeterminate={
+                        enabledSources.some(src => matchConfig.selectedMatchSources.includes(src.id)) &&
+                        !enabledSources.every(src => matchConfig.selectedMatchSources.includes(src.id))
+                      }
+                      size="small"
+                    />
+                    <ListItemText primary="Select All (Enabled)" />
+                  </MenuItem>
+                ) : null;
+              })()}
               {filteredMatchSources.length === 0 && (
                 <MenuItem disabled>
                   <em>No items match your search</em>
@@ -910,55 +1027,102 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               )}
               {filteredMatchSources.map((source) => {
                 const isCustomSource = customSources.customMatchSources.some(cs => cs.id === source.id);
+                const hasAllMatchOnFields = sourceHasAllMatchOnFields(source.id);
+                const isDisabled = !hasAllMatchOnFields;
+                const sourceFields = getMatchSourceFields(source.id);
+
                 return (
-                  <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={matchConfig.selectedMatchSources.indexOf(source.id) > -1} size="small" />
-                    <ListItemText primary={source.name} />
-                    {isCustomSource && (
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Tooltip title="View Details" arrow>
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const customSource = customSources.customMatchSources.find(cs => cs.id === source.id);
-                              if (customSource) {
-                                customSources.setViewingSource(customSource);
-                              }
-                            }}
-                            sx={{
-                              color: '#296695',
-                              '&:hover': {
-                                backgroundColor: 'rgba(41, 102, 149, 0.08)',
-                              },
-                            }}
-                          >
-                            <Visibility fontSize="small" sx={{ fontSize: '0.8rem' }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Edit Source" arrow>
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const customSource = customSources.customMatchSources.find(cs => cs.id === source.id);
-                              if (customSource) {
-                                customSources.setEditingSource(customSource);
-                                setDialogOpen(true);
-                              }
-                            }}
-                            sx={{
-                              color: '#10B981',
-                              '&:hover': {
-                                backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                              },
-                            }}
-                          >
-                            <Edit fontSize="small" sx={{ fontSize: '0.8rem' }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    )}
+                  <MenuItem
+                    key={source.id}
+                    value={source.id}
+                    disabled={isDisabled}
+                    sx={isDisabled ? {
+                      opacity: 0.5,
+                      cursor: 'not-allowed',
+                      '&:hover': {
+                        backgroundColor: 'transparent'
+                      }
+                    } : {}}
+                  >
+                    <Checkbox
+                      checked={matchConfig.selectedMatchSources.indexOf(source.id) > -1}
+                      size="small"
+                      disabled={isDisabled}
+                    />
+                    <ListItemText
+                      primary={source.name}
+                      secondary={isDisabled ? 'Missing required match on fields' : undefined}
+                      secondaryTypographyProps={{ sx: { fontSize: '0.65rem', color: 'error.main' } }}
+                    />
+                    {/* View Fields Icon */}
+                    <Box
+                      sx={{
+                        pointerEvents: 'auto', // Allow interaction even when MenuItem is disabled
+                      }}
+                    >
+                      <Tooltip
+                        title={
+                          sourceFields.length > 0 ? (
+                            <Box sx={{ maxWidth: 400 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                Available Fields ({sourceFields.length}):
+                              </Typography>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 300, overflowY: 'auto' }}>
+                                {sourceFields.map((field, idx) => (
+                                  <Chip
+                                    key={idx}
+                                    label={field}
+                                    size="small"
+                                    sx={{
+                                      backgroundColor: matchConfig.selectedMatchOnFields.includes(field) ? '#F59E0B20' : '#E5E7EB',
+                                      color: matchConfig.selectedMatchOnFields.includes(field) ? '#F59E0B' : '#374151',
+                                      border: matchConfig.selectedMatchOnFields.includes(field) ? '1px solid #F59E0B' : '1px solid transparent',
+                                      fontSize: '0.65rem',
+                                      height: '20px',
+                                      fontWeight: matchConfig.selectedMatchOnFields.includes(field) ? 600 : 400,
+                                    }}
+                                  />
+                                ))}
+                              </Box>
+                              {matchConfig.selectedMatchOnFields.length > 0 && (
+                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', color: '#9CA3AF' }}>
+                                  Orange = Match on fields present
+                                </Typography>
+                              )}
+                            </Box>
+                          ) : (
+                            'No fields available'
+                          )
+                        }
+                        arrow
+                        placement="left"
+                        enterDelay={200}
+                        PopperProps={{
+                          sx: {
+                            '& .MuiTooltip-tooltip': {
+                              maxWidth: 450,
+                            }
+                          }
+                        }}
+                      >
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                          sx={{
+                            color: isDisabled ? '#9CA3AF' : '#F59E0B',
+                            padding: '4px',
+                            pointerEvents: 'auto', // Ensure icon can be clicked even when parent is disabled
+                            '&:hover': {
+                              backgroundColor: isDisabled ? 'rgba(156, 163, 175, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                            },
+                          }}
+                        >
+                          <Visibility sx={{ fontSize: '0.9rem' }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </MenuItem>
                 );
               })}
@@ -969,6 +1133,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               <DraggableMatchSources
                 selectedSources={matchConfig.selectedMatchSources}
                 onReorder={handleReorderMatchSources}
+                onDelete={handleDeleteMatchSource}
                 getSourceName={getSourceName}
               />
             )}
@@ -998,7 +1163,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   fontWeight: 700,
                   mr: 1,
                   width: 24,
-                  height: 24,
+                  height: '24px !important',
                 }}
               />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
@@ -1032,22 +1197,35 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     );
                   }
                   return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
                       {selected.map((value) => (
-                        <Chip
-                          key={value}
-                          label={value}
-                          size="small"
-                          sx={{
-                            height: 20,
-                            fontSize: '0.7rem',
-                            backgroundColor: '#FCD34D',
-                            color: '#fff',
-                            '& .MuiChip-label': {
-                              color: '#fff'
-                            }
-                          }}
-                        />
+                        <Tooltip key={value} title={value} arrow>
+                          <Chip
+                            label={value}
+                            size="small"
+                            sx={{
+                              maxWidth: '150px !important',
+                              minWidth: '50px',
+                              height: '20px !important',
+                              fontSize: '0.7rem',
+                              overflow: 'hidden !important',
+                              flexShrink: '0 !important',
+                              backgroundColor: '#FCD34D',
+                              color: '#fff',
+                              '& .MuiChip-label': {
+                                display: 'block !important',
+                                color: '#fff',
+                                overflow: 'hidden !important',
+                                textOverflow: 'ellipsis !important',
+                                whiteSpace: 'nowrap !important',
+                                paddingLeft: '8px !important',
+                                paddingRight: '8px !important',
+                                textAlign: 'left !important',
+                                direction: 'ltr !important',
+                              }
+                            }}
+                          />
+                        </Tooltip>
                       ))}
                     </Box>
                   );
@@ -1139,10 +1317,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
           }}
         >
           <IconButton
-            onClick={matchConfig.handleAddOrUpdateConfig}
+            onClick={() => matchConfig.handleAddOrUpdateConfig(allMatchSources, apiSources)}
             sx={{
               width: 48,
-              height: 48,
+              height: '48px !important',
               backgroundColor: '#FDE68A',
               color: '#fff',
               boxShadow: '0 4px 16px rgba(245, 158, 11, 0.3)',
@@ -1245,16 +1423,27 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                         label={isVersion ? 'Version' : 'Config'}
                         size="small"
                         color={isVersion ? 'success' : 'primary'}
-                        sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
+                        sx={{ fontWeight: 600, height: '22px !important', fontSize: '0.7rem' }}
                       />
                     </TableCell>
 
                     {/* Name / Details Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                          {version?.versionLabel || version?.sourceName || '--'}
-                        </Typography>
+                        <Tooltip title={version?.versionLabel || version?.sourceName || '--'} arrow placement="top">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.75rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {version?.versionLabel || version?.sourceName || '--'}
+                          </Typography>
+                        </Tooltip>
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                           Configuration #{matchConfig.configs.indexOf(config!) + 1}
@@ -1263,36 +1452,52 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     </TableCell>
 
                     {/* Input Sources Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
                         version?.baseInputSources && version.baseInputSources.length > 0 ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#29669520',
-                                color: '#296695',
-                                border: '1px solid #29669540',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {version.baseInputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {version.baseInputSources.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Input Sources ({version.baseInputSources.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#29669520',
+                                  color: '#296695',
+                                  border: '1px solid #29669540',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             --
@@ -1313,7 +1518,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1322,8 +1527,9 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 color: '#296695',
                                 border: '1px solid #29669540',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1334,10 +1540,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.inputSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {config.inputSources.length > 2 ? '...' : ''}
+                              {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1349,11 +1555,57 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     </TableCell>
 
                     {/* Match On Fields Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
+                        version?.operationFields && version.operationFields.length > 0 ? (
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Match On Fields ({version.operationFields.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.operationFields.join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.operationFields.length} field${version.operationFields.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#F59E0B20',
+                                  color: '#F59E0B',
+                                  border: '1px solid #F59E0B40',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.operationFields.join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                            --
+                          </Typography>
+                        )
                       ) : config && config.matchOnFields && config.matchOnFields.length > 0 ? (
                         <Tooltip
                           title={
@@ -1369,7 +1621,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.matchOnFields.length} field${config.matchOnFields.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1378,8 +1630,9 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 color: '#F59E0B',
                                 border: '1px solid #F59E0B40',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1390,10 +1643,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.matchOnFields.slice(0, 2).join(', ')}
-                              {config.matchOnFields.length > 2 ? '...' : ''}
+                              {config.matchOnFields.join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1405,36 +1658,52 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     </TableCell>
 
                     {/* Match Sources Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
                         version?.operationSources && version.operationSources.length > 0 ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#F59E0B20',
-                                color: '#F59E0B',
-                                border: '1px solid #F59E0B40',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {version.operationSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {version.operationSources.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
+                          <Tooltip
+                            title={
+                              <Box sx={{ maxWidth: 400 }}>
+                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                  Match Sources ({version.operationSources.length}):
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                              <Chip
+                                label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                                size="small"
+                                sx={{
+                                  backgroundColor: '#F59E0B20',
+                                  color: '#F59E0B',
+                                  border: '1px solid #F59E0B40',
+                                  fontWeight: 600,
+                                  height: '20px !important',
+                                  fontSize: '0.65rem',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             --
@@ -1455,7 +1724,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                           arrow
                           placement="top"
                         >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
                               label={`${config.matchSources.length} source${config.matchSources.length !== 1 ? 's' : ''}`}
                               size="small"
@@ -1464,8 +1733,9 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 color: '#F59E0B',
                                 border: '1px solid #F59E0B40',
                                 fontWeight: 600,
-                                height: 20,
+                                height: '20px !important',
                                 fontSize: '0.65rem',
+                                flexShrink: 0,
                               }}
                             />
                             <Typography
@@ -1476,10 +1746,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
+                                minWidth: 0,
                               }}
                             >
-                              {config.matchSources.slice(0, 2).map((id: string) => getSourceName(id)).join(', ')}
-                              {config.matchSources.length > 2 ? '...' : ''}
+                              {config.matchSources.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1487,108 +1757,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                           --
                         </Typography>
-                      )}
-                    </TableCell>
-
-                    {/* Expand Column */}
-                    <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
-                      ) : (
-                        <Chip
-                          label={config?.expand ? 'Yes' : 'No'}
-                          size="small"
-                          sx={{
-                            backgroundColor: config?.expand ? '#10B98120' : '#EF444420',
-                            color: config?.expand ? '#10B981' : '#EF4444',
-                            border: `1px solid ${config?.expand ? '#10B98140' : '#EF444440'}`,
-                            fontWeight: 600,
-                            height: 20,
-                            fontSize: '0.65rem',
-                            minWidth: 40,
-                          }}
-                        />
-                      )}
-                    </TableCell>
-
-                    {/* Add Fields Column */}
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
-                      ) : config?.expand && config.addFields && config.addFields.length > 0 ? (
-                        <Tooltip
-                          title={
-                            <Box sx={{ maxWidth: 400 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Add Fields ({config.addFields.length}):
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.addFields.join(', ')}
-                              </Typography>
-                            </Box>
-                          }
-                          arrow
-                          placement="top"
-                        >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Chip
-                              label={`${config.addFields.length} field${config.addFields.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#10B98120',
-                                color: '#10B981',
-                                border: '1px solid #10B98140',
-                                fontWeight: 600,
-                                height: 20,
-                                fontSize: '0.65rem',
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {config.addFields.slice(0, 2).join(', ')}
-                              {config.addFields.length > 2 ? '...' : ''}
-                            </Typography>
-                          </Box>
-                        </Tooltip>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
-                      )}
-                    </TableCell>
-
-                    {/* Match Type Column */}
-                    <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                      {isVersion ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          --
-                        </Typography>
-                      ) : (
-                        <Chip
-                          label={config?.matchType === 'full' ? 'Full Match' : 'Any Match'}
-                          size="small"
-                          sx={{
-                            backgroundColor: '#FCD34D20',
-                            color: '#F59E0B',
-                            border: '1px solid #FCD34D40',
-                            fontWeight: 600,
-                            height: 20,
-                            fontSize: '0.65rem',
-                            minWidth: 80,
-                          }}
-                        />
                       )}
                     </TableCell>
 
@@ -1596,21 +1764,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
                       {isVersion ? (
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                          <Tooltip title="View Details" arrow>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleViewVersion(version)}
-                              sx={{
-                                color: '#296695',
-                                padding: '3px',
-                                '&:hover': {
-                                  backgroundColor: 'rgba(41, 102, 149, 0.12)',
-                                },
-                              }}
-                            >
-                              <Visibility sx={{ fontSize: 16 }} />
-                            </IconButton>
-                          </Tooltip>
                           <Tooltip title="Edit" arrow>
                             <IconButton
                               size="small"
@@ -1624,6 +1777,28 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                               }}
                             >
                               <Edit sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete version "${version?.versionLabel || version?.sourceName}"? This action cannot be undone.`)) {
+                                  // Call delete handler if available
+                                  if (onDeleteVersion) {
+                                    onDeleteVersion(version.id);
+                                  }
+                                }
+                              }}
+                              sx={{
+                                color: 'error.main',
+                                padding: '3px',
+                                '&:hover': {
+                                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                },
+                              }}
+                            >
+                              <Delete sx={{ fontSize: 16 }} />
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -1663,6 +1838,159 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                   </TableRow>
                   );
                 })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* Custom Match Sources List */}
+      {customSources.customMatchSources.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
+              Configured Custom Match Sources
+            </Typography>
+            <Chip
+              label={`${customSources.customMatchSources.length} custom source${customSources.customMatchSources.length !== 1 ? 's' : ''}`}
+              size="small"
+              color="secondary"
+              sx={{ fontWeight: 600 }}
+            />
+          </Box>
+          <TableContainer
+            component={Paper}
+            sx={{
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              overflow: 'hidden',
+            }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Source Name</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Fields</TableCell>
+                  <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {customSources.customMatchSources.map((customSource: any) => (
+                  <TableRow
+                    key={customSource.id}
+                    hover
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(156, 39, 176, 0.04)',
+                      },
+                    }}
+                  >
+                    {/* Source Name Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Tooltip title={customSource.sourceName} arrow placement="top">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 250,
+                          }}
+                        >
+                          {customSource.sourceName}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+
+                    {/* Type Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      <Chip
+                        label={customSource.sourceType}
+                        size="small"
+                        color="secondary"
+                        sx={{ fontWeight: 600, height: '22px !important', fontSize: '0.7rem' }}
+                      />
+                    </TableCell>
+
+                    {/* Fields Column */}
+                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
+                      {customSource.selectedHeaders && customSource.selectedHeaders.length > 0 ? (
+                        <Tooltip
+                          title={
+                            <Box sx={{ maxWidth: 400 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                Fields ({customSource.selectedHeaders.length}):
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block' }}>
+                                {customSource.selectedHeaders.join(', ')}
+                              </Typography>
+                            </Box>
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <Chip
+                            label={`${customSource.selectedHeaders.length} field${customSource.selectedHeaders.length !== 1 ? 's' : ''}`}
+                            size="small"
+                            sx={{
+                              backgroundColor: '#9C27B020',
+                              color: '#9C27B0',
+                              border: '1px solid #9C27B040',
+                              fontWeight: 600,
+                              height: '20px !important',
+                              fontSize: '0.65rem',
+                            }}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          --
+                        </Typography>
+                      )}
+                    </TableCell>
+
+                    {/* Actions Column */}
+                    <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                        <Tooltip title="Edit Source" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              customSources.setEditingSource(customSource);
+                              setDialogOpen(true);
+                            }}
+                            sx={{
+                              color: 'warning.main',
+                              '&:hover': {
+                                backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                              },
+                            }}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Source" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => onDeleteSharedCustomSource?.(customSource.id)}
+                            sx={{
+                              color: 'error.main',
+                              '&:hover': {
+                                backgroundColor: 'rgba(211, 47, 47, 0.08)',
+                              },
+                            }}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1984,6 +2312,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         version={editingVersion}
         availableInputSources={availableInputSources}
         availableMatchSources={[...predefinedSources.map(s => ({ id: s.id, name: s.name })), ...customSources.customMatchSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        apiSources={apiSources}
+        allExistingSources={[...availableInputSources, ...sharedCustomSources]}
         onSave={handleSaveVersion}
       />
     </Box>

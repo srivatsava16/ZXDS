@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Box, Typography, Chip } from '@mui/material';
+import { Box, Typography, Chip, Tooltip } from '@mui/material';
 import { DragIndicator } from '@mui/icons-material';
 
 interface DraggableOutputSourcesProps {
@@ -108,20 +108,22 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, sourceName, index }) =>
           },
         }}
       />
-      <Typography
-        variant="body2"
-        sx={{
-          flex: 1,
-          fontSize: '0.8rem',
-          fontWeight: 500,
-          color: '#2D3748',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {sourceName}
-      </Typography>
+      <Tooltip title={sourceName} arrow placement="top">
+        <Typography
+          variant="body2"
+          sx={{
+            flex: 1,
+            fontSize: '0.8rem',
+            fontWeight: 500,
+            color: '#2D3748',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {sourceName}
+        </Typography>
+      </Tooltip>
     </Box>
   );
 };

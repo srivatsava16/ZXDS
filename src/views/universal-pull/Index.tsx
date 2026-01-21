@@ -116,7 +116,7 @@ const UniversalPullRequestPage: React.FC = () => {
   };
 
   const handleCancel = () => {
-    navigate('/universeReports');
+    navigate('/dataPullReports');
   };
 
   const handleSave = () => {

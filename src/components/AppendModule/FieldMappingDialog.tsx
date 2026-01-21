@@ -26,6 +26,7 @@ import {
   Divider,
 } from '@mui/material';
 import { Close, Add, Edit, Delete } from '@mui/icons-material';
+import { validateMappingFieldName } from '../../utils/sourceValidation';
 
 export interface FieldMapping {
   id: string;
@@ -110,6 +111,19 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
     }
     if (selectedColumns.length === 0) {
       alert('Please select at least one column');
+      return;
+    }
+
+    // Validate for duplicate field mapping names (case-insensitive)
+    const validationError = validateMappingFieldName(
+      fieldName,
+      mappings,
+      editingId,
+      'Field mapping'
+    );
+
+    if (validationError) {
+      alert(validationError);
       return;
     }
 
@@ -322,7 +336,6 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                     <Checkbox checked={selectedSources.indexOf(source.id) > -1} size="small" />
                     <ListItemText
                       primary={source.name}
-                      secondary={source.type === 'input' ? 'Input Source' : 'Append Source'}
                     />
                   </MenuItem>
                 ))}

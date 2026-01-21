@@ -13,6 +13,7 @@ export interface AppendConfig {
     selectedSources: string[];
     selectedColumns: string[];
   }>;
+  createdAt?: number; // Timestamp for sorting by creation order
 }
 
 export interface AppendModuleProps {
@@ -22,7 +23,8 @@ export interface AppendModuleProps {
     baseInputSources: string[],
     operationSources: string[],
     operationFields?: string[],
-    fieldMappings?: any[]
+    fieldMappings?: any[],
+    appendFields?: string[]  // Fields to Append for Append module
   ) => void;
   initialConfigs?: AppendConfig[];
   apiSources?: RequestInputsResponse | null;
@@ -31,6 +33,7 @@ export interface AppendModuleProps {
   getSourceNameById?: (sourceId: string) => string; // Helper function to get source names
   onUpdateVersionName?: (versionId: string, newName: string) => void;
   onUpdateVersion?: (versionId: string, updatedVersion: any) => void; // Update full version configuration
+  onDeleteVersion?: (versionId: string) => void; // Delete a version
   // Shared custom sources across all modules
   sharedCustomSources?: InputSource[];
   onAddSharedCustomSource?: (source: InputSource, moduleId?: string) => void;

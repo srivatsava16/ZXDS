@@ -43,13 +43,14 @@ export interface InputSource {
   dataTypes?: Record<string, string>;
   previewData?: any[];
   filterQuery?: string; // Store the generated filter query
-  filterConfig?: any; // Store the filter configuration (groups, conditions, etc.)
+  filterJson?: any; // Store the filter configuration (groups, conditions, etc.)
   isVersioned?: boolean; // Indicates if this source was created through versioning
   database?: string;
   schema?: string;
   table?: string;
   originalTableName?: string; // For preconfigured tables: stores the original table name for restoration
   tableSourceId?: number; // For preconfigured database tables: stores the tableId for proper restoration
+  sourceOption?: string; // Database source option (for preconfigured sources)
   customTableMetadata?: {
     source: string;
     database: string;
@@ -372,19 +373,51 @@ const InputModule: React.FC<InputModuleProps> = ({
                         sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem' }}
                       />
                     </TableCell>
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                        {source?.sourceName || '--'}
-                      </Typography>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      <Tooltip title={source?.sourceName || '--'} arrow placement="top">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {source?.sourceName || '--'}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                        {source?.sourceType === 'File'
-                          ? (source?.fileName || source?.filePath || '--')
-                          : source?.sourceType === 'Version'
-                          ? '--'
-                          : (source?.sourceName || '--')}
-                      </Typography>
+                    <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
+                      <Tooltip
+                        title={
+                          source?.sourceType === 'File'
+                            ? (source?.fileName || source?.filePath || '--')
+                            : source?.sourceType === 'Version'
+                            ? '--'
+                            : (source?.sourceName || '--')
+                        }
+                        arrow
+                        placement="top"
+                      >
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{
+                            fontSize: '0.75rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {source?.sourceType === 'File'
+                            ? (source?.fileName || source?.filePath || '--')
+                            : source?.sourceType === 'Version'
+                            ? '--'
+                            : (source?.sourceName || '--')}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
@@ -496,6 +529,7 @@ const InputModule: React.FC<InputModuleProps> = ({
           setEditingVersion(null);
         }}
         availableSources={sources}
+        apiSources={apiSources}
         onSave={handleVersionSave}
         editingVersion={editingVersion}
         currentVersionCount={sources.filter(s => s.isVersioned).length}

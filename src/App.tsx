@@ -69,12 +69,12 @@ function App() {
                   >
                     <Routes>
                       <Route path="/" element={<Navigate to="/dataPullReports" replace />} />
-                      <Route path="/universeReports" element={<UniversalPullRequestPage />} />
+                      <Route path="/universeReports" element={<Navigate to="/dataPullReports" replace />} />
                       <Route path="/universeRequests/new" element={<UniversalPullPage />} />
                       <Route path="/universeRequests/edit/:requestId" element={<UniversalPullPage />} />
                       <Route path="/universeRequests/view/:requestId" element={<UniversalPullRequestViewPage />} />
                       <Route path="/dataPullReports" element={<ReportPage />} />
-                      <Route path="/zipRadiusSearch" element={<ZipRadiusSearchPage />} />
+                      <Route path="/zipRadiusSearch" element={<Navigate to="/dataPullReports" replace />} />
                       <Route path="/dataPullRequests/new" element={<RequestCreationPage />} />
                       <Route path="/dataPullRequests/edit/:requestId" element={<RequestCreationPage />} />
                       <Route path="/request/:clientType" element={<RequestCreationPage />} />

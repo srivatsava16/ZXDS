@@ -20,6 +20,8 @@ import {
 } from '@mui/material';
 import { Close, Save } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
+import type { RequestInputsResponse } from '../../services/api';
+import { validateUniqueSourceName } from '../../utils/sourceValidation';
 
 interface SuppressVersionModalProps {
   open: boolean;
@@ -27,6 +29,8 @@ interface SuppressVersionModalProps {
   version: any | null;
   availableInputSources: InputSource[];
   availableSuppressSources: Array<{ id: string; name: string }>;
+  apiSources?: RequestInputsResponse | null;
+  allExistingSources?: InputSource[];
   onSave: (updatedVersion: any) => void;
 }
 
@@ -36,11 +40,23 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
   version,
   availableInputSources,
   availableSuppressSources,
+  apiSources = null,
+  allExistingSources = [],
   onSave,
 }) => {
   const [versionName, setVersionName] = useState('');
+  const [versionNameError, setVersionNameError] = useState('');
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedSuppressSources, setSelectedSuppressSources] = useState<string[]>([]);
+
+  // Filter out the currently editing version from available input sources
+  const filteredAvailableInputSources = availableInputSources.filter(source => {
+    // If we're editing a version, exclude it from the dropdown
+    if (version && version.id) {
+      return source.id !== version.id;
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (version && open) {
@@ -52,9 +68,25 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
 
   const handleSave = () => {
     if (!versionName.trim()) {
-      alert('Please enter a version name');
+      setVersionNameError('Please enter a version name');
       return;
     }
+
+    // Validate version name against API reserved names and existing sources
+    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const validationError = validateUniqueSourceName({
+      sourceName: versionName.trim(),
+      allExistingSources: sourcesToCheck,
+      editingSourceId: version?.id,
+      moduleName: 'Suppress Version',
+      apiSources: apiSources
+    });
+
+    if (validationError) {
+      setVersionNameError(validationError);
+      return;
+    }
+
     if (selectedInputSources.length === 0) {
       alert('Please select at least one input source');
       return;
@@ -129,8 +161,13 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
               fullWidth
               size="small"
               value={versionName}
-              onChange={(e) => setVersionName(e.target.value)}
+              onChange={(e) => {
+                setVersionName(e.target.value);
+                setVersionNameError(''); // Clear error when user types
+              }}
               placeholder="Enter version name..."
+              error={!!versionNameError}
+              helperText={versionNameError}
               sx={{
                 '& .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0, 0, 0, 0.15)',
@@ -170,7 +207,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                   },
                 }}
               >
-                {availableInputSources.map((source) => (
+                {filteredAvailableInputSources.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
                     <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} />
                     <ListItemText primary={source.sourceName} />

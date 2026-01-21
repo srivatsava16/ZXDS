@@ -19,7 +19,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
   const [selectedAppendSources, setSelectedAppendSources] = useState<string[]>([]);
   const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
 
-  const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[]) => {
+  const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[], availableAppendSources?: any[], apiSources?: any) => {
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source');
       return;
@@ -35,6 +35,51 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
     if (selectedAppendFields.length === 0) {
       alert('Please select at least one Append Field');
       return;
+    }
+
+    // Validation: Check if Fields to Append are compatible with Match Keys (Append On Fields)
+    // The append sources must have the fields that can be used as match keys
+    if (availableAppendSources && selectedAppendSources.length > 0) {
+      const appendSourcesWithoutMatchKeys: string[] = [];
+
+      selectedAppendSources.forEach(sourceId => {
+        // Find the source
+        let source = availableAppendSources.find((s: any) => s.id === sourceId);
+
+        // If not found in available sources, check if it's a preconfigured source from API
+        if (!source && apiSources?.dbSource?.preconfiguredTables?.append) {
+          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.append.find(
+            (table: any) => `append_${table?.tableId}` === sourceId
+          );
+          if (preconfiguredSource) {
+            source = {
+              id: sourceId,
+              sourceName: preconfiguredSource.tableName,
+              headers: preconfiguredSource.columns || []
+            };
+          }
+        }
+
+        if (source) {
+          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h.toLowerCase());
+          const missingFields = selectedAppendOnFields.filter(
+            field => !sourceHeaders.includes(field.toLowerCase())
+          );
+
+          if (missingFields.length > 0) {
+            appendSourcesWithoutMatchKeys.push(
+              `${source.sourceName || sourceId} (missing: ${missingFields.join(', ')})`
+            );
+          }
+        }
+      });
+
+      if (appendSourcesWithoutMatchKeys.length > 0) {
+        alert(
+          `Validation Error: The following append sources do not have all the required match key fields:\n\n${appendSourcesWithoutMatchKeys.join('\n')}\n\nThe Fields to Append must be compatible with the selected Match Keys (Append On Fields).`
+        );
+        return;
+      }
     }
 
     if (editingConfigId) {
@@ -62,6 +107,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
         appendSources: selectedAppendSources,
         appendFields: selectedAppendFields,
         fieldMappings: fieldMappings || undefined,
+        createdAt: Date.now(), // Add timestamp for creation order
       };
 
       setConfigs([...configs, newConfig]);
@@ -87,8 +133,6 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
     setSelectedAppendOnFields(config.appendOnFields);
     setSelectedAppendSources(config.appendSources);
     setSelectedAppendFields(config.appendFields);
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const handleCancelEdit = useCallback(() => {
