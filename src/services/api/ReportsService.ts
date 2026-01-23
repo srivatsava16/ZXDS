@@ -41,6 +41,17 @@ export interface DynamicStatsData {
     data: any[]; // The actual stats results from the API
 }
 
+export interface DynamicStatsInputSource {
+    id: number;
+    inputSource: string;
+    headers: string[];
+}
+
+export interface DynamicStats {
+    data: DynamicStatsInputSource[];
+    preconfiguredDynamicStats: any[];
+}
+
 export interface ReportData {
     id: number;
     requestName: string;
@@ -54,7 +65,7 @@ export interface ReportData {
     recipientEmail: string;
     scheduleDateTime: string | null;
     statsConfigurations?: StatsConfiguration[];
-    dynamicStats?: DynamicStatsData[];
+    dynamicStats?: DynamicStats; // Updated to match actual API structure
     suppressionBreakdown?: SuppressionBreakdown[];
 }
 
@@ -161,6 +172,40 @@ export async function generateDynamicStats(payload: GenerateDynamicStatsRequest)
         data: payload,
     });
     return response?.data as GenerateDynamicStatsResponse;
+}
+
+export interface ReportInsertsRequest {
+    requestId: number;
+    stats?: Array<{
+        input_sources: Array<{
+            source_name: string;
+            columns: string[];
+        }>;
+        generate_counts_config: {
+            counts: Array<{
+                field: string;
+                is_distinct: boolean;
+            }>;
+        };
+        breakdown_by: string[];
+    }>;
+    status?: string;  // For STOP action
+    [key: string]: unknown;
+}
+
+export interface ReportInsertsResponse {
+    success: boolean;
+    data: any[];
+    message?: string;
+}
+
+export async function reportInserts(payload: ReportInsertsRequest): Promise<ReportInsertsResponse> {
+    const response = await ApiService.fetchData<ReportInsertsResponse>({
+        url: '/reportInserts.php',
+        method: 'post',
+        data: payload,
+    });
+    return response?.data as ReportInsertsResponse;
 }
 
 export async function getReportById(id: string): Promise<Report | null> {

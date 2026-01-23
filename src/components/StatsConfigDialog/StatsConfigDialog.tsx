@@ -57,30 +57,10 @@ import {
   Assessment,
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { getRequestById, getRequestStats, generateDynamicStats, type ReportData, type StatsConfiguration as ApiStatsConfiguration, type RequestStatsResponse } from '../../services/api';
+import { getRequestById, getRequestStats, reportInserts, type ReportData, type StatsConfiguration as ApiStatsConfiguration, type RequestStatsResponse, type DynamicStatsInputSource } from '../../services/api';
 
-// Sample Input Sources - fallback for dynamic stats view
-const SAMPLE_INPUT_SOURCES = [
-  { id: '1', sourceName: 'File Source 1', headers: ['EMAIL', 'POSTAL_STATE', 'POSTAL_ZIP', 'CHANNEL'] },
-  { id: '2', sourceName: 'Database Source 1', headers: ['EMAIL', 'FIRST_NAME', 'LAST_NAME', 'PHONE'] },
-  { id: '3', sourceName: 'Self Source 1', headers: ['EMAIL', 'ADDRESS', 'CITY', 'STATE'] },
-];
-
-// Sample Data Flow - would come from backend
-interface DataFlowRow {
-  id: string;
-  text: string;
-  accepted: boolean;
-}
-
-const SAMPLE_DATA_FLOW: DataFlowRow[] = [
-  { id: '1', text: 'Suppression by Unsubs on EmailId', accepted: true },
-  { id: '2', text: 'Match by BestPostal on EmailId', accepted: true },
-  { id: '3', text: 'Match by BestPostal on EmailId,Zip', accepted: true },
-  { id: '4', text: 'Suppression by DNE on EmailId,State', accepted: true },
-];
-
-// Sample Suppression Breakdown - mock data
+// DEPRECATED: Mock data - kept only for Suppression Breakdown fallback
+// Dynamic Stats View now uses real data from requestData.dynamicStats.data
 const SAMPLE_SUPPRESSION_BREAKDOWN = [
   {
     inputSource: 'PERMISSIONED_DATA_1',
@@ -100,23 +80,6 @@ const SAMPLE_SUPPRESSION_BREAKDOWN = [
     ]
   }
 ];
-
-// Mock data generator for dynamic stats fallback
-const generateMockDynamicStatsData = (countsOn: string, breakdownBy: string, distinctFields: string[]) => {
-  const breakdownValues = ['CA', 'NY', 'TX', 'FL', 'IL'];
-
-  return breakdownValues.map(value => {
-    const row: Record<string, any> = {
-      [breakdownBy]: value,
-    };
-
-    // Add count column with appropriate naming based on whether it's distinct
-    const isDistinct = distinctFields.includes(countsOn);
-    row[`${isDistinct ? 'Distinct_' : ''}Count_${countsOn}`] = Math.floor(Math.random() * 10000) + 1000;
-
-    return row;
-  });
-};
 
 interface GenerateCountConfig {
   id: string;
@@ -188,18 +151,17 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
   // Dynamic Stats View state - REVAMPED
   const [selectedDynamicInputSource, setSelectedDynamicInputSource] = useState<string>('');
-  const [selectedDynamicCountsOn, setSelectedDynamicCountsOn] = useState<string>('');
-  const [selectedDynamicBreakdownBy, setSelectedDynamicBreakdownBy] = useState<string>('');
+  const [selectedDynamicCountsOn, setSelectedDynamicCountsOn] = useState<string[]>([]);
+  const [selectedDynamicBreakdownBy, setSelectedDynamicBreakdownBy] = useState<string[]>([]);
   const [selectedDynamicDistinctFields, setSelectedDynamicDistinctFields] = useState<string[]>([]);
   const [generatedDynamicStats, setGeneratedDynamicStats] = useState<Array<{
     id: string;
     inputSource: string;
-    countsOn: string;
-    breakdownBy: string;
+    countsOn: string[];
+    breakdownBy: string[];
     distinctFields: string[];
     data: any[];
     expanded: boolean;
-    isMockData?: boolean;
   }>>([]);
   const [loadingDynamicStats, setLoadingDynamicStats] = useState(false);
 
@@ -257,33 +219,29 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
     }
   }, [open]);
 
-  // Load dynamic stats from requestData when available
+  // Load dynamic stats from requestData when available - REMOVED
+  // Dynamic stats are now generated on-demand, not pre-loaded
   useEffect(() => {
-    if (requestData?.dynamicStats && requestData.dynamicStats.length > 0) {
-      const loadedStats = requestData.dynamicStats.map((stat, index) => ({
-        id: `loaded_${index}`,
-        inputSource: stat.inputSource,
-        countsOn: stat.countsOn,
-        breakdownBy: stat.breakdownBy,
-        distinctFields: stat.distinctFields || (stat.isDistinct ? [stat.countsOn] : []), // Backward compatibility
-        data: stat.data || [],
-        expanded: false,
-        isMockData: false, // Loaded from API, not mock data
-      }));
-      setGeneratedDynamicStats(loadedStats);
-    }
+    // Clear any existing dynamic stats when dialog opens with new request data
+    setGeneratedDynamicStats([]);
   }, [requestData]);
 
-  // Calculate available fields based on selected input sources
+  // Get available input sources from dynamicStats.data
+  const availableDynamicInputSources = useMemo(() => {
+    if (requestData?.dynamicStats?.data && requestData.dynamicStats.data.length > 0) {
+      return requestData.dynamicStats.data;
+    }
+    // Fallback to empty array if no data
+    return [];
+  }, [requestData]);
+
   // Get available fields for selected dynamic input source
   const availableDynamicFields = useMemo(() => {
     if (!selectedDynamicInputSource) return [];
 
-    const source = (availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES)
-      .find(s => s.sourceName === selectedDynamicInputSource);
-
-    return source?.headers || ['EMAIL', 'POSTAL_STATE', 'POSTAL_ZIP', 'CHANNEL']; // Fallback
-  }, [selectedDynamicInputSource, availableInputSources]);
+    const source = availableDynamicInputSources.find(s => s.inputSource === selectedDynamicInputSource);
+    return source?.headers || [];
+  }, [selectedDynamicInputSource, availableDynamicInputSources]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -296,29 +254,54 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
       return;
     }
 
-    if (!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy) {
-      alert('Please select Input Source, Counts On, and Breakdown By fields');
+    if (!selectedDynamicInputSource || selectedDynamicCountsOn.length === 0 || selectedDynamicBreakdownBy.length === 0) {
+      alert('Please select Input Source, at least one Counts On field, and at least one Breakdown By field');
       return;
     }
 
     try {
       setLoadingDynamicStats(true);
-      const response = await generateDynamicStats({
-        requestId,
-        inputSource: selectedDynamicInputSource,
-        countsOn: selectedDynamicCountsOn,
-        breakdownBy: selectedDynamicBreakdownBy,
-        distinctFields: selectedDynamicDistinctFields,
-      });
+      setError(null);
 
-      let statsData = response.data || [];
-      let usedMockData = false;
-
-      if (!response.success || !statsData || statsData.length === 0) {
-        console.warn('API returned no data or failed, using mock data as fallback');
-        statsData = generateMockDynamicStatsData(selectedDynamicCountsOn, selectedDynamicBreakdownBy, selectedDynamicDistinctFields);
-        usedMockData = true;
+      // Find the selected input source details
+      const selectedSource = availableDynamicInputSources.find(s => s.inputSource === selectedDynamicInputSource);
+      if (!selectedSource) {
+        alert('Selected input source not found');
+        return;
       }
+
+      // Build the payload according to the new structure
+      const payload = {
+        requestId,
+        stats: [
+          {
+            input_sources: [
+              {
+                source_name: selectedSource.inputSource,
+                columns: selectedSource.headers
+              }
+            ],
+            generate_counts_config: {
+              counts: selectedDynamicCountsOn.map(field => ({
+                field,
+                is_distinct: selectedDynamicDistinctFields.includes(field)
+              }))
+            },
+            breakdown_by: selectedDynamicBreakdownBy
+          }
+        ]
+      };
+
+      // Call reportInserts.php API
+      const response = await reportInserts(payload);
+
+      if (!response.success) {
+        setError(response.message || 'Failed to generate dynamic stats');
+        alert(response.message || 'Failed to generate dynamic stats');
+        return;
+      }
+
+      const statsData = response.data || [];
 
       // Add to configured stats list
       const newStat = {
@@ -329,47 +312,26 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         distinctFields: selectedDynamicDistinctFields,
         data: statsData,
         expanded: false,
-        isMockData: usedMockData,
       };
 
       setGeneratedDynamicStats(prev => [...prev, newStat]);
 
       // Reset form
       setSelectedDynamicInputSource('');
-      setSelectedDynamicCountsOn('');
-      setSelectedDynamicBreakdownBy('');
+      setSelectedDynamicCountsOn([]);
+      setSelectedDynamicBreakdownBy([]);
       setSelectedDynamicDistinctFields([]);
 
-      if (usedMockData) {
-        alert('API call failed or returned no data. Displaying mock data for demonstration purposes.');
+      if (statsData.length === 0) {
+        alert('Report generated successfully, but no data was returned.');
       } else {
         alert('Dynamic stats generated successfully!');
       }
     } catch (err) {
       console.error('Error generating dynamic stats:', err);
-
-      // Use mock data as fallback on error
-      const mockData = generateMockDynamicStatsData(selectedDynamicCountsOn, selectedDynamicBreakdownBy, selectedDynamicDistinctFields);
-      const newStat = {
-        id: Date.now().toString(),
-        inputSource: selectedDynamicInputSource,
-        countsOn: selectedDynamicCountsOn,
-        breakdownBy: selectedDynamicBreakdownBy,
-        distinctFields: selectedDynamicDistinctFields,
-        data: mockData,
-        expanded: false,
-        isMockData: true,
-      };
-
-      setGeneratedDynamicStats(prev => [...prev, newStat]);
-
-      // Reset form
-      setSelectedDynamicInputSource('');
-      setSelectedDynamicCountsOn('');
-      setSelectedDynamicBreakdownBy('');
-      setSelectedDynamicDistinctFields([]);
-
-      alert('Failed to generate dynamic stats from API. Displaying mock data for demonstration purposes.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to generate dynamic stats';
+      setError(errorMessage);
+      alert(`Failed to generate dynamic stats: ${errorMessage}`);
     } finally {
       setLoadingDynamicStats(false);
     }
@@ -389,24 +351,14 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
     }
   };
 
-  const handleGenerate = () => {
-    if (activeTab === 1) {
-      // Dynamic view - generate dynamic stats
-      handleGenerateDynamicStats();
-    } else {
-      // Preconfigured view
-      handleGenerateStats();
-    }
-  };
-
   const handleCancel = () => {
     // Reset all state
     setActiveTab(0);
     setSelectedSourceTable('');
     setSelectedConfigId(null);
     setSelectedDynamicInputSource('');
-    setSelectedDynamicCountsOn('');
-    setSelectedDynamicBreakdownBy('');
+    setSelectedDynamicCountsOn([]);
+    setSelectedDynamicBreakdownBy([]);
     setSelectedDynamicDistinctFields([]);
     setGeneratedDynamicStats([]);
     setStatsResults(null);
@@ -544,10 +496,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
     return sourceTableConfig?.configs || [];
   };
 
-  // Filtered lists
-  const filteredInputSources = (availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES).filter(source =>
-    source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
-  );
+  // Removed filteredInputSources - no longer needed as we use availableDynamicInputSources directly
 
   // Removed renderVisualizationContent function - using real data table instead
 
@@ -814,80 +763,131 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     onChange={(e) => {
                       setSelectedDynamicInputSource(e.target.value);
                       // Reset counts on and breakdown by when source changes
-                      setSelectedDynamicCountsOn('');
-                      setSelectedDynamicBreakdownBy('');
+                      setSelectedDynamicCountsOn([]);
+                      setSelectedDynamicBreakdownBy([]);
+                      setSelectedDynamicDistinctFields([]);
                     }}
                     label="Select Input Source"
                     sx={{ backgroundColor: 'white' }}
+                    disabled={availableDynamicInputSources.length === 0}
                   >
                     <MenuItem value="">
                       <em>Select Input Source</em>
                     </MenuItem>
-                    {(availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES).map((source) => (
-                      <MenuItem key={source.id} value={source.sourceName}>
-                        {source.sourceName}
+                    {availableDynamicInputSources.map((source) => (
+                      <MenuItem key={source.id} value={source.inputSource}>
+                        {source.inputSource}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
+                {availableDynamicInputSources.length === 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    No input sources available for dynamic stats. Please ensure the request has dynamicStats data.
+                  </Typography>
+                )}
               </Box>
 
               {/* Counts On and Breakdown By in horizontal layout */}
               <Box sx={{ display: 'flex', gap: 2, mb: 2.5 }}>
-                {/* Generate Counts On */}
+                {/* Generate Counts On - Multi-select */}
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
                     Generate Counts On
                     <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                   </Typography>
                   <FormControl fullWidth size="small">
-                    <InputLabel id="dynamic-counts-on-label">Select Field</InputLabel>
+                    <InputLabel id="dynamic-counts-on-label">Select Fields</InputLabel>
                     <Select
                       labelId="dynamic-counts-on-label"
+                      multiple
                       value={selectedDynamicCountsOn}
                       onChange={(e) => {
-                        setSelectedDynamicCountsOn(e.target.value);
-                        // Clear distinct fields when counts on changes
-                        setSelectedDynamicDistinctFields([]);
+                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                        setSelectedDynamicCountsOn(value);
+                        // Remove distinct fields that are no longer in counts on
+                        setSelectedDynamicDistinctFields(prev => prev.filter(f => value.includes(f)));
                       }}
-                      label="Select Field"
+                      label="Select Fields"
                       sx={{ backgroundColor: 'white' }}
                       disabled={!selectedDynamicInputSource}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map((value) => (
+                            <Chip
+                              key={value}
+                              label={value}
+                              size="small"
+                              sx={{
+                                height: '24px',
+                                fontSize: '0.75rem',
+                                backgroundColor: '#296695',
+                                color: '#FFFFFF',
+                                fontWeight: 600,
+                              }}
+                            />
+                          ))}
+                        </Box>
+                      )}
                     >
-                      <MenuItem value="">
-                        <em>Select Field</em>
+                      <MenuItem value="" disabled>
+                        <em>Select Fields</em>
                       </MenuItem>
                       {availableDynamicFields.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          {field}
+                          <Checkbox checked={selectedDynamicCountsOn.indexOf(field) > -1} size="small" />
+                          <ListItemText primary={field} />
                         </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
                 </Box>
 
-                {/* Breakdown By */}
+                {/* Breakdown By - Multi-select */}
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
                     Breakdown By
                     <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                   </Typography>
                   <FormControl fullWidth size="small">
-                    <InputLabel id="dynamic-breakdown-label">Select Field</InputLabel>
+                    <InputLabel id="dynamic-breakdown-label">Select Fields</InputLabel>
                     <Select
                       labelId="dynamic-breakdown-label"
+                      multiple
                       value={selectedDynamicBreakdownBy}
-                      onChange={(e) => setSelectedDynamicBreakdownBy(e.target.value)}
-                      label="Select Field"
+                      onChange={(e) => {
+                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                        setSelectedDynamicBreakdownBy(value);
+                      }}
+                      label="Select Fields"
                       sx={{ backgroundColor: 'white' }}
                       disabled={!selectedDynamicInputSource}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map((value) => (
+                            <Chip
+                              key={value}
+                              label={value}
+                              size="small"
+                              sx={{
+                                height: '24px',
+                                fontSize: '0.75rem',
+                                backgroundColor: '#296695',
+                                color: '#FFFFFF',
+                                fontWeight: 600,
+                              }}
+                            />
+                          ))}
+                        </Box>
+                      )}
                     >
-                      <MenuItem value="">
-                        <em>Select Field</em>
+                      <MenuItem value="" disabled>
+                        <em>Select Fields</em>
                       </MenuItem>
                       {availableDynamicFields.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          {field}
+                          <Checkbox checked={selectedDynamicBreakdownBy.indexOf(field) > -1} size="small" />
+                          <ListItemText primary={field} />
                         </MenuItem>
                       ))}
                     </Select>
@@ -895,7 +895,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 </Box>
               </Box>
 
-              {/* Distinct Fields - Multi-select showing Generate Counts On field */}
+              {/* Distinct Fields - Multi-select showing Generate Counts On fields */}
               <Box sx={{ mb: 2.5 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
                   Distinct Fields
@@ -915,7 +915,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     }}
                     label="Select Distinct Fields"
                     sx={{ backgroundColor: 'white' }}
-                    disabled={!selectedDynamicCountsOn}
+                    disabled={selectedDynamicCountsOn.length === 0}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => (
@@ -936,14 +936,14 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     )}
                   >
                     <MenuItem value="" disabled>
-                      <em>{!selectedDynamicCountsOn ? 'Please select Generate Counts On first' : 'Select fields'}</em>
+                      <em>{selectedDynamicCountsOn.length === 0 ? 'Please select Generate Counts On fields first' : 'Select fields'}</em>
                     </MenuItem>
-                    {selectedDynamicCountsOn && (
-                      <MenuItem value={selectedDynamicCountsOn}>
-                        <Checkbox checked={selectedDynamicDistinctFields.indexOf(selectedDynamicCountsOn) > -1} size="small" />
-                        <ListItemText primary={selectedDynamicCountsOn} />
+                    {selectedDynamicCountsOn.map((field) => (
+                      <MenuItem key={field} value={field}>
+                        <Checkbox checked={selectedDynamicDistinctFields.indexOf(field) > -1} size="small" />
+                        <ListItemText primary={field} />
                       </MenuItem>
-                    )}
+                    ))}
                   </Select>
                 </FormControl>
               </Box>
@@ -953,33 +953,35 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 <Button
                   variant="contained"
                   onClick={handleGenerateDynamicStats}
-                  disabled={!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy || loadingDynamicStats}
-                  startIcon={loadingDynamicStats ? <CircularProgress size={16} /> : <BarChartIcon />}
+                  disabled={!selectedDynamicInputSource || selectedDynamicCountsOn.length === 0 || selectedDynamicBreakdownBy.length === 0 || loadingDynamicStats}
+                  startIcon={loadingDynamicStats ? <CircularProgress size={16} /> : <Assessment />}
                   sx={{
                     px: 4,
                     py: 1,
                     textTransform: 'none',
                     fontSize: '0.875rem',
-                    backgroundColor: '#8B5CF6',
-                    '&:hover': { backgroundColor: '#7C3AED' },
+                    fontWeight: 600,
+                    backgroundColor: '#296695',
+                    '&:hover': { backgroundColor: '#1e4d6f' },
+                    boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
                   }}
                 >
-                  {loadingDynamicStats ? 'Generating...' : 'Generate'}
+                  {loadingDynamicStats ? 'Generating Report...' : 'Generate Report'}
                 </Button>
               </Box>
             </Paper>
 
-            {/* Configured Stats List */}
+            {/* Generated Dynamic Stats List */}
             {generatedDynamicStats.length > 0 && (
               <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem', color: '#2D3748' }}>
-                    Configured Dynamic Stats
+                    Dynamic Stats
                   </Typography>
                   <Chip
-                    label={`${generatedDynamicStats.length} configuration${generatedDynamicStats.length !== 1 ? 's' : ''}`}
+                    label={`${generatedDynamicStats.length} report${generatedDynamicStats.length !== 1 ? 's' : ''}`}
                     size="small"
-                    sx={{ fontWeight: 600, backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                    sx={{ fontWeight: 600, backgroundColor: '#296695', color: '#FFFFFF' }}
                   />
                 </Box>
 
@@ -1009,29 +1011,31 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, pr: 2 }}>
-                        <Visibility sx={{ color: '#8B5CF6' }} />
+                        <TableChart sx={{ color: '#296695', fontSize: 28 }} />
                         <Box sx={{ flex: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                             <Typography variant="body2" sx={{ fontWeight: 600, color: '#2D3748' }}>
                               {stat.inputSource}
                             </Typography>
-                            {stat.isMockData && (
+                            {stat.data && stat.data.length > 0 && (
                               <Chip
-                                label="Mock Data"
+                                label={`${stat.data.length} row${stat.data.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   height: '18px',
                                   fontSize: '0.65rem',
-                                  backgroundColor: '#FFF3CD',
-                                  color: '#856404',
-                                  border: '1px solid #FFE69C',
+                                  backgroundColor: '#E8F5E9',
+                                  color: '#2E7D32',
                                   fontWeight: 600,
                                 }}
                               />
                             )}
                           </Box>
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            Counts: {stat.countsOn} | Breakdown: {stat.breakdownBy}
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                            <strong>Counts On:</strong> {stat.countsOn.join(', ')}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                            <strong>Breakdown By:</strong> {stat.breakdownBy.join(', ')}
                             {stat.distinctFields.length > 0 && ` | Distinct: ${stat.distinctFields.join(', ')}`}
                           </Typography>
                         </Box>
@@ -1048,43 +1052,32 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails sx={{ p: 3 }}>
-                      {stat.data.length === 0 ? (
-                        <Alert severity="info">
-                          No data available for this configuration
-                        </Alert>
-                      ) : (
-                        <Box>
-                          {stat.isMockData && (
-                            <Alert severity="warning" sx={{ mb: 2, backgroundColor: '#FFF3CD', color: '#856404', border: '1px solid #FFE69C' }}>
-                              This is mock data displayed for demonstration purposes. The API call failed or returned no data.
-                            </Alert>
-                          )}
-                          <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider' }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                                  {Object.keys(stat.data[0]).map((key) => (
-                                    <TableCell key={key} sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                                      {key}
+                      {stat.data && stat.data.length > 0 ? (
+                        <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                                {Object.keys(stat.data[0]).map((key) => (
+                                  <TableCell key={key} sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                                    {key}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {stat.data.map((row, index) => (
+                                <TableRow key={index} hover>
+                                  {Object.values(row).map((value, colIndex) => (
+                                    <TableCell key={colIndex}>
+                                      {value !== null && value !== undefined ? String(value) : '-'}
                                     </TableCell>
                                   ))}
                                 </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {stat.data.map((row, index) => (
-                                  <TableRow key={index} hover>
-                                    {Object.values(row).map((value, colIndex) => (
-                                      <TableCell key={colIndex}>
-                                        {value !== null && value !== undefined ? String(value) : '-'}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        </Box>
-                      )}
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      ) : null}
                     </AccordionDetails>
                   </Accordion>
                 ))}
@@ -1093,7 +1086,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
             {generatedDynamicStats.length === 0 && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                No dynamic stats configured yet. Use the form above to generate your first dynamic stat.
+                No dynamic stats reports generated yet. Use the form above to generate your first report.
               </Alert>
             )}
           </Box>
@@ -1222,21 +1215,13 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         >
           Close
         </Button>
-        {/* Only show Generate button for Preconfigured and Dynamic Stats tabs, not for Suppression Breakdown */}
-        {activeTab !== 2 && (
+        {/* Only show Generate button for Preconfigured Stats View (tab 0) */}
+        {activeTab === 0 && (
           <Button
             variant="contained"
-            onClick={handleGenerate}
-            disabled={
-              activeTab === 0
-                ? (!selectedConfigId || loadingStats)
-                : (!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy || loadingDynamicStats)
-            }
-            startIcon={
-              activeTab === 0 && loadingStats
-                ? <CircularProgress size={16} />
-                : <BarChartIcon />
-            }
+            onClick={handleGenerateStats}
+            disabled={!selectedConfigId || loadingStats}
+            startIcon={loadingStats ? <CircularProgress size={16} /> : <BarChartIcon />}
             sx={{
               px: 3,
               py: 0.75,
@@ -1249,7 +1234,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
               },
             }}
           >
-            {activeTab === 0 && loadingStats ? 'Generating...' : 'Generate'}
+            {loadingStats ? 'Generating...' : 'Generate'}
           </Button>
         )}
       </DialogActions>

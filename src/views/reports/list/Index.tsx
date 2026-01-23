@@ -42,7 +42,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import OutputModule from '../../../components/OutputModule/OutputModule';
 import StatsConfigDialog from '../../../components/StatsConfigDialog/StatsConfigDialog';
-import { getAllReports, type Report as ApiReport } from '../../../services/api';
+import { getAllReports, reportInserts, type Report as ApiReport } from '../../../services/api';
 import ContentLoader from '../../../components/ContentLoader/ContentLoader';
 
 interface ReportData {
@@ -188,6 +188,39 @@ const ReportPage: React.FC = () => {
     setStatsDialogOpen(false);
     setStatsRequestId(null);
     setSelectedReportData(null);
+  };
+
+  const handleStopRequest = async (requestId: number) => {
+    // Confirm before stopping
+    const confirmed = window.confirm('Are you sure you want to stop this request?');
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Call reportInserts.php with STOP status
+      const response = await reportInserts({
+        requestId,
+        status: 'STOP',
+      });
+
+      if (response.success) {
+        // Refresh the data with current pagination settings
+        await loadReports(page * rowsPerPage, rowsPerPage);
+        alert('Request stopped successfully');
+      } else {
+        setError(response.message || 'Failed to stop request');
+        alert(response.message || 'Failed to stop request');
+      }
+    } catch (err: any) {
+      console.error('Error stopping request:', err);
+      const errorMessage = err?.message || 'Failed to stop request. Please try again.';
+      setError(errorMessage);
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusChipStyle = (status: string) => {
@@ -554,9 +587,9 @@ const ReportPage: React.FC = () => {
                       </Tooltip>
                       
                       {/* Stop Icon - Enabled for Waiting and Pending */}
-                      <Tooltip 
-                        title={['Waiting', 'Pending'].includes(row.status) 
-                          ? "Stop request" 
+                      <Tooltip
+                        title={['Waiting', 'Pending'].includes(row.status)
+                          ? "Stop request"
                           : "Stop not available for this status"
                         }
                         arrow
@@ -565,7 +598,7 @@ const ReportPage: React.FC = () => {
                           <IconButton
                             size="small"
                             disabled={!['Waiting', 'Pending'].includes(row.status)}
-                            onClick={() => console.log('Stop request:', row.id)}
+                            onClick={() => handleStopRequest(row.id)}
                             sx={{
                               color: ['Waiting', 'Pending'].includes(row.status) ? 'error.main' : 'text.disabled',
                               '&:hover': {
