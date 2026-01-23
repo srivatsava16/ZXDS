@@ -24,8 +24,10 @@ import {
   Chip,
   Autocomplete,
   Checkbox,
+  Popover,
+  Tooltip,
 } from '@mui/material';
-import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank } from '@mui/icons-material';
+import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, Visibility } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
 import {  type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
@@ -85,6 +87,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [selectedColumn, setSelectedColumn] = useState<string>('all');
   const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState<boolean>(true);
+  const [contentPreview, setContentPreview] = useState<string>(data.contentPreview || '');
+  const [previewAnchorEl, setPreviewAnchorEl] = useState<HTMLElement | null>(null);
 
   // Custom Headers State (always visible, no modal)
   const [customHeadersInput, setCustomHeadersInput] = useState<string>(data.customHeaders || '');
@@ -318,15 +322,16 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
 
       // Handle multiple response formats:
-      // 1. New format: { separator: string, data: object[] }
+      // 1. New format: { separator: string, data: object[], content: string }
       // 2. Legacy format: { columns: string[], data: object[] }
       // 3. Plain array: object[] (fallback)
       let columns: string[];
       let responseData: Record<string, any>[];
       let responseSeparator: string | undefined;
+      let responseContent: string | undefined;
 
       if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
-        // New format: { separator: string, data: object[] }
+        // New format: { separator: string, data: object[], content: string }
         responseData = response.data;
 
         if (responseData.length === 0) {
@@ -343,6 +348,11 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           responseSeparator = response.separator;
           // Update delimiter state with the separator from response
           setDelimiter(responseSeparator);
+        }
+
+        // Extract content if provided (raw delimited text for preview)
+        if ('content' in response && typeof response.content === 'string') {
+          responseContent = response.content;
         }
       } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
         // Legacy format: { columns: string[], data: object[] }
@@ -438,6 +448,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Include delimiter if it was provided in the response
       if (responseSeparator !== undefined) {
         updateObj.delimiter = responseSeparator;
+      }
+
+      // Include content preview if it was provided in the response
+      if (responseContent !== undefined) {
+        updateObj.contentPreview = responseContent;
+        setContentPreview(responseContent); // Set in local state for immediate access
       }
 
       updateParentData(updateObj);
@@ -1009,6 +1025,24 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               >
                 {isPreviewExpanded ? <ExpandLess /> : <ExpandMore />}
               </IconButton>
+              {contentPreview && (
+                <Tooltip title="Preview raw content" arrow>
+                  <IconButton
+                    size="small"
+                    onMouseEnter={(e) => setPreviewAnchorEl(e.currentTarget)}
+                    onMouseLeave={() => setPreviewAnchorEl(null)}
+                    sx={{
+                      p: 0.5,
+                      color: '#8B5CF6',
+                      '&:hover': {
+                        backgroundColor: 'rgba(139, 92, 246, 0.12)',
+                      },
+                    }}
+                  >
+                    <Visibility sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {/* Column Selection Dropdown */}
@@ -1201,6 +1235,68 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           />
         </Box>
       )}
+
+      {/* Content Preview Popover */}
+      <Popover
+        open={Boolean(previewAnchorEl)}
+        anchorEl={previewAnchorEl}
+        onClose={() => setPreviewAnchorEl(null)}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'center',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'center',
+        }}
+        disableRestoreFocus
+        sx={{
+          pointerEvents: 'none',
+        }}
+        PaperProps={{
+          sx: {
+            p: 2,
+            maxWidth: 800,
+            maxHeight: 400,
+            overflow: 'auto',
+            pointerEvents: 'auto',
+            backgroundColor: '#F8FAFB',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+          },
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748' }}>
+            Raw Content Preview
+          </Typography>
+          <Paper
+            sx={{
+              p: 1.5,
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #E2E8F0',
+              borderRadius: 1,
+              maxHeight: 300,
+              overflow: 'auto',
+            }}
+          >
+            <Typography
+              component="pre"
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: '0.75rem',
+                color: '#2D3748',
+                margin: 0,
+                whiteSpace: 'pre',
+                lineHeight: 1.5,
+              }}
+            >
+              {contentPreview}
+            </Typography>
+          </Paper>
+        </Box>
+      </Popover>
 
     </Box>
   );

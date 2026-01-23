@@ -412,10 +412,12 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           .forEach(nf => headersSet.add(nf.fieldName));
       } else if (sources.length > 1) {
         // If multiple sources are selected, show only common headers (intersection)
-        // Create case-insensitive maps for each source (lowercase -> original casing)
+        // IMPORTANT: Apply field mappings FIRST, then check for common headers
+
+        // Step 1: Build effective header maps for each source (after applying field mappings)
         const allSourceHeaderMaps = sources.map(source => {
           const sourceHeaders = getSourceHeaders(source);
-          const headerMap = new Map<string, string>();
+          const headerMap = new Map<string, string>(); // lowercase -> effective name
 
           // Add actual headers to the map
           sourceHeaders.forEach(header => {
@@ -429,10 +431,31 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
               headerMap.set(nf.fieldName.toLowerCase(), nf.fieldName);
             });
 
+          // Step 2: Apply field mappings to transform header names for this source
+          // For each mapping, check if this source has the mapped column
+          fieldMappings.forEach(mapping => {
+            mapping.selectedColumns.forEach(col => {
+              const [sourceId, columnName] = col.split('::');
+              // If this mapping targets this source
+              if (sourceId === source.id && columnName) {
+                // Replace the original column name with the mapped field name
+                const columnLower = columnName.toLowerCase();
+                if (headerMap.has(columnLower)) {
+                  // Remove the original column name
+                  headerMap.delete(columnLower);
+                  // Add the mapped field name instead
+                  headerMap.set(mapping.fieldName.toLowerCase(), mapping.fieldName);
+                  console.log(`[InputVersionModal] Applied mapping for source "${source.sourceName}": "${columnName}" → "${mapping.fieldName}"`);
+                }
+              }
+            });
+          });
+
           return headerMap;
         });
 
-        // Start with headers from the first source (including its nested fields)
+        // Step 3: Find headers that exist in ALL sources (after field mappings applied)
+        // Start with headers from the first source
         const firstSourceHeaders: string[] = Array.from(allSourceHeaderMaps[0].values());
 
         // Only include headers that exist in ALL sources (case-insensitive comparison)
@@ -441,45 +464,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           const existsInAllSources = allSourceHeaderMaps.every(headerMap =>
             headerMap.has(headerLower)
           );
+
           if (existsInAllSources) {
-            // Check if this header is part of a field mapping
-            const mapping = fieldMappings.find(m =>
-              m.selectedColumns.some(col => {
-                const [, mappedColumn] = col.split('::');
-                return mappedColumn === header;
-              })
-            );
-
-            // If mapped, add the mapped field name; otherwise add the original header
-            if (mapping) {
-              headersSet.add(mapping.fieldName);
-            } else {
-              headersSet.add(header);
-            }
-          }
-        });
-
-        // Only add mapped field names if ALL selected sources have ALL the columns used in the mapping (case-insensitive)
-        fieldMappings.forEach(mapping => {
-          // Extract unique column names from the mapping (without source IDs)
-          const requiredColumns = new Set(
-            mapping.selectedColumns.map(col => {
-              const parts = col.split('::');
-              return parts.length > 1 ? parts[1] : col;
-            })
-          );
-
-          // Check if ALL selected sources have ALL required columns (case-insensitive)
-          const allSourcesHaveColumns = sources.every((source, idx) => {
-            const headerMap = allSourceHeaderMaps[idx];
-            return Array.from(requiredColumns).every(col =>
-              headerMap.has(col.toLowerCase())
-            );
-          });
-
-          // Only add the mapping if all selected sources have all required columns
-          if (allSourcesHaveColumns) {
-            headersSet.add(mapping.fieldName);
+            headersSet.add(header);
+            console.log(`[InputVersionModal] Common header found: "${header}"`);
           }
         });
       }

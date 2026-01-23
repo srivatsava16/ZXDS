@@ -84,6 +84,9 @@ import SortableStep from './components/SortableStep';
 // Custom hooks
 import { useDataLoading } from './hooks/useDataLoading';
 
+// Content Loader Component
+import ContentLoader from '../../../components/ContentLoader/ContentLoader';
+
 const RequestCreationPage: React.FC = () => {
   const navigate = useNavigate();
   const { requestId } = useParams<{ requestId?: string }>();
@@ -171,6 +174,11 @@ const RequestCreationPage: React.FC = () => {
   const [suppressConfigurations, setSuppressConfigurations] = useState<SuppressConfig[]>([]);
   const [matchConfigurations, setMatchConfigurations] = useState<MatchConfig[]>([]);
 
+  // Module-level field mappings for Append, Match and Suppress (shared across all configs/versions in that module)
+  const [appendModuleFieldMappings, setAppendModuleFieldMappings] = useState<any[]>([]);
+  const [matchModuleFieldMappings, setMatchModuleFieldMappings] = useState<any[]>([]);
+  const [suppressModuleFieldMappings, setSuppressModuleFieldMappings] = useState<any[]>([]);
+
   // Shared custom sources across all modules (Append, Match, Suppress)
   const [sharedCustomSources, setSharedCustomSources] = useState<InputSource[]>([]);
 
@@ -190,9 +198,12 @@ const RequestCreationPage: React.FC = () => {
       return `src_${sourceName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
     };
 
-    // Transform input sources
+    // Transform input sources - separate by inputType
     if (apiData?.inputSources && Array.isArray(apiData.inputSources)) {
-      transformedData.inputSources = apiData.inputSources.map((source: any, index: number) => {
+      const inputModuleSources: any[] = [];
+      const customSources: any[] = [];
+
+      apiData.inputSources.forEach((source: any, index: number) => {
         const selectedColumnsArray = source?.selectedColumns
           ? source.selectedColumns.split(',').map((col: string) => col.trim())
           : source?.columns || [];
@@ -203,7 +214,8 @@ const RequestCreationPage: React.FC = () => {
         console.log('[Transform] Input Source:', {
           sourceName: source?.sourceName,
           generatedId: sourceId,
-          originalId: source?.id
+          originalId: source?.id,
+          inputType: source?.inputType
         });
 
         // For database sources, differentiate between:
@@ -221,7 +233,7 @@ const RequestCreationPage: React.FC = () => {
           actualTableName
         });
 
-        return {
+        const transformedSource = {
           id: sourceId,
           sourceName: source?.sourceName || '',  // User's custom Table Source Name
           sourceType: source?.sourceType === 'T' ? 'Database' : source?.sourceType === 'F' ? 'File' : 'Self',
@@ -255,7 +267,36 @@ const RequestCreationPage: React.FC = () => {
           originalTableName: actualTableName,
           tableSourceId: source?.tableSourceId || source?.sourceOption
         };
+
+        // Separate sources based on inputType
+        const inputType = source?.inputType || 'I';
+
+        if (inputType === 'I') {
+          // Input module sources
+          inputModuleSources.push(transformedSource);
+        } else {
+          // Custom sources for Append (A), Match (M), or Suppress (S) modules
+          // Add createdByModuleId to identify which module this source belongs to
+          let createdByModuleId = '';
+
+          if (inputType === 'A') {
+            createdByModuleId = 'module_append'; // Append module
+          } else if (inputType === 'M') {
+            createdByModuleId = 'module_match'; // Match module
+          } else if (inputType === 'S') {
+            createdByModuleId = 'module_suppress'; // Suppress module
+          }
+
+          customSources.push({
+            ...transformedSource,
+            createdByModuleId: createdByModuleId,
+            isCustomSource: true
+          });
+        }
       });
+
+      transformedData.inputSources = inputModuleSources;
+      transformedData.customSources = customSources;
     }
 
     // Helper function to map source name to source ID
@@ -271,6 +312,19 @@ const RequestCreationPage: React.FC = () => {
         );
         if (source?.id) {
           console.log('[MapSourceId] Found in transformed sources:', { sourceName, mappedId: source.id });
+          return source.id;
+        }
+      }
+
+      // Check in transformed custom sources
+      if (transformedData?.customSources && Array.isArray(transformedData.customSources)) {
+        const source = transformedData.customSources.find((src: any) =>
+          src?.sourceName === sourceName ||
+          src?.table === sourceName ||
+          src?.id === sourceName
+        );
+        if (source?.id) {
+          console.log('[MapSourceId] Found in custom sources:', { sourceName, mappedId: source.id });
           return source.id;
         }
       }
@@ -600,69 +654,28 @@ const RequestCreationPage: React.FC = () => {
 
       const isDuplicateMode = !!duplicateId && !requestId;
 
-      // // Demo mode: Load sample data for requestId === '999'
-      // if (requestId === '999') {
-      //   // Load comprehensive sample data
-      //   setRequestName(comprehensiveSampleData?.requestName || '');
-      //   setInputSources(comprehensiveSampleData?.inputSources || []);
-
-      //   // Clear validation errors when loading sample data
-      //   setRequestNameError('');
-
-      //   // Load append configurations
-      //   if (comprehensiveSampleData.appendConfigs?.length > 0) {
-      //     setInitialAppendConfigs(comprehensiveSampleData.appendConfigs);
-      //   }
-
-      //   // Load suppress configurations
-      //   if (comprehensiveSampleData.suppressConfigs?.length > 0) {
-      //     setInitialSuppressConfigs(comprehensiveSampleData.suppressConfigs);
-      //   }
-
-      //   // Load match configurations
-      //   if (comprehensiveSampleData.matchConfigs?.length > 0) {
-      //     setInitialMatchConfigs(comprehensiveSampleData.matchConfigs);
-      //   }
-
-      //   // Load output configurations
-      //   if (comprehensiveSampleData.outputConfigs?.length > 0) {
-      //     setInitialOutputConfigs(comprehensiveSampleData.outputConfigs);
-      //   }
-
-      //   // Load stats configurations
-      //   if (comprehensiveSampleData.statsConfigs?.length > 0) {
-      //     setStatsConfigurations(comprehensiveSampleData.statsConfigs as StatsConfiguration[]);
-      //   }
-
-      //   // Load schedule configuration
-      //   if (comprehensiveSampleData.scheduleConfig) {
-      //     const schedConfig = comprehensiveSampleData.scheduleConfig;
-      //     setScheduleType(schedConfig.scheduleType || 'adhoc');
-      //     setScheduledDateTime(schedConfig.scheduledDateTime || '');
-      //     setNotificationWhen(schedConfig.emailNotification || 'standard');
-      //     if (schedConfig.notificationEmails?.length > 0) {
-      //       setRecipientEmail(schedConfig.notificationEmails?.join(', ') || '');
-      //     }
-      //   }
-      //   return;
-      // }
-
-      // Edit/Duplicate mode: Make API call to fetch request data
+      // Edit/Duplicate mode: Fetch request data from API
       try {
         setEditRequestLoading(true);
         setEditRequestError('');
 
+        console.log(`[Edit/Duplicate Mode] Fetching request data from API for ID: ${idToLoad}`);
         const response = await getEditRequest(parseInt(idToLoad, 10));
+        console.log('[Edit/Duplicate Mode] API Response received:', response);
 
         let dataToLoad: any = null;
 
         // Check if response has the expected structure (direct data format)
         if (response && (response as any).requestDetails && (response as any).inputSources) {
           // Response is in direct format - transform it
+          console.log('[Edit/Duplicate Mode] Transforming API response (direct format)');
           dataToLoad = transformApiDataToInternalFormat(response, apiSources);
+          console.log('[Edit/Duplicate Mode] Transformed data:', dataToLoad);
         } else if (response && (response as any).success && (response as any).data) {
           // Handle wrapped format if API sometimes returns it
+          console.log('[Edit/Duplicate Mode] Transforming API response (wrapped format)');
           dataToLoad = transformApiDataToInternalFormat((response as any).data, apiSources);
+          console.log('[Edit/Duplicate Mode] Transformed data:', dataToLoad);
         } else {
           // API failed or returned no data - show error
           console.error('API failed to load request data:', (response as any)?.message || response);
@@ -688,6 +701,11 @@ const RequestCreationPage: React.FC = () => {
           // Load input sources
           if (dataToLoad?.inputSources && Array.isArray(dataToLoad.inputSources)) {
             setInputSources(dataToLoad.inputSources);
+          }
+
+          // Load custom sources (from Append, Match, Suppress modules)
+          if (dataToLoad?.customSources && Array.isArray(dataToLoad.customSources)) {
+            setSharedCustomSources(dataToLoad.customSources);
           }
 
           // Load input versions
@@ -849,18 +867,194 @@ const RequestCreationPage: React.FC = () => {
       createdByModuleId // Track which module created this source
     };
     setSharedCustomSources(prev => [...prev, newSource]);
+
+    // If this is a Self source with a generated column, add the generated column to the input sources
+    if (source.sourceType === 'Self' && source.selfConfig) {
+      const { input_source_names, generated_column } = source.selfConfig;
+
+      if (generated_column && input_source_names && input_source_names.length > 0) {
+        // Update input sources to add the generated column to their headers
+        setInputSources(prev => prev.map(inputSource => {
+          // Check if this input source is one of the sources used in the Self source
+          if (input_source_names.includes(inputSource.sourceName)) {
+            // Add the generated column to headers if not already present
+            const currentHeaders = inputSource.headers || [];
+            if (!currentHeaders.includes(generated_column)) {
+              const updatedHeaders = [...currentHeaders, generated_column];
+
+              // Also update selectedHeaders if it exists
+              const currentSelectedHeaders = inputSource.selectedHeaders || currentHeaders;
+              const updatedSelectedHeaders = currentSelectedHeaders.includes(generated_column)
+                ? currentSelectedHeaders
+                : [...currentSelectedHeaders, generated_column];
+
+              return {
+                ...inputSource,
+                headers: updatedHeaders,
+                selectedHeaders: updatedSelectedHeaders,
+              };
+            }
+          }
+          return inputSource;
+        }));
+
+        // Also update versioned sources if any of them match the input source names
+        setVersionedSources(prev => prev.map(versionedSource => {
+          if (input_source_names.includes(versionedSource.sourceName)) {
+            const currentHeaders = versionedSource.headers || [];
+            if (!currentHeaders.includes(generated_column)) {
+              const updatedHeaders = [...currentHeaders, generated_column];
+
+              return {
+                ...versionedSource,
+                headers: updatedHeaders,
+                combinedHeaders: updatedHeaders, // Also update combinedHeaders if present
+              };
+            }
+          }
+          return versionedSource;
+        }));
+      }
+    }
   };
 
   const handleEditSharedCustomSource = (source: InputSource) => {
+    // Find the original source to compare
+    const originalSource = sharedCustomSources.find(s => s.id === source.id);
+
     setSharedCustomSources(prev =>
       prev.map(s => s.id === source.id ? { ...source, createdByModuleId: s.createdByModuleId } : s)
     );
+
+    // If this is a Self source with a generated column, handle the update
+    if (source.sourceType === 'Self' && source.selfConfig) {
+      const newGeneratedColumn = source.selfConfig.generated_column;
+      const newInputSourceNames = source.selfConfig.input_source_names || [];
+
+      // Get the old configuration
+      const oldGeneratedColumn = originalSource?.selfConfig?.generated_column;
+      const oldInputSourceNames = originalSource?.selfConfig?.input_source_names || [];
+
+      // Remove old generated column from old input sources (if changed)
+      if (oldGeneratedColumn && oldGeneratedColumn !== newGeneratedColumn) {
+        setInputSources(prev => prev.map(inputSource => {
+          if (oldInputSourceNames.includes(inputSource.sourceName)) {
+            const updatedHeaders = (inputSource.headers || []).filter(h => h !== oldGeneratedColumn);
+            const updatedSelectedHeaders = (inputSource.selectedHeaders || inputSource.headers || []).filter(h => h !== oldGeneratedColumn);
+
+            return {
+              ...inputSource,
+              headers: updatedHeaders,
+              selectedHeaders: updatedSelectedHeaders,
+            };
+          }
+          return inputSource;
+        }));
+
+        setVersionedSources(prev => prev.map(versionedSource => {
+          if (oldInputSourceNames.includes(versionedSource.sourceName)) {
+            const updatedHeaders = (versionedSource.headers || []).filter(h => h !== oldGeneratedColumn);
+
+            return {
+              ...versionedSource,
+              headers: updatedHeaders,
+              combinedHeaders: updatedHeaders,
+            };
+          }
+          return versionedSource;
+        }));
+      }
+
+      // Add new generated column to new input sources
+      if (newGeneratedColumn && newInputSourceNames.length > 0) {
+        setInputSources(prev => prev.map(inputSource => {
+          if (newInputSourceNames.includes(inputSource.sourceName)) {
+            const currentHeaders = inputSource.headers || [];
+            if (!currentHeaders.includes(newGeneratedColumn)) {
+              const updatedHeaders = [...currentHeaders, newGeneratedColumn];
+              const currentSelectedHeaders = inputSource.selectedHeaders || currentHeaders;
+              const updatedSelectedHeaders = currentSelectedHeaders.includes(newGeneratedColumn)
+                ? currentSelectedHeaders
+                : [...currentSelectedHeaders, newGeneratedColumn];
+
+              return {
+                ...inputSource,
+                headers: updatedHeaders,
+                selectedHeaders: updatedSelectedHeaders,
+              };
+            }
+          }
+          return inputSource;
+        }));
+
+        setVersionedSources(prev => prev.map(versionedSource => {
+          if (newInputSourceNames.includes(versionedSource.sourceName)) {
+            const currentHeaders = versionedSource.headers || [];
+            if (!currentHeaders.includes(newGeneratedColumn)) {
+              const updatedHeaders = [...currentHeaders, newGeneratedColumn];
+
+              return {
+                ...versionedSource,
+                headers: updatedHeaders,
+                combinedHeaders: updatedHeaders,
+              };
+            }
+          }
+          return versionedSource;
+        }));
+      }
+    }
   };
 
   const handleDeleteSharedCustomSource = (id: string) => {
     if (window.confirm('Are you sure you want to delete this custom source?')) {
+      // Find the source to be deleted
+      const sourceToDelete = sharedCustomSources.find(s => s.id === id);
+
+      // Remove from shared custom sources
       setSharedCustomSources(prev => prev.filter(s => s.id !== id));
+
+      // If it's a Self source with a generated column, remove the generated column from input sources
+      if (sourceToDelete?.sourceType === 'Self' && sourceToDelete.selfConfig) {
+        const { generated_column, input_source_names } = sourceToDelete.selfConfig;
+
+        if (generated_column && input_source_names && input_source_names.length > 0) {
+          // Remove the generated column from input sources
+          setInputSources(prev => prev.map(inputSource => {
+            if (input_source_names.includes(inputSource.sourceName)) {
+              const updatedHeaders = (inputSource.headers || []).filter(h => h !== generated_column);
+              const updatedSelectedHeaders = (inputSource.selectedHeaders || inputSource.headers || []).filter(h => h !== generated_column);
+
+              return {
+                ...inputSource,
+                headers: updatedHeaders,
+                selectedHeaders: updatedSelectedHeaders,
+              };
+            }
+            return inputSource;
+          }));
+
+          // Also remove from versioned sources
+          setVersionedSources(prev => prev.map(versionedSource => {
+            if (input_source_names.includes(versionedSource.sourceName)) {
+              const updatedHeaders = (versionedSource.headers || []).filter(h => h !== generated_column);
+
+              return {
+                ...versionedSource,
+                headers: updatedHeaders,
+                combinedHeaders: updatedHeaders,
+              };
+            }
+            return versionedSource;
+          }));
+        }
+      }
     }
+  };
+
+  // Wrapper for setSuppressConfigurations
+  const handleSuppressConfigurationsChange = (configs: SuppressConfig[]) => {
+    setSuppressConfigurations(configs);
   };
 
   // Filter custom sources based on module type
@@ -872,10 +1066,15 @@ const RequestCreationPage: React.FC = () => {
     return sharedCustomSources.filter(source => {
       if (!source.createdByModuleId) return true; // Legacy sources without tracking
 
-      // Get the type of the module that created this source
-      const sourceModuleType = getModuleType(source.createdByModuleId);
+      // For Self sources (self-append, self-match, self-suppress), filter by exact moduleId
+      // Self sources should only be available to the specific module instance that created them
+      if (source.sourceType === 'Self') {
+        return source.createdByModuleId === currentModuleId;
+      }
 
-      // Source is available only if it was created by a module of the same type
+      // For non-Self sources (Database, File), filter by module type
+      // These can be shared across module instances of the same type
+      const sourceModuleType = getModuleType(source.createdByModuleId);
       return sourceModuleType === currentModuleType;
     });
   };
@@ -956,24 +1155,15 @@ const RequestCreationPage: React.FC = () => {
       return;
     }
 
-    // Helper function to get fields for a specific source from field mappings or operationFields
+    // Helper function to get fields for a specific source in version creation
+    // IMPORTANT: Always prioritizes operationFields (explicitly selected by user, includes appendFields) over field mappings
+    // Field mappings are sent separately in the "field_mappings" array and should NOT affect the "fields" array
     const getFieldsForSourceInVersion = (sourceId: string): string[] => {
       const fieldsSet = new Set<string>();
 
-      // First, check field mappings (if using Field Mapping dialog)
-      if (fieldMappings && fieldMappings.length > 0) {
-        fieldMappings.forEach(mapping => {
-          mapping.selectedColumns.forEach((col: string) => {
-            const [colSourceId, fieldName] = col.split('::');
-            if (colSourceId === sourceId) {
-              fieldsSet.add(fieldName);
-            }
-          });
-        });
-      }
-
-      // If no field mappings, use operationFields and match against source headers
-      if (fieldsSet.size === 0 && operationFields && operationFields.length > 0) {
+      // IMPORTANT: Always prioritize operationFields (explicitly selected by user, includes appendFields)
+      // Field mappings are sent separately and should NOT interfere with this
+      if (operationFields && operationFields.length > 0) {
         // Get the source to check its headers
         const source = allAvailableInputSources.find(s => s.id === sourceId);
 
@@ -1082,10 +1272,25 @@ const RequestCreationPage: React.FC = () => {
       }
 
       // Get headers from input source
-      const combinedHeaders = inputSource.headers || [];
+      let combinedHeaders = [...(inputSource.headers || [])];
 
-      // Determine stepOrder based on module
-      const stepOrder = modules.findIndex(m => m.id === moduleId.split('_')[0]) + 1;
+      // For Append module: Add appendFields to the headers (these are the new fields being appended)
+      if (sourceModule === 'Append' && appendFields && appendFields.length > 0) {
+        console.log(`[handleCreateVersionedSource] Adding appendFields to headers:`, appendFields);
+        combinedHeaders = [...combinedHeaders, ...appendFields];
+      }
+
+      // For Match module: Add addFields to the headers (these are the new fields being added from match)
+      if (sourceModule === 'Match' && addFields && addFields.length > 0) {
+        console.log(`[handleCreateVersionedSource] Adding addFields to headers:`, addFields);
+        combinedHeaders = [...combinedHeaders, ...addFields];
+      }
+
+      console.log(`[handleCreateVersionedSource] Final combinedHeaders for version:`, combinedHeaders);
+
+      // Determine stepOrder based on module - use full moduleId to find exact module instance
+      const stepOrder = modules.findIndex(m => m.id === moduleId) + 1;
+      console.log(`[handleCreateVersionedSource] Determined stepOrder for moduleId ${moduleId}: ${stepOrder}`);
 
       // Build append_sources/match_sources/suppress_sources based on module
       const operationSourcesKey = sourceModule === 'Append' ? 'append_sources' :
@@ -1619,9 +1824,33 @@ const RequestCreationPage: React.FC = () => {
       return source?.selectedHeaders || source?.headers || [];
     };
 
+    // Helper function to transform field mappings to workflow format
+    const transformFieldMappingsInline = (fieldMappings?: any[]): any[] => {
+      if (!fieldMappings || fieldMappings.length === 0) {
+        return [];
+      }
+
+      return fieldMappings.map(mapping => {
+        const sourceMappings = mapping.selectedColumns.map((col: string) => {
+          const [sourceId, fieldName] = col.split('::');
+          const source = allAvailableInputSources.find(s => s.id === sourceId);
+          const sourceName = source?.sourceName || sourceId;
+          return `${sourceName}.${fieldName}`;
+        }).join('|');
+
+        return {
+          field_name: mapping.fieldName,
+          source_mappings: sourceMappings
+        };
+      });
+    };
+
     // Transform Append Configurations
     appendConfigurations.forEach((config, index) => {
       const stepOrder = getStepOrder('panel2') - 1; // Subtract 1 to start from 1
+
+      // Use module-level field mappings (not config-level)
+      const fieldMappingsForConfig = transformFieldMappingsInline(appendModuleFieldMappings);
 
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
@@ -1643,7 +1872,8 @@ const RequestCreationPage: React.FC = () => {
           }
 
           return sourceObj;
-        })
+        }),
+        field_mappings: fieldMappingsForConfig
       };
 
       workflowArray.push({
@@ -1660,6 +1890,9 @@ const RequestCreationPage: React.FC = () => {
     matchConfigurations.forEach((config, index) => {
       const stepOrder = getStepOrder('panel4') - 1; // Subtract 1 to start from 1
 
+      // Use module-level field mappings (not config-level)
+      const fieldMappingsForConfig = transformFieldMappingsInline(matchModuleFieldMappings);
+
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
           source_id: getSourceName(sourceId),
@@ -1673,7 +1906,8 @@ const RequestCreationPage: React.FC = () => {
         match_type: config?.matchType || 'full',
         ...(config?.addFields && config.addFields.length > 0 && {
           add_fields: config.addFields
-        })
+        }),
+        field_mappings: fieldMappingsForConfig
       };
 
       workflowArray.push({
@@ -1690,6 +1924,9 @@ const RequestCreationPage: React.FC = () => {
     suppressConfigurations.forEach((config, index) => {
       const stepOrder = getStepOrder('panel3') - 1; // Subtract 1 to start from 1
 
+      // Use module-level field mappings (not config-level)
+      const fieldMappingsForConfig = transformFieldMappingsInline(suppressModuleFieldMappings);
+
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
           source_id: getSourceName(sourceId),
@@ -1698,7 +1935,8 @@ const RequestCreationPage: React.FC = () => {
         suppress_on_fields: config?.suppressOnFields || [],
         suppress_sources: (config?.suppressSources || []).map((sourceId: string) =>
           getSourceName(sourceId)
-        )
+        ),
+        field_mappings: fieldMappingsForConfig
       };
 
       workflowArray.push({
@@ -1726,7 +1964,7 @@ const RequestCreationPage: React.FC = () => {
     // Clear previous messages
     setSaveSuccess('');
     setSaveError('');
-     setRecipientEmailError(''); 
+     setRecipientEmailError('');
     setScheduledDateTimeError('');
 
     // Validate all fields before saving
@@ -2703,26 +2941,15 @@ const RequestCreationPage: React.FC = () => {
         });
       };
 
-      // Helper function to get fields for a specific source from field mappings or appendFields
+      // Helper function to get fields for a specific source
+      // IMPORTANT: Always prioritizes appendFields (explicitly selected by user) over field mappings
+      // Field mappings are sent separately in the "field_mappings" array and should NOT affect the "fields" array
       const getFieldsForSource = (sourceId: string, fieldMappings?: any[], appendFields?: string[]): string[] => {
         const fieldsSet = new Set<string>();
 
-        // First, check field mappings (if using Field Mapping dialog)
-        if (fieldMappings && fieldMappings.length > 0) {
-          fieldMappings.forEach(mapping => {
-            // selectedColumns is in format: ["sourceId::fieldName", "sourceId::fieldName"]
-            mapping.selectedColumns.forEach((col: string) => {
-              const [colSourceId, fieldName] = col.split('::');
-              // If this column comes from the specified source, add the field name
-              if (colSourceId === sourceId) {
-                fieldsSet.add(fieldName);
-              }
-            });
-          });
-        }
-
-        // If no field mappings, use appendFields and match against source headers
-        if (fieldsSet.size === 0 && appendFields && appendFields.length > 0) {
+        // IMPORTANT: Always prioritize appendFields (explicitly selected by user)
+        // Field mappings are sent separately and should NOT interfere with this
+        if (appendFields && appendFields.length > 0) {
           // Get the source to check its headers
           const source = allAvailableInputSources.find(s => s.id === sourceId);
 
@@ -2798,19 +3025,28 @@ const RequestCreationPage: React.FC = () => {
 
       // Extract Append configurations and versions combined, sorted by creation order
       const extractAppendItemsForWorkflow = () => {
-        const stepOrder = getStepOrder('panel2');
         const appendItems: any[] = [];
 
         console.log('\n🔍 Extracting Append items (configs + versions) for workflow:');
         console.log('  Total append configurations:', appendConfigurations.length);
 
         // Add append configurations with their createdAt timestamps
-        appendConfigurations.forEach((config) => {
+        appendConfigurations.forEach((config, configIndex) => {
+          console.log(`🔍 [DEBUG - Index.tsx] Step 9: Processing Append config ${configIndex + 1}`);
+          console.log('  config object =', config);
+          console.log('  appendModuleFieldMappings =', appendModuleFieldMappings);
+          console.log('  appendModuleFieldMappings?.length =', appendModuleFieldMappings?.length);
+
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
-            const source = inputSources.find(s => s.id === sourceId);
+            // Search in allAvailableInputSources (includes both inputSources and versionedSources)
+            const source = allAvailableInputSources.find(s => s.id === sourceId);
+            // For versioned sources, use versionName/versionLabel instead of sourceName
+            const displayName = source?.isVersioned
+              ? ((source as any).versionName || (source as any).versionLabel || source.sourceName)
+              : (source?.sourceName || sourceId);
             return {
-              source_name: source?.sourceName || sourceId,
+              source_name: displayName,
               columns: source?.headers || []
             };
           });
@@ -2818,16 +3054,18 @@ const RequestCreationPage: React.FC = () => {
           // Transform append sources to the required format
           const appendSourcesForConfig = (config.appendSources || [])
             .map((sourceId) => {
-              // Get fields specific to this source from field mappings or appendFields
-              const sourceFields = getFieldsForSource(sourceId, config.fieldMappings, config.appendFields);
+              // Get fields specific to this source from module-level field mappings or appendFields
+              const sourceFields = getFieldsForSource(sourceId, appendModuleFieldMappings, config.appendFields);
 
               // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
               const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
               if (versionedSource) {
                 // All versioned sources are treated as 'input' type
+                // Use versionName/versionLabel for display name, not sourceName (which may be internal ID)
+                const displayName = (versionedSource as any).versionName || (versionedSource as any).versionLabel || versionedSource.sourceName;
                 return {
                   source_type: 'input',
-                  source_name: versionedSource.sourceName,
+                  source_name: displayName,
                   fields: sourceFields
                 };
               }
@@ -2883,7 +3121,12 @@ const RequestCreationPage: React.FC = () => {
               priority: index + 1
             }));
 
-          const fieldMappingsForConfig = transformFieldMappings(config.fieldMappings);
+          // Use module-level field mappings (not config-level)
+          const fieldMappingsForConfig = transformFieldMappings(appendModuleFieldMappings);
+
+          console.log('🔍 [DEBUG - Index.tsx] Step 10: After transformFieldMappings');
+          console.log('  fieldMappingsForConfig =', fieldMappingsForConfig);
+          console.log('  fieldMappingsForConfig?.length =', fieldMappingsForConfig?.length);
 
           const configJson = {
             input_sources: inputSourcesForConfig,
@@ -2893,8 +3136,14 @@ const RequestCreationPage: React.FC = () => {
             field_mappings: fieldMappingsForConfig
           };
 
+          console.log('🔍 [DEBUG - Index.tsx] Step 11: Final configJson.field_mappings =', configJson.field_mappings);
+
+          // Calculate stepOrder based on the config's createdByModuleId
+          const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel2');
+          console.log(`🔍 [DEBUG - Index.tsx] Config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+
           appendItems.push({
-            stepOrder,
+            stepOrder: configStepOrder,
             actionType: 'A',
             configJson,
             createdAt: config.createdAt || 0,
@@ -2913,12 +3162,19 @@ const RequestCreationPage: React.FC = () => {
         appendVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
 
+          // Inject module-level field mappings into the version (override any stored field mappings)
+          const fieldMappingsForVersion = transformFieldMappings(appendModuleFieldMappings);
+          const updatedConfigJson = {
+            ...configJson,
+            field_mappings: fieldMappingsForVersion
+          };
+
           appendItems.push({
             stepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson,
+            configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version'
           });
@@ -2955,19 +3211,23 @@ const RequestCreationPage: React.FC = () => {
 
       // Extract Suppress configurations and versions combined, sorted by creation order
       const extractSuppressItemsForWorkflow = () => {
-        const stepOrder = getStepOrder('panel3');
         const suppressItems: any[] = [];
 
         console.log('\n🔍 Extracting Suppress items (configs + versions) for workflow:');
         console.log('  Total suppress configurations:', suppressConfigurations.length);
 
         // Add suppress configurations with their createdAt timestamps
-        suppressConfigurations.forEach((config) => {
+        suppressConfigurations.forEach((config, index) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
-            const source = inputSources.find(s => s.id === sourceId);
+            // Search in allAvailableInputSources (includes both inputSources and versionedSources)
+            const source = allAvailableInputSources.find(s => s.id === sourceId);
+            // For versioned sources, use versionName/versionLabel instead of sourceName
+            const displayName = source?.isVersioned
+              ? ((source as any).versionName || (source as any).versionLabel || source.sourceName)
+              : (source?.sourceName || sourceId);
             return {
-              source_name: source?.sourceName || sourceId,
+              source_name: displayName,
               columns: source?.headers || []
             };
           });
@@ -2979,9 +3239,11 @@ const RequestCreationPage: React.FC = () => {
               const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
               if (versionedSource) {
                 // All versioned sources are treated as 'input' type
+                // Use versionName/versionLabel for display name, not sourceName (which may be internal ID)
+                const displayName = (versionedSource as any).versionName || (versionedSource as any).versionLabel || versionedSource.sourceName;
                 return {
                   source_type: 'input',
-                  source_name: versionedSource.sourceName
+                  source_name: displayName
                 };
               }
 
@@ -3027,14 +3289,22 @@ const RequestCreationPage: React.FC = () => {
             })
             .filter(Boolean);
 
+          // Use module-level field mappings (not config-level)
+          const fieldMappingsForConfig = transformFieldMappings(suppressModuleFieldMappings);
+
           const configJson = {
             input_sources: inputSourcesForConfig,
             suppress_on_fields: config.suppressOnFields || [],
-            suppress_sources: suppressSourcesForConfig
+            suppress_sources: suppressSourcesForConfig,
+            field_mappings: fieldMappingsForConfig
           };
 
+          // Calculate stepOrder based on the config's createdByModuleId
+          const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel3');
+          console.log(`🔍 [DEBUG - Index.tsx] Suppress config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+
           suppressItems.push({
-            stepOrder,
+            stepOrder: configStepOrder,
             actionType: 'S',
             configJson,
             createdAt: config.createdAt || 0,
@@ -3053,12 +3323,19 @@ const RequestCreationPage: React.FC = () => {
         suppressVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
 
+          // Inject module-level field mappings into the version (override any stored field mappings)
+          const fieldMappingsForVersion = transformFieldMappings(suppressModuleFieldMappings);
+          const updatedConfigJson = {
+            ...configJson,
+            field_mappings: fieldMappingsForVersion
+          };
+
           suppressItems.push({
             stepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson,
+            configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version'
           });
@@ -3095,7 +3372,6 @@ const RequestCreationPage: React.FC = () => {
 
       // Extract Match configurations and versions combined, sorted by creation order
       const extractMatchItemsForWorkflow = () => {
-        const stepOrder = getStepOrder('panel4');
         const matchItems: any[] = [];
 
         console.log('\n🔍 Extracting Match items (configs + versions) for workflow:');
@@ -3105,9 +3381,14 @@ const RequestCreationPage: React.FC = () => {
         matchConfigurations.forEach((config) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
-            const source = inputSources.find(s => s.id === sourceId);
+            // Search in allAvailableInputSources (includes both inputSources and versionedSources)
+            const source = allAvailableInputSources.find(s => s.id === sourceId);
+            // For versioned sources, use versionName/versionLabel instead of sourceName
+            const displayName = source?.isVersioned
+              ? ((source as any).versionName || (source as any).versionLabel || source.sourceName)
+              : (source?.sourceName || sourceId);
             return {
-              source_name: source?.sourceName || sourceId,
+              source_name: displayName,
               columns: source?.headers || []
             };
           });
@@ -3119,9 +3400,11 @@ const RequestCreationPage: React.FC = () => {
               const versionedSource = allAvailableInputSources.find(s => s.id === sourceId && s.isVersioned);
               if (versionedSource) {
                 // All versioned sources are treated as 'input' type
+                // Use versionName/versionLabel for display name, not sourceName (which may be internal ID)
+                const displayName = (versionedSource as any).versionName || (versionedSource as any).versionLabel || versionedSource.sourceName;
                 return {
                   source_type: 'input',
-                  source_name: versionedSource.sourceName,
+                  source_name: displayName,
                   priority: priority + 1
                 };
               }
@@ -3171,6 +3454,9 @@ const RequestCreationPage: React.FC = () => {
             })
             .filter(Boolean);
 
+          // Use module-level field mappings (not config-level)
+          const fieldMappingsForConfig = transformFieldMappings(matchModuleFieldMappings);
+
           const configJson = {
             input_sources: inputSourcesForConfig,
             match_sources: matchSourcesForConfig,
@@ -3178,11 +3464,16 @@ const RequestCreationPage: React.FC = () => {
             match_type: config.matchType || 'full',
             ...(config.addFields && config.addFields.length > 0 && {
               add_fields: config.addFields
-            })
+            }),
+            field_mappings: fieldMappingsForConfig
           };
 
+          // Calculate stepOrder based on the config's createdByModuleId
+          const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel4');
+          console.log(`🔍 [DEBUG - Index.tsx] Match config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+
           matchItems.push({
-            stepOrder,
+            stepOrder: configStepOrder,
             actionType: 'M',
             configJson,
             createdAt: config.createdAt || 0,
@@ -3201,12 +3492,19 @@ const RequestCreationPage: React.FC = () => {
         matchVersions.forEach((source) => {
           const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
 
+          // Inject module-level field mappings into the version (override any stored field mappings)
+          const fieldMappingsForVersion = transformFieldMappings(matchModuleFieldMappings);
+          const updatedConfigJson = {
+            ...configJson,
+            field_mappings: fieldMappingsForVersion
+          };
+
           matchItems.push({
             stepOrder,
             actionType,
             saveAsVersion,
             versionName,
-            configJson,
+            configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version'
           });
@@ -3614,7 +3912,25 @@ const RequestCreationPage: React.FC = () => {
     } else if (moduleId === 'panel2' || moduleId.startsWith('panel2_')) {
       // For duplicated Append modules, only pass initial configs to the original module
       const initialConfigs = moduleId === 'panel2' ? initialAppendConfigs : [];
+      console.log('[Index.tsx] Rendering AppendModule, allAvailableInputSources:', {
+        count: allAvailableInputSources.length,
+        sources: allAvailableInputSources.map(src => ({
+          id: src.id,
+          sourceName: src.sourceName,
+          isVersioned: src.isVersioned,
+          headersCount: src.headers?.length || 0,
+        })),
+        versionedSourcesCount: versionedSources.length,
+        versionedSources: versionedSources.map(v => ({
+          id: v.id,
+          sourceName: v.sourceName,
+          isVersioned: v.isVersioned,
+          sourceModule: v.sourceModule,
+          headersCount: v.headers?.length || 0
+        }))
+      });
       return <AppendModule
+        moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, fieldMappings, appendFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, fieldMappings, appendFields)
@@ -3632,11 +3948,14 @@ const RequestCreationPage: React.FC = () => {
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
         onConfigurationsChange={setAppendConfigurations}
+        moduleFieldMappings={appendModuleFieldMappings}
+        onModuleFieldMappingsChange={setAppendModuleFieldMappings}
       />;
     } else if (moduleId === 'panel3' || moduleId.startsWith('panel3_')) {
       // For duplicated Suppression modules, only pass initial configs to the original module
       const initialConfigs = moduleId === 'panel3' ? initialSuppressConfigs : [];
       return <SuppressModule
+        moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
@@ -3647,18 +3966,22 @@ const RequestCreationPage: React.FC = () => {
         versionedSources={versionedSources.filter(v => v.sourceModule === 'Suppress' && v.createdByModuleId === moduleId)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
+        onUpdateVersion={handleUpdateVersion}
         onDeleteVersion={handleDeleteVersion}
         appendConfigurations={appendConfigurations}
-        onConfigurationsChange={setSuppressConfigurations}
+        onConfigurationsChange={handleSuppressConfigurationsChange}
         sharedCustomSources={getAvailableCustomSourcesForModule(moduleId)}
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
+        moduleFieldMappings={suppressModuleFieldMappings}
+        onModuleFieldMappingsChange={setSuppressModuleFieldMappings}
       />;
     } else if (moduleId === 'panel4' || moduleId.startsWith('panel4_')) {
       // For duplicated Match modules, only pass initial configs to the original module
       const initialConfigs = moduleId === 'panel4' ? initialMatchConfigs : [];
       return <MatchModule
+        moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, addFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, undefined, undefined, addFields)
@@ -3677,6 +4000,8 @@ const RequestCreationPage: React.FC = () => {
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
         onConfigurationsChange={setMatchConfigurations}
+        moduleFieldMappings={matchModuleFieldMappings}
+        onModuleFieldMappingsChange={setMatchModuleFieldMappings}
       />;
     } else if (moduleId === 'panel5') {
       // Stats Module Content - Redesigned to match other modules
@@ -4577,6 +4902,12 @@ const RequestCreationPage: React.FC = () => {
     return null;
   };
 
+  // Determine if we're in initial loading state
+  const isInitialLoading = sourcesLoading || editRequestLoading;
+  const loadingMessage = editRequestLoading
+    ? 'Loading request data...'
+    : 'Loading available data sources...';
+
   return (
     <Box sx={{ p: 4, pt: 6 }}>
       {/* Header Section */}
@@ -4606,6 +4937,7 @@ const RequestCreationPage: React.FC = () => {
               checked={viewMode === 'stepper'}
               onChange={(e) => setViewMode(e.target.checked ? 'stepper' : 'accordion')}
               size="small"
+              disabled={isInitialLoading}
               sx={{
                 '& .MuiSwitch-switchBase.Mui-checked': {
                   color: '#296695',
@@ -4620,6 +4952,7 @@ const RequestCreationPage: React.FC = () => {
               size="small"
               startIcon={<Close />}
               onClick={handleCancel}
+              disabled={isInitialLoading}
               sx={{ px: 2.5, py: 0.75, fontSize: '0.875rem' }}
             >
               Cancel
@@ -4629,7 +4962,7 @@ const RequestCreationPage: React.FC = () => {
               size="small"
               startIcon={<Save />}
               onClick={handleSave}
-              disabled={saveLoading || editRequestLoading}
+              disabled={saveLoading || editRequestLoading || isInitialLoading}
               sx={{
                 px: 2.5,
                 py: 0.75,
@@ -4642,15 +4975,6 @@ const RequestCreationPage: React.FC = () => {
           </Stack>
         </Box>
       </Box>
-
-      {/* Loading State for Edit Request */}
-      {editRequestLoading && (
-        <Box sx={{ mb: 2 }}>
-          <Alert severity="info">
-            Loading request data...
-          </Alert>
-        </Box>
-      )}
 
       {/* Error State for Edit Request */}
       {editRequestError && (
@@ -4695,8 +5019,22 @@ const RequestCreationPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Request Name Section - Only show in Accordion View */}
-      {viewMode === 'accordion' && (
+      {/* Show loader while loading initial data */}
+      {isInitialLoading ? (
+        <Paper
+          sx={{
+            borderRadius: 4,
+            border: '1px solid',
+            borderColor: 'divider',
+            overflow: 'hidden',
+          }}
+        >
+          <ContentLoader message={loadingMessage} minHeight="600px" />
+        </Paper>
+      ) : (
+        <>
+          {/* Request Name Section - Only show in Accordion View */}
+          {viewMode === 'accordion' && (
         <Paper
           sx={{
             p: 3,
@@ -5273,6 +5611,8 @@ const RequestCreationPage: React.FC = () => {
           {saveLoading ? 'Submitting...' : 'Submit Request'}
         </Button>
       </Box>
+        </>
+      )}
     </Box>
   );
 };

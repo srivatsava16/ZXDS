@@ -115,6 +115,7 @@ export interface Top10RecordsResponse {
   columns?: string[];
   data: Record<string, any>[];
   separator?: string;
+  content?: string; // Raw delimited text content for preview
 }
 
 export async function getRequestInputs(): Promise<RequestInputsResponse> {
@@ -129,6 +130,8 @@ export async function getRequestInputs(): Promise<RequestInputsResponse> {
     return getMockRequestInputs();
   }
 }
+
+// Note: getRequestStats and RequestStatsResponse have been moved to ReportsService.ts
 
 export async function getTop10Records(payload: Top10RecordsRequest): Promise<Top10RecordsResponse> {
   try {
@@ -542,12 +545,12 @@ export async function submitRequest(payload: SubmitRequestPayload): Promise<Subm
       data: payload
     });
     return ApiService.transform<SubmitRequestResponse>(response);
-  } catch (error) {
-    // Return mock success response for development
+  } catch (error: any) {
+    // Return error response - do NOT redirect on API errors
+    console.error('Error submitting request:', error);
     return {
-      success: true,
-      message: 'Request submitted successfully',
-      requestId: `submit_${Date.now()}`
+      success: false,
+      message: error?.response?.data?.message || error?.message || 'Failed to submit request. Please check your connection and try again.',
     };
   }
 }

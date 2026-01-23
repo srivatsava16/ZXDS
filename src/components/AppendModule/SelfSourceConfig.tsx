@@ -23,6 +23,7 @@ import FilterBuilder from '../InputModule/FilterBuilder';
 interface AssignmentSet {
   value_to_assign: string;
   filter_sql: string;
+  filter_config?: any; // Filter configuration for restoring in edit mode
 }
 
 interface SelfConfig {
@@ -37,6 +38,7 @@ interface SelfSourceConfigProps {
   data: Partial<InputSource>;
   onChange: (data: Partial<InputSource>) => void;
   availableInputSources: InputSource[];
+  appendConfigs?: any[]; // Append configurations to determine appended fields for each source
 }
 
 const DATA_TYPES = [
@@ -54,6 +56,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
   data,
   onChange,
   availableInputSources,
+  appendConfigs = [],
 }) => {
   // Track initialization to prevent infinite loops
   const isInitializing = useRef(true);
@@ -73,7 +76,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   // Assignment sets - multiple conditions
   const [assignmentSets, setAssignmentSets] = useState<AssignmentSet[]>([
-    { value_to_assign: '', filter_sql: '' }
+    { value_to_assign: '', filter_sql: '', filter_config: null }
   ]);
 
   // Tiering On - multi-select dropdown (will be comma-separated string)
@@ -82,29 +85,89 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   // Get all fields from selected input sources - memoized to prevent recalculation on every render
   const allFields = useMemo(() => {
+    console.log('[SelfSourceConfig] Calculating allFields');
+    console.log('  inputSourceNames:', inputSourceNames);
+    console.log('  availableInputSources count:', availableInputSources.length);
+    console.log('  appendConfigs count:', appendConfigs?.length || 0);
+
     const fieldsSet = new Set<string>();
     const selectedSources = availableInputSources.filter(src =>
       inputSourceNames.includes(src.sourceName)
     );
+
+    console.log('  selectedSources count:', selectedSources.length);
 
     selectedSources.forEach(src => {
       // Always use the full headers array to show ALL available fields
       // Don't use selectedHeaders here - we want all fields to be available in filters
       const headersToUse = src.headers;
 
+      console.log(`  Source "${src.sourceName}":`, {
+        hasHeaders: !!headersToUse,
+        isArray: Array.isArray(headersToUse),
+        headersCount: headersToUse?.length || 0,
+        headers: headersToUse
+      });
+
       if (headersToUse && Array.isArray(headersToUse)) {
         headersToUse.forEach(field => fieldsSet.add(field));
       }
+
+      // IMPORTANT: Add appended fields from configurations
+      // Check if any append config targets this source
+      if (appendConfigs && appendConfigs.length > 0) {
+        console.log(`  Checking ${appendConfigs.length} append configs for "${src.sourceName}"`);
+        appendConfigs.forEach((config, idx) => {
+          console.log(`    Config ${idx + 1}:`, {
+            id: config.id,
+            inputSources: config.inputSources,
+            appendFields: config.appendFields,
+            appendOnFields: config.appendOnFields,
+            fullConfig: config
+          });
+
+          // Check if this config targets the current source (by ID or by name)
+          const matchesById = config.inputSources && config.inputSources.includes(src.id);
+          const matchesByName = config.inputSources && config.inputSources.includes(src.sourceName);
+
+          if (matchesById || matchesByName) {
+            console.log(`  ✓ Found append config for "${src.sourceName}":`, {
+              appendFields: config.appendFields
+            });
+            // Add the appended fields from this config
+            if (config.appendFields && Array.isArray(config.appendFields)) {
+              config.appendFields.forEach((field: string) => fieldsSet.add(field));
+              console.log(`    Added ${config.appendFields.length} appended fields:`, config.appendFields);
+            }
+          } else {
+            console.log(`  ✗ Config does not target "${src.sourceName}"`);
+          }
+        });
+      }
     });
 
-    return Array.from(fieldsSet);
-  }, [inputSourceNames, availableInputSources]);
+    const result = Array.from(fieldsSet);
+    console.log('  Final allFields (including appended):', result);
+    return result;
+  }, [inputSourceNames, availableInputSources, appendConfigs]);
 
 
   // Filtered lists
   const filteredInputSources = availableInputSources.filter(source =>
     source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
+
+  // Log available sources for debugging
+  useEffect(() => {
+    console.log('[SelfSourceConfig] Available Input Sources:', availableInputSources.map(src => ({
+      id: src.id,
+      sourceName: src.sourceName,
+      sourceType: src.sourceType,
+      isVersioned: src.isVersioned,
+      headersCount: src.headers?.length || 0,
+      headers: src.headers
+    })));
+  }, [availableInputSources]);
 
   const filteredTieringOnFields = allFields.filter(field =>
     field.toLowerCase().includes(tieringOnSearch.toLowerCase())
@@ -204,7 +267,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   // Handle adding new assignment set
   const handleAddAssignmentSet = () => {
-    setAssignmentSets([...assignmentSets, { value_to_assign: '', filter_sql: '' }]);
+    setAssignmentSets([...assignmentSets, { value_to_assign: '', filter_sql: '', filter_config: null }]);
   };
 
   // Handle removing assignment set
@@ -418,11 +481,13 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                 <FilterBuilder
                   headers={allFields}
                   initialValue={set.filter_sql}
-                  initialConfig={undefined}
+                  initialConfig={set.filter_config}
                   onFilterChange={(query) => {
                     handleUpdateAssignmentSet(index, 'filter_sql', query);
                   }}
-                  onConfigChange={() => {}}
+                  onConfigChange={(config) => {
+                    handleUpdateAssignmentSet(index, 'filter_config', config as any);
+                  }}
                 />
               </Box>
             )}

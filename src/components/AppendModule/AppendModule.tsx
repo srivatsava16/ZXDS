@@ -41,6 +41,7 @@ import { useAppendConfig } from './hooks/useAppendConfig';
 export type { AppendConfig };
 
 const AppendModule: React.FC<AppendModuleProps> = ({
+  moduleId,
   availableInputSources,
   onCreateVersionedSource,
   initialConfigs,
@@ -55,8 +56,23 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   onAddSharedCustomSource,
   onEditSharedCustomSource,
   onDeleteSharedCustomSource,
-  onConfigurationsChange
+  onConfigurationsChange,
+  moduleFieldMappings = [],
+  onModuleFieldMappingsChange
 }) => {
+  // Debug logging
+  useEffect(() => {
+    console.log('[AppendModule] Received props:', {
+      availableInputSourcesCount: availableInputSources.length,
+      availableInputSources: availableInputSources.map(src => ({
+        id: src.id,
+        sourceName: src.sourceName,
+        isVersioned: src.isVersioned,
+        headersCount: src.headers?.length || 0
+      })),
+      versionedSourcesCount: versionedSources.length
+    });
+  }, [availableInputSources, versionedSources]);
   // Use custom hooks for state management
   const {
     configs,
@@ -74,7 +90,18 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     handleEditConfig,
     handleCancelEdit,
     handleDeleteConfig,
-  } = useAppendConfig(initialConfigs);
+  } = useAppendConfig(initialConfigs, moduleId);
+
+  // Note: Field mappings are now managed at module level, not config level
+  const handleEditConfigWithMappings = (config: AppendConfig) => {
+    handleEditConfig(config);
+    console.log('🔍 [DEBUG - Append Module] Loading config for edit (field mappings are module-level)');
+  };
+
+  const handleCancelEditWithMappings = () => {
+    handleCancelEdit();
+    console.log('🔍 [DEBUG - Append Module] Canceled edit');
+  };
 
   // Use shared custom sources from props instead of local state
   const [editingSource, setEditingSource] = useState<InputSource | null>(null);
@@ -135,7 +162,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addColumnDialogOpen, setAddColumnDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
-  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  // Field mappings are now managed at module level via props (moduleFieldMappings)
   const [addedCustomColumns, setAddedCustomColumns] = useState<any[]>([]);
 
   // Get predefined sources from API or use fallback
@@ -171,11 +198,18 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       return true;
     }
 
+    // Always enable sources that are selected as input sources
+    if (selectedInputSources.includes(sourceId)) {
+      return true;
+    }
+
     // Get the fields for this source
     const sourceFields = getSourceFields(sourceId);
 
-    // Check if all selected match keys exist in the source fields
-    return selectedAppendOnFields.every(matchKey => sourceFields.includes(matchKey));
+    // Check if all selected match keys exist in the source fields (case-insensitive)
+    return selectedAppendOnFields.every(matchKey =>
+      sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+    );
   };
 
   // Load initial configurations if provided (for edit mode)
@@ -195,10 +229,18 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   // Auto-deselect append sources that don't have all selected match keys
   useEffect(() => {
     if (selectedAppendOnFields.length > 0 && selectedAppendSources.length > 0) {
-      // Filter out sources that don't have all match keys using helper function
+      // Filter out sources that don't have all match keys, but keep selected input sources
       const validSources = selectedAppendSources.filter(sourceId => {
+        // Always keep selected input sources
+        if (selectedInputSources.includes(sourceId)) {
+          return true;
+        }
+
+        // For other sources, check if they have all match keys
         const sourceFields = getSourceFields(sourceId);
-        return selectedAppendOnFields.every(matchKey => sourceFields.includes(matchKey));
+        return selectedAppendOnFields.every(matchKey =>
+          sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+        );
       });
 
       // Update if any sources were filtered out
@@ -234,8 +276,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         const sourceFieldKey = `${source.id}::${field}`;
 
         // Check if this field has a mapping
-        const mapping = fieldMappings.find(m => {
-          return m.selectedColumns.some(col => {
+        const mapping = moduleFieldMappings.find(m => {
+          return m.selectedColumns.some((col: string) => {
             const [colSourceId, colFieldName] = col.split('::');
             return colSourceId === source.id && colFieldName === field;
           });
@@ -359,7 +401,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         selectedInputSources,
         selectedAppendSources,
         selectedAppendOnFields,  // Match Keys
-        fieldMappings,
+        moduleFieldMappings,  // Module-level field mappings
         selectedAppendFields  // Fields to Append
       );
     }
@@ -485,7 +527,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             variant="outlined"
             size="small"
             startIcon={<AccountTree />}
-            onClick={() => setFieldMappingDialogOpen(true)}
+            onClick={() => {
+              console.log('🔍 [DEBUG - Append Module] Step 0: Configure Field Mapping button clicked, current moduleFieldMappings =', moduleFieldMappings);
+              setFieldMappingDialogOpen(true);
+            }}
             sx={{
               textTransform: 'none',
               fontSize: '0.875rem',
@@ -501,9 +546,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             }}
           >
             Field Mapping
-            {fieldMappings.length > 0 && (
+            {moduleFieldMappings.length > 0 && (
               <Chip
-                label={fieldMappings.length}
+                label={moduleFieldMappings.length}
                 size="small"
                 sx={{
                   ml: 1,
@@ -521,7 +566,18 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               variant="contained"
               size="small"
               startIcon={<Add />}
-              onClick={() => setDialogOpen(true)}
+              onClick={() => {
+                console.log('[AppendModule] Opening Add Custom Append Source dialog, availableInputSources:',
+                  availableInputSources.map(src => ({
+                    id: src.id,
+                    sourceName: src.sourceName,
+                    isVersioned: src.isVersioned,
+                    headersCount: src.headers?.length || 0,
+                    headers: src.headers
+                  }))
+                );
+                setDialogOpen(true);
+              }}
               sx={{
                 textTransform: 'none',
                 fontSize: '0.875rem',
@@ -1388,7 +1444,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             }}
           >
             <IconButton
-              onClick={() => handleAddOrUpdateConfig(fieldMappings)}
+              onClick={() => {
+                console.log('🔍 [DEBUG - Append Module] Step 6: Add/Update config button clicked (field mappings are module-level)');
+                handleAddOrUpdateConfig();
+              }}
               sx={{
                 width: 48,
                 height: '48px !important',
@@ -2095,7 +2154,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                           <IconButton
                             size="small"
-                            onClick={() => handleEditConfig(config!)}
+                            onClick={() => handleEditConfigWithMappings(config!)}
                             sx={{
                               color: 'info.main',
                               padding: '3px',
@@ -2135,7 +2194,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
       {/* Custom Append Sources List */}
       {customAppendSources.length > 0 && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mt: 4, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Custom Append Sources
@@ -2299,6 +2358,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={editingSource}
+        appendConfigs={configs}
       />
 
       {/* Add Field Dialog */}
@@ -2313,7 +2373,12 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={setFieldMappings}
+        onSave={(mappings) => {
+          console.log('🔍 [DEBUG - Append Module] Step 5: Received mappings from dialog =', mappings);
+          if (onModuleFieldMappingsChange) {
+            onModuleFieldMappingsChange(mappings);
+          }
+        }}
         availableSources={(() => {
           // Only include input sources from Input module (regular + versioned)
           // Do NOT include append sources, predefined sources, or custom append sources
@@ -2348,7 +2413,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
           return sources;
         })()}
-        initialMappings={fieldMappings}
+        initialMappings={moduleFieldMappings}
       />
 
       {/* View Source Details Dialog */}

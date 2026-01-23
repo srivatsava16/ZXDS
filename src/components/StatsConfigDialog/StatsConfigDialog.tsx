@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -34,6 +34,11 @@ import {
   Tab,
   TextField,
   Tooltip,
+  CircularProgress,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   Close,
@@ -49,16 +54,16 @@ import {
   Timeline,
   CheckCircle,
   Edit,
+  Assessment,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
+import { getRequestById, getRequestStats, generateDynamicStats, type ReportData, type StatsConfiguration as ApiStatsConfiguration, type RequestStatsResponse } from '../../services/api';
 
-// Sample fields - in real app, these would come from input sources
-const SAMPLE_FIELDS = ['DEVICE', 'QUALITY SCORE', 'FNAME', 'LNAME', 'DOB', 'STATE', 'ZIP', 'CITY', 'PHONE'];
-
-// Sample Input Sources - would come from backend
+// Sample Input Sources - fallback for dynamic stats view
 const SAMPLE_INPUT_SOURCES = [
-  { id: '1', sourceName: 'File Source 1' },
-  { id: '2', sourceName: 'Database Source 1' },
-  { id: '3', sourceName: 'Self Source 1' },
+  { id: '1', sourceName: 'File Source 1', headers: ['EMAIL', 'POSTAL_STATE', 'POSTAL_ZIP', 'CHANNEL'] },
+  { id: '2', sourceName: 'Database Source 1', headers: ['EMAIL', 'FIRST_NAME', 'LAST_NAME', 'PHONE'] },
+  { id: '3', sourceName: 'Self Source 1', headers: ['EMAIL', 'ADDRESS', 'CITY', 'STATE'] },
 ];
 
 // Sample Data Flow - would come from backend
@@ -74,6 +79,44 @@ const SAMPLE_DATA_FLOW: DataFlowRow[] = [
   { id: '3', text: 'Match by BestPostal on EmailId,Zip', accepted: true },
   { id: '4', text: 'Suppression by DNE on EmailId,State', accepted: true },
 ];
+
+// Sample Suppression Breakdown - mock data
+const SAMPLE_SUPPRESSION_BREAKDOWN = [
+  {
+    inputSource: 'PERMISSIONED_DATA_1',
+    dataFlow: [
+      { operationName: 'Initial Load', inputCount: 100000, outputCount: 100000 },
+      { operationName: 'Suppression by DNC List', inputCount: 100000, outputCount: 95000 },
+      { operationName: 'Suppression by Unsubscribes', inputCount: 95000, outputCount: 92000 },
+      { operationName: 'Dedupe by Email', inputCount: 92000, outputCount: 89500 },
+    ]
+  },
+  {
+    inputSource: 'DATABASE_SOURCE_1',
+    dataFlow: [
+      { operationName: 'Initial Load', inputCount: 50000, outputCount: 50000 },
+      { operationName: 'Suppression by Opt-Outs', inputCount: 50000, outputCount: 48500 },
+      { operationName: 'Quality Filter', inputCount: 48500, outputCount: 46000 },
+    ]
+  }
+];
+
+// Mock data generator for dynamic stats fallback
+const generateMockDynamicStatsData = (countsOn: string, breakdownBy: string, distinctFields: string[]) => {
+  const breakdownValues = ['CA', 'NY', 'TX', 'FL', 'IL'];
+
+  return breakdownValues.map(value => {
+    const row: Record<string, any> = {
+      [breakdownBy]: value,
+    };
+
+    // Add count column with appropriate naming based on whether it's distinct
+    const isDistinct = distinctFields.includes(countsOn);
+    row[`${isDistinct ? 'Distinct_' : ''}Count_${countsOn}`] = Math.floor(Math.random() * 10000) + 1000;
+
+    return row;
+  });
+};
 
 interface GenerateCountConfig {
   id: string;
@@ -115,227 +158,390 @@ interface StatsConfigDialogProps {
   onClose: () => void;
   requestId: number | null;
   availableInputSources?: InputSource[];
+  initialReportData?: ReportData | null;
 }
 
-// Data combination options
-const DATA_COMBINATIONS = [
-  { value: 'decile', label: 'Decile' },
-  { value: 'state_decile', label: 'State, Decile' },
-  { value: 'state', label: 'State' },
-];
+// Remove DATA_COMBINATIONS - will use real data from API
 
-// Visualization types
-type VisualizationType = 'tabular' | 'graph' | 'bar' | 'pie' | 'heatmap' | 'line';
-
-const VISUALIZATION_OPTIONS = [
-  { value: 'tabular', label: 'Tabular Flow', icon: TableChart, description: 'Display data in table format' },
-  { value: 'graph', label: 'Graph View', icon: ShowChart, description: 'Display as line graph' },
-  { value: 'bar', label: 'Bar Diagram', icon: BarChartIcon, description: 'Display as bar chart' },
-  { value: 'pie', label: 'Pie Chart', icon: PieChart, description: 'Display percentage distribution' },
-];
-
-// Sample data for US states - Compact version for popup
-const US_STATES_SAMPLE = [
-  { state: 'California', count: 15420, decile: 10 },
-  { state: 'Texas', count: 12850, decile: 9 },
-  { state: 'Florida', count: 10320, decile: 8 },
-  { state: 'New York', count: 9870, decile: 8 },
-  { state: 'Pennsylvania', count: 7650, decile: 7 },
-];
+// Removed mock visualization data - using real API data instead
 
 const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
   open,
   onClose,
   requestId,
-  availableInputSources = []
+  availableInputSources = [],
+  initialReportData = null
 }) => {
   // Tab state
   const [activeTab, setActiveTab] = useState(0);
 
+  // API data state
+  const [requestData, setRequestData] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Preconfigured Stats View state
-  const [selectedCombination, setSelectedCombination] = useState<string>('');
-  const [visualizationType, setVisualizationType] = useState<VisualizationType>('tabular');
+  const [selectedSourceTable, setSelectedSourceTable] = useState<string>('');
+  const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
+  const [statsResults, setStatsResults] = useState<any[] | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
-  // Dynamic Stats View state
-  const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
-  const [dataFlowRows, setDataFlowRows] = useState<DataFlowRow[]>(SAMPLE_DATA_FLOW);
+  // Dynamic Stats View state - REVAMPED
+  const [selectedDynamicInputSource, setSelectedDynamicInputSource] = useState<string>('');
+  const [selectedDynamicCountsOn, setSelectedDynamicCountsOn] = useState<string>('');
+  const [selectedDynamicBreakdownBy, setSelectedDynamicBreakdownBy] = useState<string>('');
+  const [selectedDynamicDistinctFields, setSelectedDynamicDistinctFields] = useState<string[]>([]);
+  const [generatedDynamicStats, setGeneratedDynamicStats] = useState<Array<{
+    id: string;
+    inputSource: string;
+    countsOn: string;
+    breakdownBy: string;
+    distinctFields: string[];
+    data: any[];
+    expanded: boolean;
+    isMockData?: boolean;
+  }>>([]);
+  const [loadingDynamicStats, setLoadingDynamicStats] = useState(false);
 
-  // Stats configuration state
-  const [selectedCountsOn, setSelectedCountsOn] = useState<string[]>([]);
-  const [isDistinct, setIsDistinct] = useState(false);
-  const [selectedBreakdownBy, setSelectedBreakdownBy] = useState<string[]>([]);
-  const [statsConfigurations, setStatsConfigurations] = useState<StatsConfiguration[]>([]);
-  const [editingStatsId, setEditingStatsId] = useState<string | null>(null);
+  // Suppression Breakdown View state
+  const [selectedSuppressionSource, setSelectedSuppressionSource] = useState<string>('');
 
   // Search states
   const [inputSourcesSearch, setInputSourcesSearch] = useState('');
   const [countsOnSearch, setCountsOnSearch] = useState('');
   const [breakdownBySearch, setBreakdownBySearch] = useState('');
 
-  // Calculate available fields based on selected input sources
-  const availableFields = useMemo(() => {
-    if (selectedInputSources.length === 0) {
-      return [];
-    }
-
-    // Find the selected source objects from availableInputSources
-    const selectedSourceObjects = selectedInputSources
-      .map(sourceName => availableInputSources.find(src => src.sourceName === sourceName))
-      .filter(src => src && src.headers);
-
-    if (selectedSourceObjects.length === 0) {
-      return [];
-    }
-
-    if (selectedSourceObjects.length === 1) {
-      // Single source: return all its headers
-      return selectedSourceObjects[0]?.headers || [];
-    }
-
-    // Multiple sources: return only COMMON headers (intersection)
-    const allSourceFieldSets: Set<string>[] = [];
-
-    selectedSourceObjects.forEach(source => {
-      if (source?.headers) {
-        const sourceFields = new Set<string>();
-        source.headers.forEach(field => {
-          sourceFields.add(field.toLowerCase()); // Case-insensitive comparison
-        });
-        allSourceFieldSets.push(sourceFields);
+  // Fetch request data when dialog opens or use initialReportData if provided
+  useEffect(() => {
+    const fetchRequestData = async () => {
+      if (!open || !requestId) {
+        return;
       }
-    });
 
-    if (allSourceFieldSets.length === 0) {
-      return [];
+      // If we have initialReportData, use it directly without fetching
+      if (initialReportData && initialReportData.id === requestId) {
+        console.log('[StatsConfigDialog] Using provided initialReportData:', initialReportData);
+        console.log('[StatsConfigDialog] statsConfigurations:', initialReportData.statsConfigurations);
+        setRequestData(initialReportData);
+        setLoading(false);
+        return;
+      }
+
+      // Otherwise, fetch from API
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('[StatsConfigDialog] Fetching request data for requestId:', requestId);
+        const data = await getRequestById(requestId);
+        console.log('[StatsConfigDialog] Received request data:', data);
+        console.log('[StatsConfigDialog] statsConfigurations:', data?.statsConfigurations);
+        setRequestData(data);
+      } catch (err) {
+        console.error('Error fetching request data:', err);
+        setError('Failed to load request data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequestData();
+  }, [open, requestId, initialReportData]);
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedSourceTable('');
+      setSelectedConfigId(null);
+      setStatsResults(null);
+      setError(null);
     }
+  }, [open]);
 
-    // Find intersection of all field sets
-    const intersection = Array.from(allSourceFieldSets[0]).filter(field => {
-      return allSourceFieldSets.every(fieldSet => fieldSet.has(field));
-    });
-
-    // Map back to original casing from the first source
-    const resultFields: string[] = [];
-    const firstSource = selectedSourceObjects[0];
-
-    if (firstSource?.headers) {
-      firstSource.headers.forEach(field => {
-        if (intersection.includes(field.toLowerCase())) {
-          resultFields.push(field);
-        }
-      });
+  // Load dynamic stats from requestData when available
+  useEffect(() => {
+    if (requestData?.dynamicStats && requestData.dynamicStats.length > 0) {
+      const loadedStats = requestData.dynamicStats.map((stat, index) => ({
+        id: `loaded_${index}`,
+        inputSource: stat.inputSource,
+        countsOn: stat.countsOn,
+        breakdownBy: stat.breakdownBy,
+        distinctFields: stat.distinctFields || (stat.isDistinct ? [stat.countsOn] : []), // Backward compatibility
+        data: stat.data || [],
+        expanded: false,
+        isMockData: false, // Loaded from API, not mock data
+      }));
+      setGeneratedDynamicStats(loadedStats);
     }
+  }, [requestData]);
 
-    return resultFields;
-  }, [selectedInputSources, availableInputSources]);
+  // Calculate available fields based on selected input sources
+  // Get available fields for selected dynamic input source
+  const availableDynamicFields = useMemo(() => {
+    if (!selectedDynamicInputSource) return [];
+
+    const source = (availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES)
+      .find(s => s.sourceName === selectedDynamicInputSource);
+
+    return source?.headers || ['EMAIL', 'POSTAL_STATE', 'POSTAL_ZIP', 'CHANNEL']; // Fallback
+  }, [selectedDynamicInputSource, availableInputSources]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
 
-  const handleToggleDataFlow = (id: string) => {
-    setDataFlowRows(dataFlowRows.map(row =>
-      row.id === id ? { ...row, accepted: !row.accepted } : row
-    ));
-  };
-
-  const handleRemoveDataFlow = (id: string) => {
-    if (window.confirm('Are you sure you want to remove this data flow?')) {
-      setDataFlowRows(dataFlowRows.filter(row => row.id !== id));
-    }
-  };
-
-  const handleAddStatsConfiguration = () => {
-    if (selectedInputSources.length === 0) {
-      alert('Please select at least one Input Source');
-      return;
-    }
-    if (selectedCountsOn.length === 0) {
-      alert('Please select at least one field for Generate Counts On');
-      return;
-    }
-    if (selectedBreakdownBy.length === 0) {
-      alert('Please select at least one field for Breakdown By');
+  // New handlers for Dynamic Stats View
+  const handleGenerateDynamicStats = async () => {
+    if (!requestId) {
+      alert('Request ID not found');
       return;
     }
 
-    if (editingStatsId) {
-      // Update existing configuration
-      setStatsConfigurations(statsConfigurations.map(config =>
-        config.id === editingStatsId
-          ? { ...config, inputSources: selectedInputSources, countsOn: selectedCountsOn, isDistinct, breakdownBy: selectedBreakdownBy }
-          : config
-      ));
-      setEditingStatsId(null);
-    } else {
-      // Add new configuration
-      const newConfiguration: StatsConfiguration = {
-        id: Date.now().toString(),
-        inputSources: selectedInputSources,
-        countsOn: selectedCountsOn,
-        isDistinct,
-        breakdownBy: selectedBreakdownBy,
-      };
-      setStatsConfigurations([...statsConfigurations, newConfiguration]);
+    if (!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy) {
+      alert('Please select Input Source, Counts On, and Breakdown By fields');
+      return;
     }
 
-    // Reset selections
-    setSelectedCountsOn([]);
-    setIsDistinct(false);
-    setSelectedBreakdownBy([]);
-  };
+    try {
+      setLoadingDynamicStats(true);
+      const response = await generateDynamicStats({
+        requestId,
+        inputSource: selectedDynamicInputSource,
+        countsOn: selectedDynamicCountsOn,
+        breakdownBy: selectedDynamicBreakdownBy,
+        distinctFields: selectedDynamicDistinctFields,
+      });
 
-  const handleEditStatsConfiguration = (config: StatsConfiguration) => {
-    setEditingStatsId(config.id);
-    setSelectedInputSources(config.inputSources);
-    setSelectedCountsOn(config.countsOn);
-    setIsDistinct(config.isDistinct);
-    setSelectedBreakdownBy(config.breakdownBy);
-  };
+      let statsData = response.data || [];
+      let usedMockData = false;
 
-  const handleDeleteStatsConfiguration = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this configuration?')) {
-      setStatsConfigurations(statsConfigurations.filter(c => c.id !== id));
-      if (editingStatsId === id) {
-        setEditingStatsId(null);
-        setSelectedCountsOn([]);
-        setIsDistinct(false);
-        setSelectedBreakdownBy([]);
+      if (!response.success || !statsData || statsData.length === 0) {
+        console.warn('API returned no data or failed, using mock data as fallback');
+        statsData = generateMockDynamicStatsData(selectedDynamicCountsOn, selectedDynamicBreakdownBy, selectedDynamicDistinctFields);
+        usedMockData = true;
       }
+
+      // Add to configured stats list
+      const newStat = {
+        id: Date.now().toString(),
+        inputSource: selectedDynamicInputSource,
+        countsOn: selectedDynamicCountsOn,
+        breakdownBy: selectedDynamicBreakdownBy,
+        distinctFields: selectedDynamicDistinctFields,
+        data: statsData,
+        expanded: false,
+        isMockData: usedMockData,
+      };
+
+      setGeneratedDynamicStats(prev => [...prev, newStat]);
+
+      // Reset form
+      setSelectedDynamicInputSource('');
+      setSelectedDynamicCountsOn('');
+      setSelectedDynamicBreakdownBy('');
+      setSelectedDynamicDistinctFields([]);
+
+      if (usedMockData) {
+        alert('API call failed or returned no data. Displaying mock data for demonstration purposes.');
+      } else {
+        alert('Dynamic stats generated successfully!');
+      }
+    } catch (err) {
+      console.error('Error generating dynamic stats:', err);
+
+      // Use mock data as fallback on error
+      const mockData = generateMockDynamicStatsData(selectedDynamicCountsOn, selectedDynamicBreakdownBy, selectedDynamicDistinctFields);
+      const newStat = {
+        id: Date.now().toString(),
+        inputSource: selectedDynamicInputSource,
+        countsOn: selectedDynamicCountsOn,
+        breakdownBy: selectedDynamicBreakdownBy,
+        distinctFields: selectedDynamicDistinctFields,
+        data: mockData,
+        expanded: false,
+        isMockData: true,
+      };
+
+      setGeneratedDynamicStats(prev => [...prev, newStat]);
+
+      // Reset form
+      setSelectedDynamicInputSource('');
+      setSelectedDynamicCountsOn('');
+      setSelectedDynamicBreakdownBy('');
+      setSelectedDynamicDistinctFields([]);
+
+      alert('Failed to generate dynamic stats from API. Displaying mock data for demonstration purposes.');
+    } finally {
+      setLoadingDynamicStats(false);
+    }
+  };
+
+  const handleToggleExpandDynamicStat = (id: string) => {
+    setGeneratedDynamicStats(prev =>
+      prev.map(stat =>
+        stat.id === id ? { ...stat, expanded: !stat.expanded } : stat
+      )
+    );
+  };
+
+  const handleDeleteDynamicStat = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this dynamic stat configuration?')) {
+      setGeneratedDynamicStats(prev => prev.filter(stat => stat.id !== id));
     }
   };
 
   const handleGenerate = () => {
     if (activeTab === 1) {
-      // Dynamic view - validate stats configurations
-      if (statsConfigurations.length === 0) {
-        alert('Please add at least one stats configuration before generating');
-        return;
-      }
+      // Dynamic view - generate dynamic stats
+      handleGenerateDynamicStats();
     } else {
-      // Preconfigured view - validate selection
-      if (!selectedCombination) {
-        alert('Please select a data combination before generating');
-        return;
-      }
+      // Preconfigured view
+      handleGenerateStats();
     }
-    alert('Generating stats...');
-    // Add actual generation logic here
   };
 
   const handleCancel = () => {
     // Reset all state
     setActiveTab(0);
-    setSelectedCombination('');
-    setVisualizationType('tabular');
-    setSelectedInputSources([]);
-    setDataFlowRows(SAMPLE_DATA_FLOW);
-    setSelectedCountsOn([]);
-    setIsDistinct(false);
-    setSelectedBreakdownBy([]);
-    setStatsConfigurations([]);
-    setEditingStatsId(null);
+    setSelectedSourceTable('');
+    setSelectedConfigId(null);
+    setSelectedDynamicInputSource('');
+    setSelectedDynamicCountsOn('');
+    setSelectedDynamicBreakdownBy('');
+    setSelectedDynamicDistinctFields([]);
+    setGeneratedDynamicStats([]);
+    setStatsResults(null);
+    setSelectedSuppressionSource('');
     onClose();
+  };
+
+  // Handler for source table selection
+  const handleSourceTableChange = (sourceTable: string) => {
+    setSelectedSourceTable(sourceTable);
+    setSelectedConfigId(null); // Reset config when source table changes
+    setStatsResults(null); // Clear previous results
+  };
+
+  // Handler for stats combination selection
+  const handleStatsConfigChange = (configId: string) => {
+    setSelectedConfigId(Number(configId));
+    setStatsResults(null); // Clear previous results when changing config
+  };
+
+  // Format stats combination display text
+  const formatStatsConfig = (config: any) => {
+    const fields = config.fields || '';
+    const breakdownBy = config.breakdown_by || '';
+    return `${fields} – BREAKDOWN_BY ${breakdownBy}`;
+  };
+
+  // Handler for Generate button
+  const handleGenerateStats = async () => {
+    if (!requestId || !selectedConfigId) {
+      return;
+    }
+
+    try {
+      setLoadingStats(true);
+      setError(null);
+      const response = await getRequestStats(requestId, selectedConfigId);
+
+      if (response.success) {
+        // Use response.stats instead of response.data
+        setStatsResults(response.stats || []);
+      } else {
+        setError(response.message || 'Failed to fetch stats');
+      }
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+      setError('Failed to generate stats');
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Export to CSV
+  const handleExportCSV = () => {
+    if (!statsResults || statsResults.length === 0) return;
+
+    // Get headers from first row
+    const headers = Object.keys(statsResults[0]);
+
+    // Create CSV content
+    let csvContent = headers.join(',') + '\n';
+
+    statsResults.forEach((row: any) => {
+      const values = headers.map(header => {
+        const value = row[header];
+        // Escape values that contain commas or quotes
+        if (value === null || value === undefined) return '';
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      });
+      csvContent += values.join(',') + '\n';
+    });
+
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `stats_request_${requestId}_config_${selectedConfigId}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export to Excel (using HTML table method for simplicity)
+  const handleExportExcel = () => {
+    if (!statsResults || statsResults.length === 0) return;
+
+    // Get headers from first row
+    const headers = Object.keys(statsResults[0]);
+
+    // Create HTML table
+    let tableHTML = '<table><thead><tr>';
+    headers.forEach(header => {
+      tableHTML += `<th>${header}</th>`;
+    });
+    tableHTML += '</tr></thead><tbody>';
+
+    statsResults.forEach((row: any) => {
+      tableHTML += '<tr>';
+      headers.forEach(header => {
+        const value = row[header];
+        tableHTML += `<td>${value !== null && value !== undefined ? value : ''}</td>`;
+      });
+      tableHTML += '</tr>';
+    });
+    tableHTML += '</tbody></table>';
+
+    // Create and trigger download
+    const blob = new Blob([tableHTML], { type: 'application/vnd.ms-excel' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `stats_request_${requestId}_config_${selectedConfigId}.xls`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Get available stats configurations for selected source table
+  const getAvailableConfigs = () => {
+    if (!selectedSourceTable || !requestData?.statsConfigurations) {
+      return [];
+    }
+
+    const sourceTableConfig = requestData.statsConfigurations.find(
+      (sc: ApiStatsConfiguration) => sc.source_tables === selectedSourceTable
+    );
+
+    return sourceTableConfig?.configs || [];
   };
 
   // Filtered lists
@@ -343,265 +549,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
     source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
-  const filteredCountsOn = availableFields.filter(field =>
-    field.toLowerCase().includes(countsOnSearch.toLowerCase())
-  );
-
-  const filteredBreakdownBy = availableFields.filter(field =>
-    field.toLowerCase().includes(breakdownBySearch.toLowerCase())
-  );
-
-  // Render visualization content based on selected type
-  const renderVisualizationContent = () => {
-    if (!selectedCombination) return null;
-
-    switch (visualizationType) {
-      case 'tabular':
-        return (
-          <TableContainer
-            component={Paper}
-            sx={{
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-            }}
-          >
-            <Table size="small">
-              <TableHead>
-                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                  {selectedCombination === 'state' || selectedCombination === 'state_decile' ? (
-                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 0.75, px: 1.5 }}>State</TableCell>
-                  ) : null}
-                  {selectedCombination === 'decile' || selectedCombination === 'state_decile' ? (
-                    <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 0.75, px: 1.5 }}>Decile</TableCell>
-                  ) : null}
-                  <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.75rem', py: 0.75, px: 1.5 }}>
-                    Count
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {US_STATES_SAMPLE.map((row, index) => (
-                  <TableRow
-                    key={index}
-                    hover
-                    sx={{
-                      '&:hover': {
-                        backgroundColor: 'rgba(41, 102, 149, 0.04)',
-                      },
-                    }}
-                  >
-                    {selectedCombination === 'state' || selectedCombination === 'state_decile' ? (
-                      <TableCell sx={{ py: 0.5, px: 1.5 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                          {row.state}
-                        </Typography>
-                      </TableCell>
-                    ) : null}
-                    {selectedCombination === 'decile' || selectedCombination === 'state_decile' ? (
-                      <TableCell sx={{ py: 0.5, px: 1.5 }}>
-                        <Chip
-                          label={row.decile}
-                          size="small"
-                          color="primary"
-                          sx={{ fontWeight: 600, fontSize: '0.75rem', height: 20 }}
-                        />
-                      </TableCell>
-                    ) : null}
-                    <TableCell align="right" sx={{ py: 0.5, px: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.8rem' }}>
-                        {row.count.toLocaleString()}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        );
-
-      case 'bar':
-        const maxCount = Math.max(...US_STATES_SAMPLE.map(s => s.count));
-        return (
-          <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, backgroundColor: 'white' }}>
-            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, height: '200px !important', pb: 1 }}>
-              {US_STATES_SAMPLE.map((state, index) => {
-                const barHeight = (state.count / maxCount) * 160;
-                return (
-                  <Box
-                    key={index}
-                    sx={{
-                      flex: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      height: '100%',
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ mb: 0.25, fontWeight: 600, color: '#2D3748', fontSize: '0.7rem' }}>
-                      {state.count.toLocaleString()}
-                    </Typography>
-                    <Box
-                      sx={{
-                        width: '100%',
-                        height: `${barHeight}px`,
-                        backgroundColor: '#296695',
-                        borderRadius: '3px 3px 0 0',
-                        transition: 'all 0.3s ease',
-                        minHeight: '8px',
-                        '&:hover': {
-                          backgroundColor: '#1A4A6B',
-                          transform: 'scaleY(1.02)',
-                        },
-                      }}
-                    />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        mt: 0.25,
-                        fontSize: '0.65rem',
-                        color: 'text.secondary',
-                      }}
-                    >
-                      {state.state.substring(0, 4)}
-                    </Typography>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Box>
-        );
-
-      case 'graph':
-        const maxCountGraph = Math.max(...US_STATES_SAMPLE.map(s => s.count));
-        const svgWidth = 550;
-        const svgHeight = 180;
-        const padding = 15;
-        const chartWidth = svgWidth - padding * 2;
-        const chartHeight = svgHeight - padding * 2;
-
-        return (
-          <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, backgroundColor: 'white' }}>
-            <svg width={svgWidth} height={svgHeight} style={{ width: '100%', height: 'auto', display: 'block' }}>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <line
-                  key={i}
-                  x1={padding}
-                  y1={padding + (i * chartHeight) / 4}
-                  x2={svgWidth - padding}
-                  y2={padding + (i * chartHeight) / 4}
-                  stroke="#E5E7EB"
-                  strokeWidth="1"
-                />
-              ))}
-              <polyline
-                points={US_STATES_SAMPLE.map((state, i) => {
-                  const x = padding + (i / (US_STATES_SAMPLE.length - 1)) * chartWidth;
-                  const y = padding + chartHeight - ((state.count / maxCountGraph) * chartHeight);
-                  return `${x},${y}`;
-                }).join(' ')}
-                fill="none"
-                stroke="#296695"
-                strokeWidth="2.5"
-              />
-              {US_STATES_SAMPLE.map((state, i) => {
-                const x = padding + (i / (US_STATES_SAMPLE.length - 1)) * chartWidth;
-                const y = padding + chartHeight - ((state.count / maxCountGraph) * chartHeight);
-                return (
-                  <circle
-                    key={i}
-                    cx={x}
-                    cy={y}
-                    r="4"
-                    fill="#296695"
-                    stroke="white"
-                    strokeWidth="1.5"
-                  />
-                );
-              })}
-            </svg>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, px: 2 }}>
-              {US_STATES_SAMPLE.map((state, i) => (
-                <Typography key={i} variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
-                  {state.state.substring(0, 4)}
-                </Typography>
-              ))}
-            </Box>
-          </Box>
-        );
-
-      case 'pie':
-        const total = US_STATES_SAMPLE.reduce((sum, s) => sum + s.count, 0);
-        let currentAngle = 0;
-        const colors = ['#296695', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'];
-
-        return (
-          <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, backgroundColor: 'white' }}>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <svg width="160" height="160" viewBox="0 0 200 200">
-                {US_STATES_SAMPLE.map((state, index) => {
-                  const percentage = (state.count / total) * 100;
-                  const angle = (percentage / 100) * 360;
-                  const startAngle = currentAngle;
-                  currentAngle += angle;
-
-                  const startRad = (startAngle - 90) * (Math.PI / 180);
-                  const endRad = (currentAngle - 90) * (Math.PI / 180);
-
-                  const x1 = 100 + 80 * Math.cos(startRad);
-                  const y1 = 100 + 80 * Math.sin(startRad);
-                  const x2 = 100 + 80 * Math.cos(endRad);
-                  const y2 = 100 + 80 * Math.sin(endRad);
-
-                  const largeArc = angle > 180 ? 1 : 0;
-
-                  return (
-                    <path
-                      key={index}
-                      d={`M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArc} 1 ${x2} ${y2} Z`}
-                      fill={colors[index % colors.length]}
-                      stroke="white"
-                      strokeWidth="2"
-                    />
-                  );
-                })}
-                <circle cx="100" cy="100" r="35" fill="white" />
-              </svg>
-              <Box sx={{ flex: 1 }}>
-                <Grid container spacing={0.75}>
-                  {US_STATES_SAMPLE.map((state, index) => {
-                    const percentage = ((state.count / total) * 100).toFixed(1);
-                    return (
-                      // @ts-expect-error MUI Grid API compatibility
-                      <Grid item xs={6} key={index}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          <Box
-                            sx={{
-                              width: 10,
-                              height: '10px !important',
-                              backgroundColor: colors[index % colors.length],
-                              borderRadius: 0.5,
-                            }}
-                          />
-                          <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                            {state.state.substring(0, 4)} ({percentage}%)
-                          </Typography>
-                        </Box>
-                      </Grid>
-                    );
-                  })}
-                </Grid>
-              </Box>
-            </Box>
-          </Box>
-        );
-
-      default:
-        return null;
-    }
-  };
+  // Removed renderVisualizationContent function - using real data table instead
 
   return (
     <Dialog
@@ -645,6 +593,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab label="Preconfigured Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
           <Tab label="Dynamic Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
+          <Tab label="Suppression Breakdown" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
         </Tabs>
       </Box>
 
@@ -652,358 +601,265 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         {/* Tab 1: Preconfigured Stats View */}
         {activeTab === 0 && (
           <Box>
-            {/* Data Combination Selection */}
-            <Box sx={{ mb: 2.5 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
-                Select Data Combination
-              </Typography>
-              <FormControl fullWidth size="small">
-                <InputLabel id="combination-label">Select Combination</InputLabel>
-                <Select
-                  labelId="combination-label"
-                  value={selectedCombination}
-                  onChange={(e) => setSelectedCombination(e.target.value)}
-                  label="Select Combination"
-                  sx={{ backgroundColor: 'white' }}
-                >
-                  <MenuItem value="">
-                    <em>Select a data combination</em>
-                  </MenuItem>
-                  {DATA_COMBINATIONS.map((combination) => (
-                    <MenuItem key={combination.value} value={combination.value}>
-                      <ListItemText primary={combination.label} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-
-            {/* Visualization Display */}
-            {selectedCombination && (
-              <Box sx={{ mb: 2.5 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-                    Preview
-                  </Typography>
-                  <Chip
-                    label={DATA_COMBINATIONS.find((c) => c.value === selectedCombination)?.label}
-                    size="small"
-                    color="primary"
-                    sx={{ fontWeight: 600, fontSize: '0.75rem', height: 22 }}
-                  />
-                </Box>
-                {renderVisualizationContent()}
+            {loading && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
               </Box>
             )}
 
-            {/* Visualization Options */}
-            {selectedCombination && (
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 1 }}>
-                  Select Visualization Type
-                </Typography>
-                <RadioGroup
-                  row
-                  value={visualizationType}
-                  onChange={(e) => setVisualizationType(e.target.value as VisualizationType)}
-                >
-                  {VISUALIZATION_OPTIONS.map((option) => (
-                    <FormControlLabel
-                      key={option.value}
-                      value={option.value}
-                      control={<Radio size="small" />}
-                      label={<Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{option.label}</Typography>}
-                      sx={{ mr: 2.5 }}
-                    />
-                  ))}
-                </RadioGroup>
-              </Box>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+
+            {!loading && !error && (
+              <>
+                {/* Debug Info - Remove after testing */}
+                {/* {requestData && (
+                  <Box sx={{ mb: 2, p: 1, backgroundColor: '#f0f0f0', fontSize: '0.75rem', borderRadius: 1 }}>
+                    <div>Debug: requestData exists: {requestData ? 'Yes' : 'No'}</div>
+                    <div>statsConfigurations: {requestData.statsConfigurations ? 'Exists' : 'Null/Undefined'}</div>
+                    <div>statsConfigurations length: {requestData.statsConfigurations?.length || 0}</div>
+                    {requestData.statsConfigurations && requestData.statsConfigurations.length > 0 && (
+                      <div>First source_table: {requestData.statsConfigurations[0]?.source_tables}</div>
+                    )}
+                  </Box>
+                )} */}
+
+                {/* Source Table Selection */}
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                    Select Source Table
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="source-table-label">Select Source Table</InputLabel>
+                    <Select
+                      labelId="source-table-label"
+                      value={selectedSourceTable}
+                      onChange={(e) => {
+                        console.log('[Dropdown] Source table selected:', e.target.value);
+                        handleSourceTableChange(e.target.value);
+                      }}
+                      label="Select Source Table"
+                      sx={{ backgroundColor: 'white' }}
+                      disabled={!requestData?.statsConfigurations || requestData.statsConfigurations.length === 0}
+                    >
+                      <MenuItem value="">
+                        <em>Select Source Table</em>
+                      </MenuItem>
+                      {(() => {
+                        console.log('[Dropdown Render] requestData:', requestData);
+                        console.log('[Dropdown Render] statsConfigurations:', requestData?.statsConfigurations);
+                        return requestData?.statsConfigurations?.map((sc: ApiStatsConfiguration, index: number) => {
+                          console.log(`[Dropdown Render] Rendering item ${index}:`, sc);
+                          return (
+                            <MenuItem key={sc.source_tables} value={sc.source_tables}>
+                              <ListItemText primary={sc.source_tables} />
+                            </MenuItem>
+                          );
+                        });
+                      })()}
+                    </Select>
+                  </FormControl>
+                  {requestData && (!requestData.statsConfigurations || requestData.statsConfigurations.length === 0) && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      No stats configurations available for this request
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Stats Combination Selection */}
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                    Select Stats Combination
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="combination-label">Select Combination</InputLabel>
+                    <Select
+                      labelId="combination-label"
+                      value={selectedConfigId?.toString() || ''}
+                      onChange={(e) => handleStatsConfigChange(e.target.value)}
+                      label="Select Combination"
+                      sx={{ backgroundColor: 'white' }}
+                      disabled={!selectedSourceTable}
+                    >
+                      <MenuItem value="">
+                        <em>Select Stats Combination</em>
+                      </MenuItem>
+                      {getAvailableConfigs().map((config: any) => (
+                        <MenuItem key={config.configId} value={config.configId.toString()}>
+                          <ListItemText primary={formatStatsConfig(config)} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {selectedSourceTable && getAvailableConfigs().length === 0 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      No stats combinations available for this source table
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Stats Results Section */}
+                {selectedConfigId && !loadingStats && statsResults !== null && (
+                  <Box sx={{ mb: 2.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
+                        Results
+                      </Typography>
+                      {statsResults && statsResults.length > 0 && (
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<GetApp />}
+                            onClick={handleExportCSV}
+                            sx={{
+                              textTransform: 'none',
+                              fontSize: '0.75rem',
+                              py: 0.5,
+                              px: 1.5,
+                              borderColor: '#296695',
+                              color: '#296695',
+                              '&:hover': {
+                                borderColor: '#1e4d6f',
+                                backgroundColor: 'rgba(41, 102, 149, 0.04)',
+                              },
+                            }}
+                          >
+                            Export CSV
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<GetApp />}
+                            onClick={handleExportExcel}
+                            sx={{
+                              textTransform: 'none',
+                              fontSize: '0.75rem',
+                              py: 0.5,
+                              px: 1.5,
+                              borderColor: '#296695',
+                              color: '#296695',
+                              '&:hover': {
+                                borderColor: '#1e4d6f',
+                                backgroundColor: 'rgba(41, 102, 149, 0.04)',
+                              },
+                            }}
+                          >
+                            Export Excel
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {!statsResults || statsResults.length === 0 ? (
+                      <Alert severity="info" sx={{ backgroundColor: '#E3F2FD', color: '#1565C0' }}>
+                        No data available for the selected combination. The stats generation was successful but returned no records.
+                      </Alert>
+                    ) : (
+                      <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                              {Object.keys(statsResults[0]).map((key) => (
+                                <TableCell key={key} sx={{ fontWeight: 600 }}>
+                                  {key}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {statsResults.map((row: any, index: number) => (
+                              <TableRow key={index} hover>
+                                {Object.values(row).map((value: any, colIndex: number) => (
+                                  <TableCell key={colIndex}>
+                                    {value !== null && value !== undefined ? String(value) : '-'}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </Box>
+                )}
+              </>
             )}
           </Box>
         )}
 
-        {/* Tab 2: Dynamic Stats View */}
+        {/* Tab 2: Dynamic Stats View - REVAMPED */}
         {activeTab === 1 && (
           <Box>
-            {/* A. Input Sources Multi-Select */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
-                Input Sources
-                <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
+            {/* Configuration Section */}
+            <Paper sx={{ p: 3, mb: 3, backgroundColor: '#F8FAFB', border: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2.5, color: '#2D3748', fontSize: '1rem' }}>
+                Configure Dynamic Stats
               </Typography>
-              <FormControl fullWidth size="small">
-                <Select
-                  multiple
-                  value={selectedInputSources}
-                  onChange={(e) => {
-                    const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                    if (value.includes('select-all')) {
-                      if (selectedInputSources.length === filteredInputSources.length) {
-                        setSelectedInputSources([]);
-                      } else {
-                        setSelectedInputSources(filteredInputSources.map(s => s.sourceName));
-                      }
-                    } else {
-                      setSelectedInputSources(value);
-                    }
-                  }}
-                  onClose={() => setInputSourcesSearch('')}
-                  input={<OutlinedInput />}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((value) => (
-                        <Tooltip key={value} title={value} arrow>
-                          <Chip
-                            label={value}
-                            size="small"
-                            sx={{
-                              maxWidth: '150px !important',
-                              minWidth: '50px',
-                              height: '20px !important',
-                              fontSize: '0.7rem',
-                              overflow: 'hidden !important',
-                              flexShrink: '0 !important',
-                              '& .MuiChip-label': {
-                                display: 'block !important',
-                                overflow: 'hidden !important',
-                                textOverflow: 'ellipsis !important',
-                                whiteSpace: 'nowrap !important',
-                                paddingLeft: '8px !important',
-                                paddingRight: '8px !important',
-                                textAlign: 'left !important',
-                                direction: 'ltr !important',
-                              }
-                            }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </Box>
-                  )}
-                  displayEmpty
-                  MenuProps={{ PaperProps: { sx: { maxHeight: 300 } }, autoFocus: false }}
-                >
-                  <MenuItem disabled value="">
-                    <em>Select input sources...</em>
-                  </MenuItem>
-                  <MenuItem
-                    disableRipple
-                    disableTouchRipple
-                    onKeyDown={(e) => e.stopPropagation()}
-                    sx={{
-                      position: 'sticky',
-                      top: 0,
-                      backgroundColor: 'white',
-                      zIndex: 1,
-                      borderBottom: '1px solid #ddd',
-                      '&:hover': { backgroundColor: 'white' },
-                      cursor: 'default',
-                    }}
-                  >
-                    <TextField
-                      size="small"
-                      placeholder="Search..."
-                      fullWidth
-                      value={inputSourcesSearch}
-                      onChange={(e) => setInputSourcesSearch(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    />
-                  </MenuItem>
-                  <MenuItem value="select-all" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
-                    <Checkbox
-                      checked={filteredInputSources.length > 0 && selectedInputSources.length === filteredInputSources.length}
-                      indeterminate={selectedInputSources.length > 0 && selectedInputSources.length < filteredInputSources.length}
-                      size="small"
-                    />
-                    <ListItemText primary="Select All" />
-                  </MenuItem>
-                  {filteredInputSources.map((source) => (
-                    <MenuItem key={source.id} value={source.sourceName}>
-                      <Checkbox checked={selectedInputSources.indexOf(source.sourceName) > -1} size="small" />
-                      <ListItemText primary={source.sourceName} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
 
-            {/* B. Data Flow Section */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
-                Data Flow
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {dataFlowRows.map((row) => (
-                  <Box
-                    key={row.id}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      p: 1.5,
-                      backgroundColor: row.accepted ? '#F0FDF4' : '#FEF2F2',
-                      border: '1px solid',
-                      borderColor: row.accepted ? '#10B981' : '#EF4444',
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ flex: 1, fontSize: '0.85rem', fontWeight: 500 }}>
-                      {row.text}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleToggleDataFlow(row.id)}
-                        sx={{
-                          color: row.accepted ? '#10B981' : '#6B7280',
-                          '&:hover': { backgroundColor: 'rgba(16, 185, 129, 0.12)' },
-                        }}
-                        title="Accept"
-                      >
-                        <CheckCircle fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRemoveDataFlow(row.id)}
-                        sx={{
-                          color: '#EF4444',
-                          '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.12)' },
-                        }}
-                        title="Remove"
-                      >
-                        <Close fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-
-            {/* C. Stats Configuration - Dynamic (Replicating Step 5 from Request Creation) */}
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-                  {editingStatsId ? 'Edit Stats Configuration' : 'Create Stats Configuration'}
+              {/* Input Source Selection */}
+              <Box sx={{ mb: 2.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                  Input Source
+                  <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                 </Typography>
-                {editingStatsId && (
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => {
-                      setEditingStatsId(null);
-                      setSelectedCountsOn([]);
-                      setIsDistinct(false);
-                      setSelectedBreakdownBy([]);
+                <FormControl fullWidth size="small">
+                  <InputLabel id="dynamic-input-source-label">Select Input Source</InputLabel>
+                  <Select
+                    labelId="dynamic-input-source-label"
+                    value={selectedDynamicInputSource}
+                    onChange={(e) => {
+                      setSelectedDynamicInputSource(e.target.value);
+                      // Reset counts on and breakdown by when source changes
+                      setSelectedDynamicCountsOn('');
+                      setSelectedDynamicBreakdownBy('');
                     }}
-                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                    label="Select Input Source"
+                    sx={{ backgroundColor: 'white' }}
                   >
-                    Cancel Edit
-                  </Button>
-                )}
+                    <MenuItem value="">
+                      <em>Select Input Source</em>
+                    </MenuItem>
+                    {(availableInputSources.length > 0 ? availableInputSources : SAMPLE_INPUT_SOURCES).map((source) => (
+                      <MenuItem key={source.id} value={source.sourceName}>
+                        {source.sourceName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Box>
 
-              {/* Configuration Form - Horizontal Layout */}
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', mb: 2.5 }}>
+              {/* Counts On and Breakdown By in horizontal layout */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 2.5 }}>
                 {/* Generate Counts On */}
-                <Box sx={{ flex: 1, p: 2, backgroundColor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, gap: 1.5, flexWrap: 'wrap' }}>
-                    <Chip label="1" size="small" sx={{ backgroundColor: '#8B5CF6', color: '#fff', fontWeight: 700, width: 24, height: 24 }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
-                      Generate Counts On
-                    </Typography>
-                    <Typography component="span" sx={{ color: 'error.main', fontSize: '0.9rem' }}>*</Typography>
-                    <Box sx={{ width: '1px', height: '20px', backgroundColor: 'divider', mx: 0.5 }} />
-                    <FormControlLabel
-                      control={<Checkbox checked={isDistinct} onChange={(e) => setIsDistinct(e.target.checked)} size="small" sx={{ padding: '2px' }} />}
-                      label={<Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>Distinct</Typography>}
-                      sx={{ m: 0, whiteSpace: 'nowrap' }}
-                    />
-                  </Box>
-                  <FormControl size="small" fullWidth>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+                    Generate Counts On
+                    <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="dynamic-counts-on-label">Select Field</InputLabel>
                     <Select
-                      multiple
-                      value={selectedCountsOn}
+                      labelId="dynamic-counts-on-label"
+                      value={selectedDynamicCountsOn}
                       onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                        if (value.includes('select-all-counts')) {
-                          if (selectedCountsOn.length === filteredCountsOn.length) {
-                            setSelectedCountsOn([]);
-                          } else {
-                            setSelectedCountsOn(filteredCountsOn);
-                          }
-                        } else {
-                          setSelectedCountsOn(value);
-                        }
+                        setSelectedDynamicCountsOn(e.target.value);
+                        // Clear distinct fields when counts on changes
+                        setSelectedDynamicDistinctFields([]);
                       }}
-                      onClose={() => setCountsOnSearch('')}
-                      input={<OutlinedInput />}
-                      renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
-                            <Tooltip key={value} title={value} arrow>
-                              <Chip
-                                label={value}
-                                size="small"
-                                sx={{
-                                  maxWidth: '150px !important',
-                              minWidth: '50px',
-                                  height: '20px !important',
-                                  fontSize: '0.7rem',
-                                  overflow: 'hidden !important',
-                                  flexShrink: '0 !important',
-                                  backgroundColor: '#8B5CF620',
-                                  color: '#8B5CF6',
-                                  fontWeight: 600,
-                                  '& .MuiChip-label': {
-                                    display: 'block !important',
-                                    overflow: 'hidden !important',
-                                    textOverflow: 'ellipsis !important',
-                                    whiteSpace: 'nowrap !important',
-                                paddingLeft: '8px !important',
-                                paddingRight: '8px !important',
-                                textAlign: 'left !important',
-                                direction: 'ltr !important',
-                                  }
-                                }}
-                              />
-                            </Tooltip>
-                          ))}
-                        </Box>
-                      )}
-                      displayEmpty
-                      MenuProps={{ PaperProps: { sx: { maxHeight: 300 } }, autoFocus: false }}
+                      label="Select Field"
+                      sx={{ backgroundColor: 'white' }}
+                      disabled={!selectedDynamicInputSource}
                     >
-                      <MenuItem disabled value="">
-                        <em>Select fields...</em>
+                      <MenuItem value="">
+                        <em>Select Field</em>
                       </MenuItem>
-                      <MenuItem
-                        disableRipple
-                        disableTouchRipple
-                        onKeyDown={(e) => e.stopPropagation()}
-                        sx={{ position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid #ddd', '&:hover': { backgroundColor: 'white' }, cursor: 'default' }}
-                      >
-                        <TextField
-                          size="small"
-                          placeholder="Search..."
-                          fullWidth
-                          value={countsOnSearch}
-                          onChange={(e) => setCountsOnSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />
-                      </MenuItem>
-                      <MenuItem value="select-all-counts" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
-                        <Checkbox
-                          checked={filteredCountsOn.length > 0 && selectedCountsOn.length === filteredCountsOn.length}
-                          indeterminate={selectedCountsOn.length > 0 && selectedCountsOn.length < filteredCountsOn.length}
-                          size="small"
-                        />
-                        <ListItemText primary="Select All" />
-                      </MenuItem>
-                      {filteredCountsOn.map((field) => (
+                      {availableDynamicFields.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={selectedCountsOn.indexOf(field) > -1} size="small" />
-                          <ListItemText primary={field} />
+                          {field}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1011,241 +867,341 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 </Box>
 
                 {/* Breakdown By */}
-                <Box sx={{ flex: 1, p: 2, backgroundColor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-                    <Chip label="2" size="small" sx={{ backgroundColor: '#8B5CF6', color: '#fff', fontWeight: 700, mr: 1, width: 24, height: 24 }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#2D3748' }}>
-                      Breakdown By
-                    </Typography>
-                    <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.9rem' }}>*</Typography>
-                  </Box>
-                  <FormControl size="small" fullWidth>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+                    Breakdown By
+                    <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="dynamic-breakdown-label">Select Field</InputLabel>
                     <Select
-                      multiple
-                      value={selectedBreakdownBy}
-                      onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                        if (value.includes('select-all-breakdown')) {
-                          if (selectedBreakdownBy.length === filteredBreakdownBy.length) {
-                            setSelectedBreakdownBy([]);
-                          } else {
-                            setSelectedBreakdownBy(filteredBreakdownBy);
-                          }
-                        } else {
-                          setSelectedBreakdownBy(value);
-                        }
-                      }}
-                      onClose={() => setBreakdownBySearch('')}
-                      input={<OutlinedInput />}
-                      renderValue={(selected) => (
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
-                            <Tooltip key={value} title={value} arrow>
-                              <Chip
-                                label={value}
-                                size="small"
-                                sx={{
-                                  maxWidth: '150px !important',
-                              minWidth: '50px',
-                                  height: '20px !important',
-                                  fontSize: '0.7rem',
-                                  overflow: 'hidden !important',
-                                  flexShrink: '0 !important',
-                                  backgroundColor: '#8B5CF620',
-                                  color: '#8B5CF6',
-                                  fontWeight: 600,
-                                  '& .MuiChip-label': {
-                                    display: 'block !important',
-                                    overflow: 'hidden !important',
-                                    textOverflow: 'ellipsis !important',
-                                    whiteSpace: 'nowrap !important',
-                                paddingLeft: '8px !important',
-                                paddingRight: '8px !important',
-                                textAlign: 'left !important',
-                                direction: 'ltr !important',
-                                  }
-                                }}
-                              />
-                            </Tooltip>
-                          ))}
-                        </Box>
-                      )}
-                      displayEmpty
-                      MenuProps={{ PaperProps: { sx: { maxHeight: 300 } }, autoFocus: false }}
+                      labelId="dynamic-breakdown-label"
+                      value={selectedDynamicBreakdownBy}
+                      onChange={(e) => setSelectedDynamicBreakdownBy(e.target.value)}
+                      label="Select Field"
+                      sx={{ backgroundColor: 'white' }}
+                      disabled={!selectedDynamicInputSource}
                     >
-                      <MenuItem disabled value="">
-                        <em>Select fields...</em>
+                      <MenuItem value="">
+                        <em>Select Field</em>
                       </MenuItem>
-                      <MenuItem
-                        disableRipple
-                        disableTouchRipple
-                        onKeyDown={(e) => e.stopPropagation()}
-                        sx={{ position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1, borderBottom: '1px solid #ddd', '&:hover': { backgroundColor: 'white' }, cursor: 'default' }}
-                      >
-                        <TextField
-                          size="small"
-                          placeholder="Search..."
-                          fullWidth
-                          value={breakdownBySearch}
-                          onChange={(e) => setBreakdownBySearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />
-                      </MenuItem>
-                      <MenuItem value="select-all-breakdown" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
-                        <Checkbox
-                          checked={filteredBreakdownBy.length > 0 && selectedBreakdownBy.length === filteredBreakdownBy.length}
-                          indeterminate={selectedBreakdownBy.length > 0 && selectedBreakdownBy.length < filteredBreakdownBy.length}
-                          size="small"
-                        />
-                        <ListItemText primary="Select All" />
-                      </MenuItem>
-                      {filteredBreakdownBy.map((field) => (
+                      {availableDynamicFields.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={selectedBreakdownBy.indexOf(field) > -1} size="small" />
-                          <ListItemText primary={field} />
+                          {field}
                         </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
                 </Box>
-
-                {/* Add Button */}
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <IconButton
-                    onClick={handleAddStatsConfiguration}
-                    sx={{
-                      width: 48,
-                      height: '48px !important',
-                      backgroundColor: '#8B5CF6',
-                      color: 'white',
-                      boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
-                      '&:hover': {
-                        backgroundColor: '#7C3AED',
-                        boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-                      },
-                    }}
-                  >
-                    <Add sx={{ fontSize: 28 }} />
-                  </IconButton>
-                </Box>
               </Box>
 
-              {/* Configurations Table */}
-              {statsConfigurations.length > 0 && (
-                <Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem', color: '#2D3748' }}>
-                      Stats Configurations
-                    </Typography>
-                    <Chip
-                      label={`${statsConfigurations.length} configuration${statsConfigurations.length !== 1 ? 's' : ''}`}
-                      size="small"
-                      sx={{ fontWeight: 600, backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
-                    />
-                  </Box>
-                  <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Input Sources</TableCell>
-                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Counts On</TableCell>
-                          <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Is Distinct</TableCell>
-                          <TableCell sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Breakdown By</TableCell>
-                          <TableCell align="center" sx={{ py: 0.75, px: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>Actions</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {statsConfigurations.map((config) => (
-                          <TableRow
-                            key={config.id}
-                            hover
+              {/* Distinct Fields - Multi-select showing Generate Counts On field */}
+              <Box sx={{ mb: 2.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+                  Distinct Fields
+                  <Typography component="span" sx={{ fontSize: '0.75rem', color: 'text.secondary', ml: 1 }}>
+                    (Select which fields should have distinct counts)
+                  </Typography>
+                </Typography>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="dynamic-distinct-label">Select Distinct Fields</InputLabel>
+                  <Select
+                    labelId="dynamic-distinct-label"
+                    multiple
+                    value={selectedDynamicDistinctFields}
+                    onChange={(e) => {
+                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                      setSelectedDynamicDistinctFields(value);
+                    }}
+                    label="Select Distinct Fields"
+                    sx={{ backgroundColor: 'white' }}
+                    disabled={!selectedDynamicCountsOn}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip
+                            key={value}
+                            label={value}
+                            size="small"
                             sx={{
-                              backgroundColor: editingStatsId === config.id ? 'rgba(139, 92, 246, 0.04)' : 'transparent',
-                              '&:hover': { backgroundColor: editingStatsId === config.id ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.04)' },
+                              height: '24px',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#8B5CF620',
+                              color: '#8B5CF6',
+                              fontWeight: 600,
                             }}
-                          >
-                            <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                              {config.inputSources.length > 0 ? (
-                                <Tooltip title={config.inputSources.join(', ')} arrow>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                    <Chip
-                                      label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
-                                      size="small"
-                                      sx={{ backgroundColor: '#8B5CF620', color: '#8B5CF6', border: '1px solid #8B5CF640', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
-                                    />
-                                  </Box>
-                                </Tooltip>
-                              ) : '--'}
-                            </TableCell>
-                            <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                              {config.countsOn.length > 0 ? (
-                                <Tooltip title={config.countsOn.join(', ')} arrow>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                    <Chip
-                                      label={`${config.countsOn.length} field${config.countsOn.length !== 1 ? 's' : ''}`}
-                                      size="small"
-                                      sx={{ backgroundColor: '#10B98120', color: '#10B981', border: '1px solid #10B98140', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
-                                    />
-                                  </Box>
-                                </Tooltip>
-                              ) : '--'}
-                            </TableCell>
-                            <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
+                          />
+                        ))}
+                      </Box>
+                    )}
+                  >
+                    <MenuItem value="" disabled>
+                      <em>{!selectedDynamicCountsOn ? 'Please select Generate Counts On first' : 'Select fields'}</em>
+                    </MenuItem>
+                    {selectedDynamicCountsOn && (
+                      <MenuItem value={selectedDynamicCountsOn}>
+                        <Checkbox checked={selectedDynamicDistinctFields.indexOf(selectedDynamicCountsOn) > -1} size="small" />
+                        <ListItemText primary={selectedDynamicCountsOn} />
+                      </MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {/* Generate Button */}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  onClick={handleGenerateDynamicStats}
+                  disabled={!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy || loadingDynamicStats}
+                  startIcon={loadingDynamicStats ? <CircularProgress size={16} /> : <BarChartIcon />}
+                  sx={{
+                    px: 4,
+                    py: 1,
+                    textTransform: 'none',
+                    fontSize: '0.875rem',
+                    backgroundColor: '#8B5CF6',
+                    '&:hover': { backgroundColor: '#7C3AED' },
+                  }}
+                >
+                  {loadingDynamicStats ? 'Generating...' : 'Generate'}
+                </Button>
+              </Box>
+            </Paper>
+
+            {/* Configured Stats List */}
+            {generatedDynamicStats.length > 0 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '1rem', color: '#2D3748' }}>
+                    Configured Dynamic Stats
+                  </Typography>
+                  <Chip
+                    label={`${generatedDynamicStats.length} configuration${generatedDynamicStats.length !== 1 ? 's' : ''}`}
+                    size="small"
+                    sx={{ fontWeight: 600, backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                  />
+                </Box>
+
+                {generatedDynamicStats.map((stat) => (
+                  <Accordion
+                    key={stat.id}
+                    expanded={stat.expanded}
+                    onChange={() => handleToggleExpandDynamicStat(stat.id)}
+                    sx={{
+                      mb: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: '8px !important',
+                      '&:before': { display: 'none' },
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    }}
+                  >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        borderRadius: '8px',
+                        '&.Mui-expanded': {
+                          borderBottomLeftRadius: 0,
+                          borderBottomRightRadius: 0,
+                        },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, pr: 2 }}>
+                        <Visibility sx={{ color: '#8B5CF6' }} />
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#2D3748' }}>
+                              {stat.inputSource}
+                            </Typography>
+                            {stat.isMockData && (
                               <Chip
-                                label={config.isDistinct ? 'Yes' : 'No'}
+                                label="Mock Data"
                                 size="small"
                                 sx={{
-                                  height: '20px !important',
+                                  height: '18px',
                                   fontSize: '0.65rem',
-                                  backgroundColor: config.isDistinct ? '#10B98120' : '#6B728020',
-                                  color: config.isDistinct ? '#10B981' : '#6B7280',
-                                  border: config.isDistinct ? '1px solid #10B98140' : '1px solid #6B728040',
+                                  backgroundColor: '#FFF3CD',
+                                  color: '#856404',
+                                  border: '1px solid #FFE69C',
                                   fontWeight: 600,
                                 }}
                               />
+                            )}
+                          </Box>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            Counts: {stat.countsOn} | Breakdown: {stat.breakdownBy}
+                            {stat.distinctFields.length > 0 && ` | Distinct: ${stat.distinctFields.join(', ')}`}
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDynamicStat(stat.id);
+                          }}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ p: 3 }}>
+                      {stat.data.length === 0 ? (
+                        <Alert severity="info">
+                          No data available for this configuration
+                        </Alert>
+                      ) : (
+                        <Box>
+                          {stat.isMockData && (
+                            <Alert severity="warning" sx={{ mb: 2, backgroundColor: '#FFF3CD', color: '#856404', border: '1px solid #FFE69C' }}>
+                              This is mock data displayed for demonstration purposes. The API call failed or returned no data.
+                            </Alert>
+                          )}
+                          <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                                  {Object.keys(stat.data[0]).map((key) => (
+                                    <TableCell key={key} sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                                      {key}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {stat.data.map((row, index) => (
+                                  <TableRow key={index} hover>
+                                    {Object.values(row).map((value, colIndex) => (
+                                      <TableCell key={colIndex}>
+                                        {value !== null && value !== undefined ? String(value) : '-'}
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Box>
+            )}
+
+            {generatedDynamicStats.length === 0 && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                No dynamic stats configured yet. Use the form above to generate your first dynamic stat.
+              </Alert>
+            )}
+          </Box>
+        )}
+
+        {/* Tab 3: Suppression Breakdown */}
+        {activeTab === 2 && (
+          <Box>
+            {/* Input Source Selection */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                Select Input Source
+              </Typography>
+              <FormControl fullWidth size="small">
+                <InputLabel id="suppression-source-label">Select Input Source</InputLabel>
+                <Select
+                  labelId="suppression-source-label"
+                  value={selectedSuppressionSource}
+                  onChange={(e) => setSelectedSuppressionSource(e.target.value)}
+                  label="Select Input Source"
+                  sx={{ backgroundColor: 'white' }}
+                >
+                  <MenuItem value="">
+                    <em>Select Input Source</em>
+                  </MenuItem>
+                  {(() => {
+                    // Use real data if available, otherwise use mock data
+                    const suppressionData = requestData?.suppressionBreakdown || SAMPLE_SUPPRESSION_BREAKDOWN;
+                    return suppressionData.map((item, index) => (
+                      <MenuItem key={index} value={item.inputSource}>
+                        {item.inputSource}
+                      </MenuItem>
+                    ));
+                  })()}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Data Flow Table */}
+            {selectedSuppressionSource && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748', fontSize: '0.9rem' }}>
+                  Data Flow for {selectedSuppressionSource}
+                </Typography>
+
+                {(() => {
+                  // Find the data flow for the selected source
+                  const suppressionData = requestData?.suppressionBreakdown || SAMPLE_SUPPRESSION_BREAKDOWN;
+                  const selectedData = suppressionData.find(item => item.inputSource === selectedSuppressionSource);
+
+                  if (!selectedData || selectedData.dataFlow.length === 0) {
+                    return (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        No data flow information available for this input source.
+                      </Alert>
+                    );
+                  }
+
+                  return (
+                    <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                            <TableCell sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                              Operation Name
                             </TableCell>
-                            <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                              {config.breakdownBy.length > 0 ? (
-                                <Tooltip title={config.breakdownBy.join(', ')} arrow>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                    <Chip
-                                      label={`${config.breakdownBy.length} field${config.breakdownBy.length !== 1 ? 's' : ''}`}
-                                      size="small"
-                                      sx={{ backgroundColor: '#F59E0B20', color: '#F59E0B', border: '1px solid #F59E0B40', fontWeight: 600, height: '20px !important', fontSize: '0.65rem' }}
-                                    />
-                                  </Box>
-                                </Tooltip>
-                              ) : '--'}
+                            <TableCell align="right" sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                              Input Count
                             </TableCell>
-                            <TableCell align="center" sx={{ py: 0.75, px: 1.5 }}>
-                              <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleEditStatsConfiguration(config)}
-                                  sx={{ color: 'info.main', '&:hover': { backgroundColor: 'rgba(59, 130, 246, 0.12)' } }}
-                                  title="Edit"
-                                >
-                                  <Edit sx={{ fontSize: 16 }} />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleDeleteStatsConfiguration(config.id)}
-                                  sx={{ color: 'error.main', '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.12)' } }}
-                                  title="Delete"
-                                >
-                                  <Delete sx={{ fontSize: 16 }} />
-                                </IconButton>
-                              </Box>
+                            <TableCell align="right" sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                              Output Count
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Box>
-              )}
-            </Box>
+                        </TableHead>
+                        <TableBody>
+                          {selectedData.dataFlow.map((flow, index) => (
+                            <TableRow
+                              key={index}
+                              hover
+                              sx={{
+                                '&:last-child td, &:last-child th': { border: 0 },
+                                backgroundColor: index % 2 === 0 ? 'white' : 'rgba(0, 0, 0, 0.02)'
+                              }}
+                            >
+                              <TableCell sx={{ py: 1.5, px: 2 }}>
+                                {flow.operationName}
+                              </TableCell>
+                              <TableCell align="right" sx={{ py: 1.5, px: 2 }}>
+                                {flow.inputCount.toLocaleString()}
+                              </TableCell>
+                              <TableCell align="right" sx={{ py: 1.5, px: 2 }}>
+                                {flow.outputCount.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  );
+                })()}
+              </Box>
+            )}
+
+            {!selectedSuppressionSource && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Please select an input source to view its suppression breakdown data flow.
+              </Alert>
+            )}
           </Box>
         )}
       </DialogContent>
@@ -1266,20 +1222,36 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         >
           Close
         </Button>
-        <Button
-          variant="contained"
-          onClick={handleGenerate}
-          startIcon={<BarChartIcon />}
-          sx={{
-            px: 3,
-            py: 0.75,
-            textTransform: 'none',
-            fontSize: '0.875rem',
-            boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
-          }}
-        >
-          Generate
-        </Button>
+        {/* Only show Generate button for Preconfigured and Dynamic Stats tabs, not for Suppression Breakdown */}
+        {activeTab !== 2 && (
+          <Button
+            variant="contained"
+            onClick={handleGenerate}
+            disabled={
+              activeTab === 0
+                ? (!selectedConfigId || loadingStats)
+                : (!selectedDynamicInputSource || !selectedDynamicCountsOn || !selectedDynamicBreakdownBy || loadingDynamicStats)
+            }
+            startIcon={
+              activeTab === 0 && loadingStats
+                ? <CircularProgress size={16} />
+                : <BarChartIcon />
+            }
+            sx={{
+              px: 3,
+              py: 0.75,
+              textTransform: 'none',
+              fontSize: '0.875rem',
+              boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
+              backgroundColor: '#296695',
+              '&:hover': {
+                backgroundColor: '#1e4d6f',
+              },
+            }}
+          >
+            {activeTab === 0 && loadingStats ? 'Generating...' : 'Generate'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );

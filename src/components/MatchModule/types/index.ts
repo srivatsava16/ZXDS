@@ -9,7 +9,14 @@ export interface MatchConfig {
   expand: boolean;
   matchType: 'full' | 'any';
   addFields?: string[]; // Fields to add when expand is true
+  fieldMappings?: Array<{
+    id: string;
+    fieldName: string;
+    selectedSources: string[];
+    selectedColumns: string[];
+  }>;
   createdAt?: number; // Timestamp for sorting by creation order
+  createdByModuleId?: string; // Track which module instance created this config
 }
 
 interface AppendConfig {
@@ -19,6 +26,7 @@ interface AppendConfig {
 }
 
 export interface MatchModuleProps {
+  moduleId?: string; // ID of the module instance (e.g., 'panel4', 'panel4_1')
   availableInputSources: InputSource[];
   onCreateVersionedSource?: (
     sourceModule: 'Match' | 'Append' | 'Suppress',
@@ -43,6 +51,9 @@ export interface MatchModuleProps {
   // Configuration tracking for dependency validation
   onConfigurationsChange?: (configs: MatchConfig[]) => void;
   appendConfigurations?: AppendConfig[]; // To track appended fields
+  // Module-level field mappings (shared across all configs/versions in this module)
+  moduleFieldMappings?: any[];
+  onModuleFieldMappingsChange?: (mappings: any[]) => void;
 }
 
 export interface PredefinedSource {

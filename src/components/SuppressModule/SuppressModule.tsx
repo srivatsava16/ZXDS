@@ -37,7 +37,14 @@ export interface SuppressConfig {
   inputSources: string[];
   suppressOnFields: string[];
   suppressSources: string[];
+  fieldMappings?: Array<{
+    id: string;
+    fieldName: string;
+    selectedSources: string[];
+    selectedColumns: string[];
+  }>;
   createdAt?: number; // Timestamp for sorting by creation order
+  createdByModuleId?: string; // Track which module instance created this config
 }
 
 interface AppendConfig {
@@ -47,6 +54,7 @@ interface AppendConfig {
 }
 
 interface SuppressModuleProps {
+  moduleId?: string; // ID of the module instance (e.g., 'panel3', 'panel3_1')
   availableInputSources: InputSource[];
   onCreateVersionedSource?: (
     sourceModule: 'Match' | 'Append' | 'Suppress',
@@ -69,6 +77,9 @@ interface SuppressModuleProps {
   onEditSharedCustomSource?: (source: InputSource) => void;
   onDeleteSharedCustomSource?: (id: string) => void;
   appendConfigurations?: AppendConfig[]; // To track appended fields
+  // Module-level field mappings (shared across all configs/versions in this module)
+  moduleFieldMappings?: any[];
+  onModuleFieldMappingsChange?: (mappings: any[]) => void;
 }
 
 // Get predefined suppress sources from API or fallback to default
@@ -99,12 +110,20 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   onAddSharedCustomSource,
   onEditSharedCustomSource,
   onDeleteSharedCustomSource,
-  appendConfigurations = []
+  appendConfigurations = [],
+  moduleFieldMappings = [],
+  onModuleFieldMappingsChange
 }) => {
   const [configs, setConfigs] = useState<SuppressConfig[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
-  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  // Use module-level field mappings from props instead of local state
+  const fieldMappings = moduleFieldMappings;
+  const setFieldMappings = (mappings: any[]) => {
+    if (onModuleFieldMappingsChange) {
+      onModuleFieldMappingsChange(mappings);
+    }
+  };
   const [viewingSource, setViewingSource] = useState<InputSource | null>(null);
   const [editingSource, setEditingSource] = useState<InputSource | null>(null);
 
@@ -206,6 +225,11 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       return true;
     }
 
+    // Always enable sources that are selected as input sources
+    if (selectedInputSources.includes(sourceId)) {
+      return true;
+    }
+
     // Get the fields for this source
     const sourceFields = getSuppressSourceFields(sourceId);
 
@@ -214,8 +238,10 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       return false;
     }
 
-    // Check if all selected suppress on fields exist in the source fields
-    return selectedSuppressOnFields.every(suppressKey => sourceFields.includes(suppressKey));
+    // Check if all selected suppress on fields exist in the source fields (case-insensitive)
+    return selectedSuppressOnFields.every(suppressKey =>
+      sourceFields.some(field => field.toLowerCase() === suppressKey.toLowerCase())
+    );
   };
 
   // Load initial configurations if provided (for edit mode)
@@ -235,10 +261,18 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   // Auto-deselect suppress sources that don't have all selected suppress on fields
   useEffect(() => {
     if (selectedSuppressOnFields.length > 0 && selectedSuppressSources.length > 0) {
-      // Filter out sources that don't have all suppress on fields
+      // Filter out sources that don't have all suppress on fields, but keep selected input sources
       const validSources = selectedSuppressSources.filter(sourceId => {
+        // Always keep selected input sources
+        if (selectedInputSources.includes(sourceId)) {
+          return true;
+        }
+
+        // For other sources, check if they have all suppress on fields
         const sourceFields = getSuppressSourceFields(sourceId);
-        return selectedSuppressOnFields.every(suppressKey => sourceFields.includes(suppressKey));
+        return selectedSuppressOnFields.every(suppressKey =>
+          sourceFields.some(field => field.toLowerCase() === suppressKey.toLowerCase())
+        );
       });
 
       // Update if any sources were filtered out
@@ -289,7 +323,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
         // Check if this field has a mapping
         const mapping = fieldMappings.find(m => {
-          return m.selectedColumns.some(col => {
+          return m.selectedColumns.some((col: string) => {
             const [colSourceId, colFieldName] = col.split('::');
             return colSourceId === source.id && colFieldName === field;
           });
@@ -359,6 +393,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               inputSources: selectedInputSources,
               suppressOnFields: selectedSuppressOnFields,
               suppressSources: selectedSuppressSources,
+              fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
             }
           : config
       ));
@@ -371,6 +406,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         inputSources: selectedInputSources,
         suppressOnFields: selectedSuppressOnFields,
         suppressSources: selectedSuppressSources,
+        fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
         createdAt: timestamp, // Add timestamp for creation order
       };
       setConfigs([...configs, newConfig]);
@@ -380,6 +416,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     setSelectedInputSources([]);
     setSelectedSuppressOnFields([]);
     setSelectedSuppressSources([]);
+    // Don't reset fieldMappings - they are module-level, not config-level
+    // All configs/versions in this module should use the same field mappings
   };
 
   const handleEditConfig = (config: SuppressConfig) => {
@@ -387,6 +425,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     setSelectedInputSources(config.inputSources);
     setSelectedSuppressOnFields(config.suppressOnFields);
     setSelectedSuppressSources(config.suppressSources);
+    // Don't load config's field mappings - field mappings are module-level, not config-level
+    // All configs/versions use the same module-level field mappings
   };
 
   const handleCancelEdit = () => {
@@ -394,6 +434,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     setSelectedInputSources([]);
     setSelectedSuppressOnFields([]);
     setSelectedSuppressSources([]);
+    // Don't reset fieldMappings - they are module-level and persist across all configs
   };
 
   const handleDeleteConfig = (id: string) => {
@@ -515,7 +556,10 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             variant="outlined"
             size="small"
             startIcon={<AccountTree />}
-            onClick={() => setFieldMappingDialogOpen(true)}
+            onClick={() => {
+              console.log('🔍 [DEBUG - Suppress Module] Step 0: Configure Field Mapping button clicked, current fieldMappings =', fieldMappings);
+              setFieldMappingDialogOpen(true);
+            }}
             sx={{
               textTransform: 'none',
               fontSize: '0.875rem',
@@ -1770,7 +1814,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
       {/* Custom Suppress Sources List */}
       {customSuppressSources.length > 0 && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mt: 4, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Custom Suppress Sources
@@ -1940,7 +1984,10 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={setFieldMappings}
+        onSave={(mappings) => {
+          console.log('🔍 [DEBUG - Suppress Module] Step 5: Received mappings from dialog =', mappings);
+          setFieldMappings(mappings);
+        }}
         availableSources={(() => {
           // Helper function to extract all headers including nested fields
           const getAllHeaders = (src: any) => {

@@ -43,6 +43,7 @@ import { useNavigate } from 'react-router-dom';
 import OutputModule from '../../../components/OutputModule/OutputModule';
 import StatsConfigDialog from '../../../components/StatsConfigDialog/StatsConfigDialog';
 import { getAllReports, type Report as ApiReport } from '../../../services/api';
+import ContentLoader from '../../../components/ContentLoader/ContentLoader';
 
 interface ReportData {
   id: number;
@@ -80,6 +81,7 @@ const ReportPage: React.FC = () => {
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
   const [statsDialogOpen, setStatsDialogOpen] = useState(false);
   const [statsRequestId, setStatsRequestId] = useState<number | null>(null);
+  const [selectedReportData, setSelectedReportData] = useState<ReportData | null>(null);
 
   // API-related state - Initialize with empty data
   const [reports, setReports] = useState<ReportData[]>([]);
@@ -175,13 +177,17 @@ const ReportPage: React.FC = () => {
   };
 
   const handleOpenStats = (requestId: number) => {
+    // Find the report data from the current reports list
+    const reportData = reports.find(r => r.id === requestId);
     setStatsRequestId(requestId);
+    setSelectedReportData(reportData || null);
     setStatsDialogOpen(true);
   };
 
   const handleCloseStats = () => {
     setStatsDialogOpen(false);
     setStatsRequestId(null);
+    setSelectedReportData(null);
   };
 
   const getStatusChipStyle = (status: string) => {
@@ -265,9 +271,6 @@ const ReportPage: React.FC = () => {
               }}
             >
               Data Pull Reports
-              {loading && (
-                <CircularProgress size={20} sx={{ ml: 2, color: 'primary.main' }} />
-              )}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
               Manage and monitor all data pull requests
@@ -360,21 +363,25 @@ const ReportPage: React.FC = () => {
           overflow: 'hidden',
         }}
       >
-        <Table>
-          <TableHead>
-            <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-              <TableCell>Request Name</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Created Date</TableCell>
-              <TableCell>Processed Date</TableCell>
-              <TableCell>Created By</TableCell>
-              <TableCell>Updated By</TableCell>
-              <TableCell>Updated Date</TableCell>
-              <TableCell align="center">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {reports && reports.length > 0 ? (
+        {loading ? (
+          <ContentLoader message="Loading data pull reports..." minHeight="500px" />
+        ) : (
+          <Table>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
+                <TableCell sx={{ width: '80px' }} align="center">ID</TableCell>
+                <TableCell>Request Name</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Created Date</TableCell>
+                <TableCell>Processed Date</TableCell>
+                <TableCell>Created By</TableCell>
+                <TableCell>Updated By</TableCell>
+                <TableCell>Updated Date</TableCell>
+                <TableCell align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {reports && reports.length > 0 ? (
               reports.map((row) => (
                   <TableRow
                     key={row.id}
@@ -386,6 +393,21 @@ const ReportPage: React.FC = () => {
                       transition: 'all 0.2s ease',
                     }}
                   >
+                  <TableCell align="center">
+                    <Chip
+                      label={row.id}
+                      size="small"
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace',
+                        backgroundColor: 'rgba(41, 102, 149, 0.08)',
+                        color: '#296695',
+                        border: '1px solid rgba(41, 102, 149, 0.2)',
+                        minWidth: '50px',
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
                       {row.requestName || '-'}
@@ -439,7 +461,7 @@ const ReportPage: React.FC = () => {
                         <span>
                           <IconButton
                             size="small"
-                            // disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
+                            disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
                             onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
                             sx={{
                               color: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'primary.main' : 'text.disabled',
@@ -571,22 +593,25 @@ const ReportPage: React.FC = () => {
                   </Typography>
                 </TableCell>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
-          component="div"
-          count={totalCount}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          sx={{
-            borderTop: '1px solid',
-            borderColor: 'divider',
-          }}
-        />
+              )}
+            </TableBody>
+          </Table>
+        )}
+        {!loading && (
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={totalCount}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            sx={{
+              borderTop: '1px solid',
+              borderColor: 'divider',
+            }}
+          />
+        )}
       </TableContainer>
 
       {/* File Details Dialog */}
@@ -715,6 +740,7 @@ const ReportPage: React.FC = () => {
         open={statsDialogOpen}
         onClose={handleCloseStats}
         requestId={statsRequestId}
+        initialReportData={selectedReportData}
       />
     </Box>
   );

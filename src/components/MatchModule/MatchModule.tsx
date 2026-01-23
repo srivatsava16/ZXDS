@@ -61,7 +61,9 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   onEditSharedCustomSource,
   onDeleteSharedCustomSource,
   onConfigurationsChange,
-  appendConfigurations = []
+  appendConfigurations = [],
+  moduleFieldMappings = [],
+  onModuleFieldMappingsChange
 }) => {
   // Use custom hooks for state management
   const matchConfig = useMatchConfig(initialConfigs);
@@ -130,7 +132,25 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
-  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
+  // Use module-level field mappings from props instead of local state
+  const fieldMappings = moduleFieldMappings;
+  const setFieldMappings = (mappings: any[]) => {
+    if (onModuleFieldMappingsChange) {
+      onModuleFieldMappingsChange(mappings);
+    }
+  };
+
+  // Wrapper functions to handle fieldMappings state along with hook state
+  const handleEditConfigWithMappings = (config: MatchConfig) => {
+    matchConfig.handleEditConfig(config);
+    // Don't load config's field mappings - field mappings are module-level, not config-level
+    // All configs/versions use the same module-level field mappings
+  };
+
+  const handleCancelEditWithMappings = () => {
+    matchConfig.handleCancelEdit();
+    // Don't reset field mappings - they are module-level and persist across all configs
+  };
 
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);
@@ -171,6 +191,11 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       return true;
     }
 
+    // Always enable sources that are selected as input sources
+    if (matchConfig.selectedInputSources.includes(sourceId)) {
+      return true;
+    }
+
     // Get the fields for this source
     const sourceFields = getMatchSourceFields(sourceId);
 
@@ -179,8 +204,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       return false;
     }
 
-    // Check if all selected match on fields exist in the source fields
-    return matchConfig.selectedMatchOnFields.every(matchKey => sourceFields.includes(matchKey));
+    // Check if all selected match on fields exist in the source fields (case-insensitive)
+    return matchConfig.selectedMatchOnFields.every(matchKey =>
+      sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+    );
   };
 
   // Load initial configurations if provided (for edit mode)
@@ -200,10 +227,18 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   // Auto-deselect match sources that don't have all selected match on fields
   useEffect(() => {
     if (matchConfig.selectedMatchOnFields.length > 0 && matchConfig.selectedMatchSources.length > 0) {
-      // Filter out sources that don't have all match on fields
+      // Filter out sources that don't have all match on fields, but keep selected input sources
       const validSources = matchConfig.selectedMatchSources.filter(sourceId => {
+        // Always keep selected input sources
+        if (matchConfig.selectedInputSources.includes(sourceId)) {
+          return true;
+        }
+
+        // For other sources, check if they have all match on fields
         const sourceFields = getMatchSourceFields(sourceId);
-        return matchConfig.selectedMatchOnFields.every(matchKey => sourceFields.includes(matchKey));
+        return matchConfig.selectedMatchOnFields.every(matchKey =>
+          sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+        );
       });
 
       // Update if any sources were filtered out
@@ -346,7 +381,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       <MatchConfigHeader
         editingConfigId={matchConfig.editingConfigId}
         fieldMappings={fieldMappings}
-        onFieldMappingClick={() => setFieldMappingDialogOpen(true)}
+        onFieldMappingClick={() => {
+          console.log('🔍 [DEBUG - Match Module] Step 0: Configure Field Mapping button clicked, current fieldMappings =', fieldMappings);
+          setFieldMappingDialogOpen(true);
+        }}
         onAddCustomSourceClick={() => setDialogOpen(true)}
         onCreateVersion={handleCreateVersion}
         canCreateVersion={!!onCreateVersionedSource}
@@ -369,7 +407,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
             variant="outlined"
             size="small"
             startIcon={<AccountTree />}
-            onClick={() => setFieldMappingDialogOpen(true)}
+            onClick={() => {
+              console.log('🔍 [DEBUG - Match Module] Step 0: Configure Field Mapping button clicked, current fieldMappings =', fieldMappings);
+              setFieldMappingDialogOpen(true);
+            }}
             sx={{
               textTransform: 'none',
               fontSize: '0.875rem',
@@ -1317,7 +1358,11 @@ const MatchModule: React.FC<MatchModuleProps> = ({
           }}
         >
           <IconButton
-            onClick={() => matchConfig.handleAddOrUpdateConfig(allMatchSources, apiSources)}
+            onClick={() => {
+              matchConfig.handleAddOrUpdateConfig(fieldMappings, allMatchSources, apiSources);
+              // Don't reset fieldMappings - they are module-level, not config-level
+              // All configs/versions in this module should use the same field mappings
+            }}
             sx={{
               width: 48,
               height: '48px !important',
@@ -1340,7 +1385,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
           <Button
             variant="outlined"
-            onClick={matchConfig.handleCancelEdit}
+            onClick={handleCancelEditWithMappings}
             sx={{
               textTransform: 'none',
               fontSize: '0.85rem',
@@ -1806,7 +1851,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                           <IconButton
                             size="small"
-                            onClick={() => matchConfig.handleEditConfig(config!)}
+                            onClick={() => handleEditConfigWithMappings(config!)}
                             sx={{
                               color: 'info.main',
                               padding: '3px',
@@ -1846,7 +1891,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
 
       {/* Custom Match Sources List */}
       {customSources.customMatchSources.length > 0 && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mt: 4, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Custom Match Sources
@@ -2016,7 +2061,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       <FieldMappingDialog
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
-        onSave={setFieldMappings}
+        onSave={(mappings) => {
+          console.log('🔍 [DEBUG - Match Module] Step 5: Received mappings from dialog =', mappings);
+          setFieldMappings(mappings);
+        }}
         availableSources={(() => {
           // Helper function to extract all headers including nested fields
           const getAllHeaders = (src: any) => {

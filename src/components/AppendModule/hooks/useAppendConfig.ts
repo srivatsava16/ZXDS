@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { AppendConfig } from '../types';
 import { nanoid } from 'nanoid';
 
-export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
+export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: string) => {
   const [configs, setConfigs] = useState<AppendConfig[]>(initialConfigs || []);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
 
@@ -19,7 +19,9 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
   const [selectedAppendSources, setSelectedAppendSources] = useState<string[]>([]);
   const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
 
-  const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[], availableAppendSources?: any[], apiSources?: any) => {
+  const handleAddOrUpdateConfig = useCallback((availableAppendSources?: any[], apiSources?: any) => {
+    console.log('🔍 [DEBUG - useAppendConfig Hook] Step 7: handleAddOrUpdateConfig called (field mappings are module-level)');
+
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source');
       return;
@@ -74,12 +76,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
         }
       });
 
-      if (appendSourcesWithoutMatchKeys.length > 0) {
-        alert(
-          `Validation Error: The following append sources do not have all the required match key fields:\n\n${appendSourcesWithoutMatchKeys.join('\n')}\n\nThe Fields to Append must be compatible with the selected Match Keys (Append On Fields).`
-        );
-        return;
-      }
+      
     }
 
     if (editingConfigId) {
@@ -90,12 +87,17 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
         appendOnFields: selectedAppendOnFields,
         appendSources: selectedAppendSources,
         appendFields: selectedAppendFields,
-        fieldMappings: fieldMappings || undefined,
+        // Note: fieldMappings are now managed at module level
       };
 
-      setConfigs(configs.map(config =>
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8: Updating config, updatedConfig =', updatedConfig);
+
+      const updatedConfigsArray = configs.map(config =>
         config.id === editingConfigId ? updatedConfig : config
-      ));
+      );
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', updatedConfigsArray);
+
+      setConfigs(updatedConfigsArray);
 
       setEditingConfigId(null);
     } else {
@@ -106,11 +108,18 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[]) => {
         appendOnFields: selectedAppendOnFields,
         appendSources: selectedAppendSources,
         appendFields: selectedAppendFields,
-        fieldMappings: fieldMappings || undefined,
+        // Note: fieldMappings are now managed at module level
         createdAt: Date.now(), // Add timestamp for creation order
+        createdByModuleId: moduleId, // Track which module instance created this config
       };
 
-      setConfigs([...configs, newConfig]);
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8: Creating new config, newConfig =', newConfig);
+
+      const newConfigsArray = [...configs, newConfig];
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', newConfigsArray);
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8c: Total configs in new array =', newConfigsArray.length);
+
+      setConfigs(newConfigsArray);
     }
 
     // Reset form

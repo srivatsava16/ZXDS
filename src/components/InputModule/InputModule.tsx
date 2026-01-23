@@ -42,6 +42,7 @@ export interface InputSource {
   selectedHeaders?: string[]; // User-selected subset of headers (for processing)
   dataTypes?: Record<string, string>;
   previewData?: any[];
+  contentPreview?: string; // Raw delimited content from Get Top 10 Records (for file sources)
   filterQuery?: string; // Store the generated filter query
   filterJson?: any; // Store the filter configuration (groups, conditions, etc.)
   isVersioned?: boolean; // Indicates if this source was created through versioning

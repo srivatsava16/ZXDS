@@ -24,8 +24,12 @@ import {
   Autocomplete,
   Checkbox,
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
-import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, MenuBook } from '@mui/icons-material';
+import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, MenuBook, Close } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
 import { type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
@@ -165,6 +169,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
   const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
   const [isRestoringData, setIsRestoringData] = useState<boolean>(false);
   const [customTableError, setCustomTableError] = useState<string>(''); // Error message for custom table
+  const [dictionaryDialogOpen, setDictionaryDialogOpen] = useState<boolean>(false);
 
   // Use API preconfigured tables or fallback to defaults
   const availableTables = apiSources?.dbSource?.preconfiguredTables?.input || [];
@@ -1025,6 +1030,42 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     });
   };
 
+  // Get all dictionary data from API (not filtered by table)
+  const getAllDictionaryData = () => {
+    if (!apiSources?.dbSource?.dataDictionary) {
+      return [];
+    }
+
+    // Dictionary data structure from API:
+    // { "TABLE_NAME": [ { field_name, description, field_values[], data_type } ] }
+    const dictionaryData = apiSources.dbSource.dataDictionary;
+
+    // Flatten all dictionary entries from all tables into a single array
+    const allEntries: Array<{ tableName: string; field: any }> = [];
+
+    Object.keys(dictionaryData).forEach((tableName) => {
+      const tableFields = dictionaryData[tableName];
+      if (Array.isArray(tableFields)) {
+        tableFields.forEach((field) => {
+          allEntries.push({
+            tableName,
+            field,
+          });
+        });
+      }
+    });
+
+    return allEntries;
+  };
+
+  const handleOpenDictionary = () => {
+    setDictionaryDialogOpen(true);
+  };
+
+  const handleCloseDictionary = () => {
+    setDictionaryDialogOpen(false);
+  };
+
   return (
     <Box>
       {/* Table Selection Type */}
@@ -1125,24 +1166,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     </MenuItem>
                   ))}
               </Select>
-              <Tooltip title="View Table Dictionary" arrow>
-                <IconButton
-                  size="small"
-                  disabled={!selectedTable}
-                  sx={{
-                    color: selectedTable ? 'primary.main' : 'action.disabled',
-                    border: '1px solid',
-                    borderColor: selectedTable ? 'primary.main' : 'action.disabled',
-                    borderRadius: '4px',
-                    '&:hover': {
-                      backgroundColor: 'primary.light',
-                      borderColor: 'primary.dark',
-                    },
-                  }}
-                >
-                  <MenuBook fontSize="small" />
-                </IconButton>
-              </Tooltip>
               <Button
                 variant="outlined"
                 size="small"
@@ -1156,6 +1179,27 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
               >
                 {isLoadingRecords ? 'Loading...' : 'Get Top 10 Records'}
               </Button>
+              <Tooltip title="View Table Dictionary" arrow>
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!apiSources?.dbSource?.dataDictionary}
+                    onClick={handleOpenDictionary}
+                    sx={{
+                      color: apiSources?.dbSource?.dataDictionary ? 'primary.main' : 'action.disabled',
+                      border: '1px solid',
+                      borderColor: apiSources?.dbSource?.dataDictionary ? 'primary.main' : 'action.disabled',
+                      borderRadius: '4px',
+                      '&:hover': {
+                        backgroundColor: 'primary.light',
+                        borderColor: 'primary.dark',
+                      },
+                    }}
+                  >
+                    <MenuBook fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Box>
           </Box>
 
@@ -1876,6 +1920,233 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
         </Box>
       )}
+
+      {/* Table Dictionary Dialog */}
+      <Dialog
+        open={dictionaryDialogOpen}
+        onClose={handleCloseDictionary}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            pb: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#2D3748' }}>
+              Data Dictionary
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+              All available table fields and metadata
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={handleCloseDictionary}
+            size="small"
+            sx={{
+              color: 'text.secondary',
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 2.5, pb: 2 }}>
+          {getAllDictionaryData().length > 0 ? (
+            <TableContainer
+              component={Paper}
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                boxShadow: 'none',
+                maxHeight: 600,
+              }}
+            >
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        color: '#2D3748',
+                        py: 1.5,
+                      }}
+                    >
+                      Table Name
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        color: '#2D3748',
+                        py: 1.5,
+                      }}
+                    >
+                      Field Name
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        color: '#2D3748',
+                        py: 1.5,
+                      }}
+                    >
+                      Description
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        color: '#2D3748',
+                        py: 1.5,
+                      }}
+                    >
+                      Sample Values
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#F8FAFB',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        color: '#2D3748',
+                        py: 1.5,
+                      }}
+                    >
+                      Data Type
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {getAllDictionaryData().map((entry: any, index: number) => {
+                    const { tableName, field } = entry;
+
+                    // Handle both field_name and fieldName (for backward compatibility)
+                    const fieldName = field.field_name || field.fieldName || '--';
+                    const description = field.description || '--';
+
+                    // Handle field_values (array) or availableValues (string)
+                    let sampleValues = '--';
+                    if (field.field_values && Array.isArray(field.field_values)) {
+                      // Take first 3 unique values
+                      const uniqueValues = [...new Set(field.field_values)].slice(0, 3);
+                      sampleValues = uniqueValues.join(', ');
+                      if (field.field_values.length > 3) {
+                        sampleValues += ', ...';
+                      }
+                    } else if (field.availableValues) {
+                      sampleValues = field.availableValues;
+                    }
+
+                    const dataType = field.data_type || field.dataType || '--';
+
+                    return (
+                      <TableRow key={index} hover>
+                        <TableCell sx={{ py: 1 }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#2D3748' }}>
+                            {tableName}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ py: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#2D3748' }}>
+                            {fieldName}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ py: 1 }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>
+                            {description}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ py: 1 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontSize: '0.8rem',
+                              color: 'text.secondary',
+                              fontFamily: 'monospace',
+                              maxWidth: 200,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={sampleValues}
+                          >
+                            {sampleValues}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ py: 1 }}>
+                          <Chip
+                            label={dataType}
+                            size="small"
+                            sx={{
+                              height: 22,
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              backgroundColor: '#E6F2FF',
+                              color: '#0066CC',
+                              border: '1px solid #B3D9FF',
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Box
+              sx={{
+                py: 6,
+                textAlign: 'center',
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: 1,
+                backgroundColor: '#F8FAFB',
+              }}
+            >
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                No dictionary data available.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button
+            onClick={handleCloseDictionary}
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              borderRadius: 1,
+              px: 3,
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

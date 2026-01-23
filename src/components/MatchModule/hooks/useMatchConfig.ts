@@ -23,7 +23,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
   const [expand, setExpand] = useState<boolean>(false);
   const [matchType, setMatchType] = useState<'full' | 'any'>('full');
 
-  const handleAddOrUpdateConfig = useCallback((availableMatchSources?: any[], apiSources?: any) => {
+  const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[], availableMatchSources?: any[], apiSources?: any) => {
     if (selectedInputSources.length === 0) {
       alert('Please select at least one Input Source');
       return;
@@ -74,12 +74,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
         }
       });
 
-      if (matchSourcesWithoutMatchKeys.length > 0) {
-        alert(
-          `Validation Error: The following match sources do not have all the required match key fields:\n\n${matchSourcesWithoutMatchKeys.join('\n')}\n\nThe Add Fields must be compatible with the selected Match Keys (Match On Fields).`
-        );
-        return;
-      }
+
     }
 
     if (editingConfigId) {
@@ -94,6 +89,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
               expand: expand,
               matchType: matchType,
               addFields: expand ? selectedAddFields : undefined,
+              fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
             }
           : config
       ));
@@ -108,6 +104,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
         expand: expand,
         matchType: matchType,
         addFields: expand ? selectedAddFields : undefined,
+        fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
         createdAt: Date.now(), // Add timestamp for creation order
       };
       setConfigs([...configs, newConfig]);

@@ -33,6 +33,7 @@ interface AppendSourceDialogProps {
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
   editingSource?: InputSource | null;
+  appendConfigs?: any[]; // Append configurations to determine appended fields for each source
 }
 
 const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
@@ -44,6 +45,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
   apiSources = null,
   sourcesLoading = false,
   editingSource = null,
+  appendConfigs = [],
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
@@ -295,11 +297,23 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
             allExistingSources={allExistingSources.length > 0 ? allExistingSources : availableInputSources}
           />
         ) : (
-          <SelfSourceConfig
-            data={sourceData}
-            onChange={setSourceData}
-            availableInputSources={availableInputSources}
-          />
+          <>
+            {console.log('[AppendSourceDialog] Rendering SelfSourceConfig with availableInputSources:',
+              availableInputSources.map(src => ({
+                id: src.id,
+                sourceName: src.sourceName,
+                isVersioned: src.isVersioned,
+                headersCount: src.headers?.length || 0,
+                headers: src.headers
+              }))
+            )}
+            <SelfSourceConfig
+              data={sourceData}
+              onChange={setSourceData}
+              availableInputSources={availableInputSources}
+              appendConfigs={appendConfigs}
+            />
+          </>
         )}
       </DialogContent>
 

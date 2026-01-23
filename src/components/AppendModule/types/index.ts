@@ -7,16 +7,13 @@ export interface AppendConfig {
   appendOnFields: string[];
   appendSources: string[];
   appendFields: string[];
-  fieldMappings?: Array<{
-    id: string;
-    fieldName: string;
-    selectedSources: string[];
-    selectedColumns: string[];
-  }>;
+  // Note: fieldMappings are now managed at module level, not config level
   createdAt?: number; // Timestamp for sorting by creation order
+  createdByModuleId?: string; // Track which module instance created this config
 }
 
 export interface AppendModuleProps {
+  moduleId?: string; // ID of the module instance (e.g., 'panel2', 'panel2_1')
   availableInputSources: InputSource[];
   onCreateVersionedSource?: (
     sourceModule: 'Match' | 'Append' | 'Suppress',
@@ -41,6 +38,9 @@ export interface AppendModuleProps {
   onDeleteSharedCustomSource?: (id: string) => void;
   // Configuration tracking for dependency validation
   onConfigurationsChange?: (configs: AppendConfig[]) => void;
+  // Module-level field mappings (shared across all configs/versions)
+  moduleFieldMappings?: any[];
+  onModuleFieldMappingsChange?: (mappings: any[]) => void;
 }
 
 export interface PredefinedSource {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -57,6 +57,15 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
+  // Sync initialMappings to local state when dialog opens or prop changes
+  useEffect(() => {
+    if (open) {
+      console.log('🔍 [DEBUG - FieldMappingDialog] Step 1: Dialog opened, initialMappings from parent =', initialMappings);
+      setMappings(initialMappings);
+      console.log('🔍 [DEBUG - FieldMappingDialog] Step 2: Set local mappings state =', initialMappings);
+    }
+  }, [open, initialMappings]);
+
   // Get available columns from selected sources with table names
   const getAvailableColumnsWithTables = (): Array<{ value: string; label: string; tableName: string }> => {
     const columnsWithTables: Array<{ value: string; label: string; tableName: string }> = [];
@@ -101,6 +110,9 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   );
 
   const handleAddMapping = () => {
+    console.log('🔍 [DEBUG - FieldMappingDialog] Step 3: Add/Update mapping clicked');
+    console.log('🔍 [DEBUG - FieldMappingDialog] Step 3a: Current mappings state BEFORE add =', mappings);
+
     if (!fieldName.trim()) {
       alert('Please enter a field name');
       return;
@@ -129,11 +141,13 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
 
     if (editingId) {
       // Update existing mapping
-      setMappings(mappings.map(m =>
+      const updatedMappings = mappings.map(m =>
         m.id === editingId
           ? { ...m, fieldName, selectedSources, selectedColumns }
           : m
-      ));
+      );
+      console.log('🔍 [DEBUG - FieldMappingDialog] Step 3b: Updating existing mapping, new mappings array =', updatedMappings);
+      setMappings(updatedMappings);
       setEditingId(null);
     } else {
       // Add new mapping
@@ -143,7 +157,9 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
         selectedSources,
         selectedColumns,
       };
-      setMappings([...mappings, newMapping]);
+      const newMappingsArray = [...mappings, newMapping];
+      console.log('🔍 [DEBUG - FieldMappingDialog] Step 3b: Adding new mapping, new mappings array =', newMappingsArray);
+      setMappings(newMappingsArray);
     }
 
     // Reset form
@@ -181,6 +197,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   };
 
   const handleSave = () => {
+    console.log('🔍 [DEBUG - FieldMappingDialog] Step 4: Save button clicked, sending mappings to parent =', mappings);
     onSave(mappings);
     onClose();
   };
