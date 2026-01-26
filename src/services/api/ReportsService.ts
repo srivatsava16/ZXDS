@@ -103,19 +103,44 @@ export interface PaginationParams {
 }
 
 export async function getAllReports(params?: PaginationParams): Promise<ApiResponse> {
-    const response = await ApiService.fetchData<ApiResponse>({
+    const response = await ApiService.fetchData<any>({
         url: '/report.php',
         method: 'post',
         data: params || { offset: 0, limit: 10 },
     });
+
+    // Transform preconfiguredStats to statsConfigurations for backward compatibility
+    const apiResponse = response?.data;
+    console.log('[getAllReports] Raw API response data:', apiResponse?.data);
+
+    if (apiResponse?.data && Array.isArray(apiResponse.data)) {
+        apiResponse.data = apiResponse.data.map((item: any) => {
+            console.log('[getAllReports] Transforming item:', {
+                id: item.id,
+                hasPreconfiguredStats: !!item.preconfiguredStats,
+                hasStatsConfigurations: !!item.statsConfigurations,
+                preconfiguredStats: item.preconfiguredStats,
+                statsConfigurations: item.statsConfigurations
+            });
+
+            return {
+                ...item,
+                statsConfigurations: item.preconfiguredStats || item.statsConfigurations || [],
+                suppressionBreakdown: item.suppressionBreakDown || item.suppressionBreakdown || []
+            };
+        });
+
+        console.log('[getAllReports] Transformed data:', apiResponse.data);
+    }
+
     // Return the full response data structure with success, data, totalRequests, and Counts
     // Don't use transform() as it strips away the success and Counts properties
-    return response?.data as ApiResponse;
+    return apiResponse as ApiResponse;
 }
 
 export async function getRequestById(requestId: number): Promise<ReportData | null> {
     console.log('[getRequestById] Fetching request with ID:', requestId);
-    const response = await ApiService.fetchData<{ success: boolean; data: ReportData[] }>({
+    const response = await ApiService.fetchData<{ success: boolean; data: any[] }>({
         url: '/report.php',
         method: 'post',
         data: { requestId },
@@ -125,9 +150,22 @@ export async function getRequestById(requestId: number): Promise<ReportData | nu
     console.log('[getRequestById] response.data.data:', response?.data?.data);
     // The API returns an array with one item when requesting by ID
     if (response?.data?.success && response?.data?.data?.length > 0) {
-        const requestData = response.data.data[0];
-        console.log('[getRequestById] Returning request data:', requestData);
-        console.log('[getRequestById] statsConfigurations:', requestData.statsConfigurations);
+        const rawData = response.data.data[0];
+        console.log('[getRequestById] Raw request data:', rawData);
+        console.log('[getRequestById] Raw preconfiguredStats:', rawData.preconfiguredStats);
+        console.log('[getRequestById] Raw statsConfigurations:', rawData.statsConfigurations);
+
+        // Transform API field names for backward compatibility
+        const requestData: ReportData = {
+            ...rawData,
+            statsConfigurations: rawData.preconfiguredStats || rawData.statsConfigurations || [],
+            suppressionBreakdown: rawData.suppressionBreakDown || rawData.suppressionBreakdown || []
+        };
+
+        console.log('[getRequestById] Transformed request data:', requestData);
+        console.log('[getRequestById] Final statsConfigurations:', requestData.statsConfigurations);
+        console.log('[getRequestById] statsConfigurations length:', requestData.statsConfigurations?.length);
+        console.log('[getRequestById] suppressionBreakdown:', requestData.suppressionBreakdown);
         return requestData;
     }
     console.log('[getRequestById] No data found, returning null');
