@@ -338,38 +338,28 @@ const ReportPage: React.FC = () => {
         setTotalCount(parseInt(response.totalRequests) || 0);
         setApiCounts(response.Counts || null);
 
-        console.log('[loadReports] Full API response:', response);
-        console.log('[loadReports] response.nfsSources:', response.nfsSources);
-        console.log('[loadReports] response.sftpSources:', response.sftpSources);
-        console.log('[loadReports] response.awsSources:', response.awsSources);
-
         // Extract and combine destination sources from API response
         const destinations: Array<{ id: number; name: string; type: string }> = [];
 
         if (response.nfsSources && Array.isArray(response.nfsSources)) {
-          console.log('[loadReports] Processing nfsSources:', response.nfsSources);
           response.nfsSources.forEach((source: any) => {
             destinations.push({ id: source.id, name: source.name, type: 'NFS' });
           });
         }
 
         if (response.sftpSources && Array.isArray(response.sftpSources)) {
-          console.log('[loadReports] Processing sftpSources:', response.sftpSources);
           response.sftpSources.forEach((source: any) => {
             destinations.push({ id: source.id, name: source.name, type: 'SFTP' });
           });
         }
 
         if (response.awsSources && Array.isArray(response.awsSources)) {
-          console.log('[loadReports] Processing awsSources:', response.awsSources);
           response.awsSources.forEach((source: any) => {
             destinations.push({ id: source.id, name: source.name, type: 'AWS' });
           });
         }
 
-        console.log('[loadReports] Final destinations array:', destinations);
         setAvailableDestinations(destinations);
-        console.log('[loadReports] Loaded destinations count:', destinations.length);
       } else {
         // If API returns unsuccessful response, show error
         setError('Failed to load reports. Please try again.');
@@ -436,11 +426,9 @@ const ReportPage: React.FC = () => {
 
     try {
       setFileGenLoading(true);
-      console.log('[handleOpenFileGeneration] Loading data for request ID:', requestId);
 
       // Find the report data from the already-loaded reports list
       const reportData = reports.find((report) => report.id === requestId);
-      console.log('[handleOpenFileGeneration] Found report data:', reportData);
 
       if (!reportData) {
         console.warn('[handleOpenFileGeneration] Report not found in loaded data for ID:', requestId);
@@ -453,7 +441,6 @@ const ReportPage: React.FC = () => {
 
       // Check for dynamicStats.data in the report
       if ((reportData as any)?.dynamicStats?.data && Array.isArray((reportData as any).dynamicStats.data)) {
-        console.log('[handleOpenFileGeneration] Using dynamicStats.data:', (reportData as any).dynamicStats.data);
 
         transformedSources = (reportData as any).dynamicStats.data.map((source: any) => ({
           id: source.id,
@@ -464,12 +451,10 @@ const ReportPage: React.FC = () => {
         console.warn('[handleOpenFileGeneration] No dynamicStats.data found for request', requestId);
       }
 
-      console.log('[handleOpenFileGeneration] Transformed input sources:', transformedSources);
       setAvailableInputSources(transformedSources);
 
       // Extract and transform output configurations from API response
       if ((reportData as any)?.output && Array.isArray((reportData as any)?.output)) {
-        console.log('[handleOpenFileGeneration] Processing output configurations:', (reportData as any).output);
 
         const outputConfigs = (reportData as any).output?.map((output: any, index: number) => {
           // Extract output details if status is Completed
@@ -501,7 +486,6 @@ const ReportPage: React.FC = () => {
           };
         }) || [];
 
-        console.log('[handleOpenFileGeneration] Transformed output configurations:', outputConfigs);
         setSavedConfigurations(outputConfigs);
       }
     } catch (err) {
@@ -636,11 +620,8 @@ const ReportPage: React.FC = () => {
 
     try {
       setFileGenLoading(true);
-      console.log('[handleSaveConfiguration] Sending payload:', payload);
-      console.log('[handleSaveConfiguration] Is custom destination:', isCustomDestination);
 
       const response = await reportInserts(payload);
-      console.log('[handleSaveConfiguration] API response:', response);
 
       if (response.success) {
         // Save to local state for display
@@ -1237,20 +1218,33 @@ const ReportPage: React.FC = () => {
                         </span>
                       </Tooltip>
 
-                      {/* Stop Icon - Enabled for all statuses */}
-                       <Tooltip title="Generate files" arrow>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenFileGeneration(row.id)}
-                          sx={{
-                            color: 'info.main',
-                            '&:hover': {
-                              backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                            },
-                          }}
-                        >
-                          <Description fontSize="small" />
-                        </IconButton>
+                      {/* Stop Icon - Enabled for Waiting and Pending */}
+                      <Tooltip
+                        title={['Waiting', 'Pending'].includes(row.status)
+                          ? "Stop request"
+                          : "Stop not available for this status"
+                        }
+                        arrow
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={!['Waiting', 'Pending'].includes(row.status)}
+                            onClick={() => handleStopRequest(row.id)}
+                            sx={{
+                              color: ['Waiting', 'Pending'].includes(row.status) ? 'error.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: ['Waiting', 'Pending'].includes(row.status) ? 'rgba(244, 67, 54, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Close fontSize="small" />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                     </Box>
                   </TableCell>
@@ -2718,12 +2712,7 @@ const ReportPage: React.FC = () => {
                     onChange={(e) => setSelectedDestination(e.target.value)}
                     displayEmpty
                     size="small"
-                    onOpen={() => {
-                      console.log('[Output Destination] Dropdown opened');
-                      console.log('[Output Destination] availableDestinations:', availableDestinations);
-                      console.log('[Output Destination] customDestinations:', customDestinations);
-                      console.log('[Output Destination] Total destinations:', availableDestinations.length + customDestinations.length);
-                    }}
+                    onOpen={() => {}}
                   >
                     <MenuItem value="">
                       <em>Select Output Destination</em>

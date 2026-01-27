@@ -135,9 +135,12 @@ export const getAddFieldsFromMatchSources = (
   const fieldsSet = new Set<string>();
 
   matchSourceIds.forEach(id => {
+    // Ensure id is a string
+    const idStr = String(id || '');
+
     // Check if it's a predefined match source (from API)
-    if (id.startsWith('match_')) {
-      const tableId = parseInt(id.replace('match_', ''));
+    if (idStr.startsWith('match_')) {
+      const tableId = parseInt(idStr.replace('match_', ''));
       const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
         table => table.tableId === tableId
       );

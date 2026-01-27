@@ -146,21 +146,6 @@ export async function getTop10Records(payload: Top10RecordsRequest): Promise<Top
   }
 }
 
-
-export async function checkRequestName(requestName: string): Promise<boolean> {
-  try {
-    const response = await ApiService.fetchData<{ exists: boolean }>({
-      url: '/checkRequestName.php',
-      method: 'post',
-      data: { requestName: requestName.trim() }
-    });
-    return response?.data?.exists ;
-  } catch (error) {
-    // For development - simulate some existing names
-    return false;
-  }
-}
-
 export interface SaveRequestPayload {
   requestName: string;
   inputSources: any[];
