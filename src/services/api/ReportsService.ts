@@ -140,33 +140,56 @@ export async function getAllReports(params?: PaginationParams): Promise<ApiRespo
 
 export async function getRequestById(requestId: number): Promise<ReportData | null> {
     console.log('[getRequestById] Fetching request with ID:', requestId);
-    const response = await ApiService.fetchData<{ success: boolean; data: any[] }>({
+    const response = await ApiService.fetchData<any>({
         url: '/report.php',
         method: 'post',
         data: { requestId },
     });
     console.log('[getRequestById] Raw API response:', response);
     console.log('[getRequestById] response.data:', response?.data);
-    console.log('[getRequestById] response.data.data:', response?.data?.data);
-    // The API returns an array with one item when requesting by ID
-    if (response?.data?.success && response?.data?.data?.length > 0) {
-        const rawData = response.data.data[0];
-        console.log('[getRequestById] Raw request data:', rawData);
-        console.log('[getRequestById] Raw preconfiguredStats:', rawData.preconfiguredStats);
-        console.log('[getRequestById] Raw statsConfigurations:', rawData.statsConfigurations);
 
-        // Transform API field names for backward compatibility
-        const requestData: ReportData = {
-            ...rawData,
-            statsConfigurations: rawData.preconfiguredStats || rawData.statsConfigurations || [],
-            suppressionBreakdown: rawData.suppressionBreakDown || rawData.suppressionBreakdown || []
-        };
+    if (response?.data?.success) {
+        // Check if the response has the detailed format (with inputSources at root level)
+        if (response.data.inputSources || response.data.requestDetails) {
+            console.log('[getRequestById] Using detailed format with inputSources');
+            console.log('[getRequestById] inputSources:', response.data.inputSources);
+            console.log('[getRequestById] workflow:', response.data.workflow);
+            console.log('[getRequestById] stats:', response.data.stats);
+            console.log('[getRequestById] output:', response.data.output);
 
-        console.log('[getRequestById] Transformed request data:', requestData);
-        console.log('[getRequestById] Final statsConfigurations:', requestData.statsConfigurations);
-        console.log('[getRequestById] statsConfigurations length:', requestData.statsConfigurations?.length);
-        console.log('[getRequestById] suppressionBreakdown:', requestData.suppressionBreakdown);
-        return requestData;
+            // Return the data as-is, including inputSources, workflow, stats, output
+            return response.data;
+        }
+
+        // Fallback: Check if response has data array (list format)
+        if (response.data.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+            console.log('[getRequestById] Using list format, finding record by ID:', requestId);
+
+            // Find the specific record that matches the requestId
+            const rawData = response.data.data.find((record: any) => record.id === requestId);
+
+            if (!rawData) {
+                console.warn('[getRequestById] Record not found in list for ID:', requestId);
+                return null;
+            }
+
+            console.log('[getRequestById] Found record:', rawData);
+            console.log('[getRequestById] Raw preconfiguredStats:', rawData.preconfiguredStats);
+            console.log('[getRequestById] Raw dynamicStats:', rawData.dynamicStats);
+
+            // Transform API field names for backward compatibility
+            const requestData: ReportData = {
+                ...rawData,
+                statsConfigurations: rawData.preconfiguredStats || rawData.statsConfigurations || [],
+                suppressionBreakdown: rawData.suppressionBreakDown || rawData.suppressionBreakdown || []
+            };
+
+            console.log('[getRequestById] Transformed request data:', requestData);
+            console.log('[getRequestById] Final statsConfigurations:', requestData.statsConfigurations);
+            console.log('[getRequestById] statsConfigurations length:', requestData.statsConfigurations?.length);
+            console.log('[getRequestById] suppressionBreakdown:', requestData.suppressionBreakdown);
+            return requestData;
+        }
     }
     console.log('[getRequestById] No data found, returning null');
     return null;
@@ -226,6 +249,37 @@ export interface ReportInsertsRequest {
             }>;
         };
         breakdown_by: string[];
+    }>;
+    output?: Array<{
+        config: {
+            input_sources: string[];
+            output_fields: string[];
+            field_mappings: any[];
+            combine_sources: boolean;
+            field_priority: string[];
+        };
+        destinationType: 'preconfigured' | 'custom';
+        destinationName?: string;  // Only for preconfigured
+        destinationConfig?: {  // Only for custom
+            type: 'SFTP' | 'S3' | 'NFS';
+            // SFTP fields
+            hostname?: string;
+            port?: number;
+            path?: string;
+            username?: string;
+            password?: string;
+            // S3 fields
+            bucketname?: string;
+            region?: string;
+            accesskey?: string;
+            // NFS fields
+            hostserver?: string;
+            mountpath?: string;
+        };
+        limitations: {
+            limit_records: number | null;
+            shuffle_records: boolean;
+        };
     }>;
     status?: string;  // For STOP action
     [key: string]: unknown;
