@@ -45,6 +45,10 @@ export interface SuppressConfig {
   }>;
   createdAt?: number; // Timestamp for sorting by creation order
   createdByModuleId?: string; // Track which module instance created this config
+  stepOrder?: number; // Module position in workflow (1-based)
+  internalStepOrder?: number; // Order within the module (1-based)
+  hasExistingId?: boolean; // Flag to indicate if this has an existing ID from API (for update payload)
+  workflowItemId?: string; // Store original workflow item ID if exists
 }
 
 interface AppendConfig {
@@ -172,8 +176,9 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     }
   };
 
-  // Use shared custom sources from props
-  const customSuppressSources = sharedCustomSources;
+  // Use shared custom sources from props, excluding Self-type sources
+  // Self-type sources are only for internal use within the specific module that created them
+  const customSuppressSources = sharedCustomSources.filter(source => source.sourceType !== 'Self');
 
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);

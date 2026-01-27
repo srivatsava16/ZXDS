@@ -10,6 +10,10 @@ export interface AppendConfig {
   // Note: fieldMappings are now managed at module level, not config level
   createdAt?: number; // Timestamp for sorting by creation order
   createdByModuleId?: string; // Track which module instance created this config
+  stepOrder?: number; // Module position in workflow (1-based)
+  internalStepOrder?: number; // Order within the module (1-based)
+  hasExistingId?: boolean; // Flag to indicate if this has an existing ID from API (for update payload)
+  workflowItemId?: string; // Store original workflow item ID if exists
 }
 
 export interface AppendModuleProps {

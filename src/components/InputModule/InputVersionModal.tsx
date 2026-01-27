@@ -277,8 +277,34 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         setSelectedSources(sourceIds);
 
         // Set operation/combineAs
+        // IMPORTANT: Use combine_as if available (preserves exact UI state), otherwise infer from operation
         const operation = configJson.operation;
-        setCombineAs(operation === 'union' ? 'merge' : operation);
+        const storedCombineAs = configJson.combine_as;
+
+        if (storedCombineAs) {
+          // Use the stored UI value directly (most accurate)
+          setCombineAs(storedCombineAs);
+          console.log('[InputVersionModal] Using stored combine_as value:', storedCombineAs);
+        } else {
+          // Fallback: Infer from operation (backward compatibility)
+          // Map API operations to UI values:
+          // 'union_all' → 'merge' (Union All)
+          // 'union' → 'union' (Union)
+          // 'intersect' → 'intersect' (Intersect)
+          if (operation === 'union_all') {
+            setCombineAs('merge');
+          } else if (operation === 'union') {
+            // For backward compatibility with old data, default to 'union' (not 'merge')
+            // This fixes the issue where it always defaulted to Union All
+            setCombineAs('union');
+          } else if (operation === 'intersect') {
+            setCombineAs('intersect');
+          } else {
+            // Direct mapping for any other value (like 'merge')
+            setCombineAs(operation);
+          }
+          console.log('[InputVersionModal] Inferred combine_as from operation:', operation, '→', combineAs);
+        }
 
         // Set merge_keys as selected and ordered headers
         const mergeKeys = configJson.merge_keys || [];
@@ -481,16 +507,27 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
       setAvailableHeaders(headers);
 
-      // Always auto-select all available headers when sources change
-      // This ensures the Select Headers state reflects the current available headers
-      setSelectedHeaders(headers);
-      setOrderedHeaders(headers);
+      // IMPORTANT FIX: Only auto-select all headers if NOT in edit mode
+      // In edit mode, preserve the previously selected headers
+      if (!editingVersion) {
+        // Create mode: Auto-select all available headers
+        setSelectedHeaders(headers);
+        setOrderedHeaders(headers);
+      } else {
+        // Edit mode: Only update if current selection is invalid
+        // Keep headers that are still available, remove headers that are no longer available
+        const validSelectedHeaders = selectedHeaders.filter(h => headers.includes(h));
+        if (validSelectedHeaders.length !== selectedHeaders.length) {
+          setSelectedHeaders(validSelectedHeaders);
+          setOrderedHeaders(orderedHeaders.filter(h => validSelectedHeaders.includes(h)));
+        }
+      }
     } else {
       setAvailableHeaders([]);
       setSelectedHeaders([]);
       setOrderedHeaders([]);
     }
-  }, [selectedSources, availableSources, nestedFields, fieldMappings]);
+  }, [selectedSources, availableSources, nestedFields, fieldMappings, editingVersion]);
 
   const handleSourcesChange = (event: any) => {
     const value = typeof event.target.value === 'string' 
@@ -819,10 +856,11 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         }).filter((item): item is { source_name: string; fields: Array<{ field_name: string; data_type: string; default_value: string | number; }>; } => item !== null) // Remove null entries with type guard
       : [];
 
-    // Map combineAs to operation: merge -> union, union -> union, intersect -> intersect
+    // Map combineAs to operation
+    // IMPORTANT: Distinguish between Union All (merge) and Union (union)
     const operationMap: Record<string, string> = {
-      'merge': 'union',
-      'union': 'union',
+      'merge': 'union_all',  // Union All (includes duplicates)
+      'union': 'union',       // Union (removes duplicates)
       'intersect': 'intersect'
     };
 
@@ -857,6 +895,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       internalStepOrder: internalStepOrder,
       configJson: {
         operation: operationMap[combineAs] || combineAs,
+        combine_as: combineAs, // Store UI value to preserve exact state for edit mode
         input_sources,
         added_fields,
         field_mappings,

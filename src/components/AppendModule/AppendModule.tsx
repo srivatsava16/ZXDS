@@ -155,8 +155,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   //   }
   // };
 
-  // Use shared custom sources from props
-  const customAppendSources = sharedCustomSources;
+  // Use shared custom sources from props, excluding Self-type sources
+  // Self-type sources are only for internal use within the specific module that created them
+  const customAppendSources = sharedCustomSources.filter(source => source.sourceType !== 'Self');
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);

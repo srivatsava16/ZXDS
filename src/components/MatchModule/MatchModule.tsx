@@ -117,9 +117,10 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     }
   };
 
-  // Use shared custom sources from props
+  // Use shared custom sources from props, excluding Self-type sources
+  // Self-type sources are only for internal use within the specific module that created them
   const customSources = {
-    customMatchSources: sharedCustomSources,
+    customMatchSources: sharedCustomSources.filter(source => source.sourceType !== 'Self'),
     editingSource,
     viewingSource,
     setEditingSource,

@@ -101,6 +101,7 @@ export interface VersionedSource extends InputSource {
   addFields?: string[];     // Add Fields for Match module
   combinedHeaders?: string[];
   createdAt?: number; // Timestamp for sorting by creation order
+  stepOrder?: number; // Module position in workflow (1-based)
 }
 
 export interface ModuleConfig {

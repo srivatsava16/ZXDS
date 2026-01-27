@@ -1134,20 +1134,33 @@ const ReportPage: React.FC = () => {
                   </TableCell>
                   <TableCell align="center">
                     <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                      {/* Edit Icon - Enabled for all statuses */}
-                      <Tooltip title="Edit request" arrow>
-                        <IconButton
-                          size="small"
-                          onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
-                          sx={{
-                            color: 'primary.main',
-                            '&:hover': {
-                              backgroundColor: 'rgba(41, 102, 149, 0.12)',
-                            },
-                          }}
-                        >
-                          <Edit fontSize="small" />
-                        </IconButton>
+                       {/* Edit Icon - Enabled for Waiting, Failed, Pending */}
+                      <Tooltip 
+                        title={['Waiting', 'Failed', 'Pending'].includes(row.status) 
+                          ? "Edit request" 
+                          : "Edit not available for this status"
+                        }
+                        arrow
+                      >
+                         <span>
+                          <IconButton
+                            size="small"
+                            disabled={!['Waiting', 'Failed', 'Pending'].includes(row.status)}
+                            onClick={() => navigate(`/dataPullRequests/edit/${row.id}`)}
+                            sx={{
+                              color: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'primary.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: ['Waiting', 'Failed', 'Pending'].includes(row.status) ? 'rgba(41, 102, 149, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </span>
                       </Tooltip>
 
                       {/* Duplicate Icon - Enabled for all statuses */}
@@ -1167,23 +1180,65 @@ const ReportPage: React.FC = () => {
                       </Tooltip>
 
                       {/* Stats Icon - Enabled for all statuses */}
-                      <Tooltip title="View stats" arrow>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenStats(row.id)}
-                          sx={{
-                            color: 'success.main',
-                            '&:hover': {
-                              backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                            },
-                          }}
-                        >
-                          <Assessment fontSize="small" />
-                        </IconButton>
+                       <Tooltip
+                        title={row.status === 'Completed'
+                          ? "View stats"
+                          : "Stats available only for completed requests"
+                        }
+                        arrow
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={row.status !== 'Completed'}
+                            onClick={() => handleOpenStats(row.id)}
+                            sx={{
+                              color: row.status === 'Completed' ? 'success.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: row.status === 'Completed' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Assessment fontSize="small" />
+                          </IconButton>
+                        </span>
                       </Tooltip>
 
                       {/* File Generation Icon - Enabled for all statuses */}
-                      <Tooltip title="Generate files" arrow>
+                     <Tooltip
+                        title={row.status === 'Completed'
+                          ? "Generate files"
+                          : "File generation available only for completed requests"
+                        }
+                        arrow
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={row.status !== 'Completed'}
+                            onClick={() => handleOpenFileGeneration(row.id)}
+                            sx={{
+                              color: row.status === 'Completed' ? 'info.main' : 'text.disabled',
+                              '&:hover': {
+                                backgroundColor: row.status === 'Completed' ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                              },
+                              '&.Mui-disabled': {
+                                color: 'text.disabled',
+                                opacity: 0.3,
+                              },
+                            }}
+                          >
+                            <Description fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+
+                      {/* Stop Icon - Enabled for all statuses */}
+                       <Tooltip title="Generate files" arrow>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenFileGeneration(row.id)}
@@ -1195,22 +1250,6 @@ const ReportPage: React.FC = () => {
                           }}
                         >
                           <Description fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      {/* Stop Icon - Enabled for all statuses */}
-                      <Tooltip title="Stop request" arrow>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleStopRequest(row.id)}
-                          sx={{
-                            color: 'error.main',
-                            '&:hover': {
-                              backgroundColor: 'rgba(244, 67, 54, 0.12)',
-                            },
-                          }}
-                        >
-                          <Close fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Box>

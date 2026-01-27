@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -246,10 +246,15 @@ const RequestCreationPage: React.FC = () => {
           actualTableName
         });
 
-        const transformedSource = {
+        // Determine sourceType - check for 'self' (lowercase) as well
+        const sourceType = source?.sourceType === 'T' ? 'Database' :
+                          source?.sourceType === 'F' ? 'File' :
+                          source?.sourceType === 'self' || source?.isSelfSource === 1 ? 'Self' : 'Self';
+
+        const transformedSource: any = {
           id: sourceId,
           sourceName: source?.sourceName || '',  // User's custom Table Source Name
-          sourceType: source?.sourceType === 'T' ? 'Database' : source?.sourceType === 'F' ? 'File' : 'Self',
+          sourceType: sourceType,
           subSourceType: source?.sourceType === 'T' ?
                          (source?.isCustomTable === 1 ? 'Custom Database' : 'Database') :
                          (source?.sourceType === 'F' && source?.fileSource ? source.fileSource : undefined),
@@ -282,6 +287,21 @@ const RequestCreationPage: React.FC = () => {
           // Flag to indicate if this source has an existing ID from API (for update payload)
           hasExistingId: hasExistingId
         };
+
+        // For Self sources, include selfConfig
+        if (sourceType === 'Self' && source?.selfConfig) {
+          transformedSource.selfConfig = {
+            input_source_names: source.selfConfig.input_source_names || [],
+            generated_column: source.selfConfig.generated_column || '',
+            generated_datatype: source.selfConfig.generated_datatype || 'STRING',
+            assignment_sets: source.selfConfig.assignment_sets || [],
+            tiering_on: source.selfConfig.tiering_on ?? null
+          };
+          console.log('[Transform] Self source detected with selfConfig:', {
+            sourceName: source.sourceName,
+            selfConfig: transformedSource.selfConfig
+          });
+        }
 
         // Separate sources based on inputType
         const inputType = source?.inputType || 'I';
@@ -617,7 +637,9 @@ const RequestCreationPage: React.FC = () => {
               fieldMappings: configJson?.field_mappings || [],
               // Flag to indicate if this has an existing ID from API (for update payload)
               hasExistingId: hasExistingId,
-              workflowItemId: workflowItemId // Store original workflow item ID if exists
+              workflowItemId: workflowItemId, // Store original workflow item ID if exists
+              stepOrder: workflowItem?.stepOrder ?? undefined, // Store stepOrder to identify which module this belongs to
+              internalStepOrder: workflowItem?.internalStepOrder ?? undefined // Store internalStepOrder for ordering
             });
 
             // Extract field mappings if not already extracted (from first version/config)
@@ -754,7 +776,9 @@ const RequestCreationPage: React.FC = () => {
               suppressSources: suppressSources, // Array of source IDs (preconfigured or custom)
               // Flag to indicate if this has an existing ID from API (for update payload)
               hasExistingId: hasExistingId,
-              workflowItemId: workflowItemId // Store original workflow item ID if exists
+              workflowItemId: workflowItemId, // Store original workflow item ID if exists
+              stepOrder: workflowItem?.stepOrder ?? undefined, // Store stepOrder to identify which module this belongs to
+              internalStepOrder: workflowItem?.internalStepOrder ?? undefined // Store internalStepOrder for ordering
             });
 
             // Extract field mappings if not already extracted (from first version/config)
@@ -903,7 +927,9 @@ const RequestCreationPage: React.FC = () => {
               matchType: configJson?.match_type || 'full',
               // Flag to indicate if this has an existing ID from API (for update payload)
               hasExistingId: hasExistingId,
-              workflowItemId: workflowItemId // Store original workflow item ID if exists
+              workflowItemId: workflowItemId, // Store original workflow item ID if exists
+              stepOrder: workflowItem?.stepOrder ?? undefined, // Store stepOrder to identify which module this belongs to
+              internalStepOrder: workflowItem?.internalStepOrder ?? undefined // Store internalStepOrder for ordering
             });
 
             // Extract field mappings if not already extracted (from first version/config)
@@ -1323,6 +1349,39 @@ const RequestCreationPage: React.FC = () => {
           // Load custom sources (from Append, Match, Suppress modules)
           if (dataToLoad?.customSources && Array.isArray(dataToLoad.customSources)) {
             setSharedCustomSources(dataToLoad.customSources);
+
+            // For Self sources, add their generated columns to the input sources
+            dataToLoad.customSources.forEach((customSource: any) => {
+              if (customSource?.sourceType === 'Self' && customSource?.selfConfig) {
+                const { input_source_names, generated_column } = customSource.selfConfig;
+
+                if (generated_column && input_source_names && input_source_names.length > 0) {
+                  console.log('[Edit Mode] Adding generated column from Self source:', {
+                    selfSourceName: customSource.sourceName,
+                    generatedColumn: generated_column,
+                    inputSourceNames: input_source_names
+                  });
+
+                  // Update input sources to add the generated column
+                  setInputSources((prev: InputSource[]) => prev.map((inputSource: InputSource) => {
+                    if (input_source_names.includes(inputSource.sourceName)) {
+                      const currentHeaders = inputSource.headers || [];
+                      const currentSelectedHeaders = inputSource.selectedHeaders || inputSource.headers || [];
+
+                      // Add generated column if not already present
+                      if (!currentHeaders.includes(generated_column)) {
+                        return {
+                          ...inputSource,
+                          headers: [...currentHeaders, generated_column],
+                          selectedHeaders: [...currentSelectedHeaders, generated_column]
+                        };
+                      }
+                    }
+                    return inputSource;
+                  }));
+                }
+              }
+            });
           }
 
           // Load versioned sources (versions from Append, Match, Suppress modules)
@@ -1755,10 +1814,155 @@ const RequestCreationPage: React.FC = () => {
     }
   };
 
-  // Wrapper for setSuppressConfigurations
-  const handleSuppressConfigurationsChange = (configs: SuppressConfig[]) => {
-    setSuppressConfigurations(configs);
-  };
+  // Module-aware configuration change handlers
+  // These handlers ensure configurations from different module instances don't overwrite each other
+  // Memoized to prevent infinite re-render loops
+
+  const handleAppendConfigurationsChange = useCallback((moduleId: string, newConfigs: AppendConfig[]) => {
+    setAppendConfigurations(prevConfigs => {
+      // Ensure all new configs have the correct createdByModuleId
+      const configsWithModuleId = newConfigs.map(config => ({
+        ...config,
+        createdByModuleId: config.createdByModuleId || moduleId
+      }));
+
+      // Remove configurations from this specific module
+      const otherModuleConfigs = prevConfigs.filter(c => c.createdByModuleId !== moduleId);
+
+      // Add new configurations from this module
+      const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+
+      // Prevent infinite loops: only update if something actually changed
+      const configsFromThisModule = prevConfigs.filter(c => c.createdByModuleId === moduleId);
+      const hasChanges = configsFromThisModule.length !== configsWithModuleId.length ||
+        JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
+
+      if (!hasChanges) {
+        return prevConfigs; // No change, return previous state to prevent re-render
+      }
+
+      console.log(`[handleAppendConfigurationsChange] Module: ${moduleId}`, {
+        previousTotal: prevConfigs.length,
+        fromThisModule: configsWithModuleId.length,
+        fromOtherModules: otherModuleConfigs.length,
+        newTotal: mergedConfigs.length,
+        hasChanges
+      });
+
+      return mergedConfigs;
+    });
+  }, []);
+
+  const handleSuppressConfigurationsChange = useCallback((moduleId: string, newConfigs: SuppressConfig[]) => {
+    setSuppressConfigurations(prevConfigs => {
+      // Ensure all new configs have the correct createdByModuleId
+      const configsWithModuleId = newConfigs.map(config => ({
+        ...config,
+        createdByModuleId: config.createdByModuleId || moduleId
+      }));
+
+      // Remove configurations from this specific module
+      const otherModuleConfigs = prevConfigs.filter(c => c.createdByModuleId !== moduleId);
+
+      // Add new configurations from this module
+      const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+
+      // Prevent infinite loops: only update if something actually changed
+      const configsFromThisModule = prevConfigs.filter(c => c.createdByModuleId === moduleId);
+      const hasChanges = configsFromThisModule.length !== configsWithModuleId.length ||
+        JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
+
+      if (!hasChanges) {
+        return prevConfigs; // No change, return previous state to prevent re-render
+      }
+
+      console.log(`[handleSuppressConfigurationsChange] Module: ${moduleId}`, {
+        previousTotal: prevConfigs.length,
+        fromThisModule: configsWithModuleId.length,
+        fromOtherModules: otherModuleConfigs.length,
+        newTotal: mergedConfigs.length,
+        hasChanges
+      });
+
+      return mergedConfigs;
+    });
+  }, []);
+
+  const handleMatchConfigurationsChange = useCallback((moduleId: string, newConfigs: MatchConfig[]) => {
+    setMatchConfigurations(prevConfigs => {
+      // Ensure all new configs have the correct createdByModuleId
+      const configsWithModuleId = newConfigs.map(config => ({
+        ...config,
+        createdByModuleId: config.createdByModuleId || moduleId
+      }));
+
+      // Remove configurations from this specific module
+      const otherModuleConfigs = prevConfigs.filter(c => c.createdByModuleId !== moduleId);
+
+      // Add new configurations from this module
+      const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+
+      // Prevent infinite loops: only update if something actually changed
+      const configsFromThisModule = prevConfigs.filter(c => c.createdByModuleId === moduleId);
+      const hasChanges = configsFromThisModule.length !== configsWithModuleId.length ||
+        JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
+
+      if (!hasChanges) {
+        return prevConfigs; // No change, return previous state to prevent re-render
+      }
+
+      console.log(`[handleMatchConfigurationsChange] Module: ${moduleId}`, {
+        previousTotal: prevConfigs.length,
+        fromThisModule: configsWithModuleId.length,
+        fromOtherModules: otherModuleConfigs.length,
+        newTotal: mergedConfigs.length,
+        hasChanges
+      });
+
+      return mergedConfigs;
+    });
+  }, []);
+
+  // Create memoized callback factories for each module instance
+  // This prevents infinite re-render loops by ensuring stable function references
+  const getAppendConfigChangeHandler = useCallback((moduleId: string) => {
+    return (configs: AppendConfig[]) => handleAppendConfigurationsChange(moduleId, configs);
+  }, [handleAppendConfigurationsChange]);
+
+  const getSuppressConfigChangeHandler = useCallback((moduleId: string) => {
+    return (configs: SuppressConfig[]) => handleSuppressConfigurationsChange(moduleId, configs);
+  }, [handleSuppressConfigurationsChange]);
+
+  const getMatchConfigChangeHandler = useCallback((moduleId: string) => {
+    return (configs: MatchConfig[]) => handleMatchConfigurationsChange(moduleId, configs);
+  }, [handleMatchConfigurationsChange]);
+
+  // Cache the handlers per module ID to maintain stable references
+  const appendHandlersCache = useMemo(() => new Map<string, (configs: AppendConfig[]) => void>(), []);
+  const suppressHandlersCache = useMemo(() => new Map<string, (configs: SuppressConfig[]) => void>(), []);
+  const matchHandlersCache = useMemo(() => new Map<string, (configs: MatchConfig[]) => void>(), []);
+
+  // Get or create cached handler for a module
+  const getCachedAppendHandler = useCallback((moduleId: string) => {
+    if (!appendHandlersCache.has(moduleId)) {
+      appendHandlersCache.set(moduleId, getAppendConfigChangeHandler(moduleId));
+    }
+    return appendHandlersCache.get(moduleId)!;
+  }, [appendHandlersCache, getAppendConfigChangeHandler]);
+
+  const getCachedSuppressHandler = useCallback((moduleId: string) => {
+    if (!suppressHandlersCache.has(moduleId)) {
+      suppressHandlersCache.set(moduleId, getSuppressConfigChangeHandler(moduleId));
+    }
+    return suppressHandlersCache.get(moduleId)!;
+  }, [suppressHandlersCache, getSuppressConfigChangeHandler]);
+
+  const getCachedMatchHandler = useCallback((moduleId: string) => {
+    if (!matchHandlersCache.has(moduleId)) {
+      matchHandlersCache.set(moduleId, getMatchConfigChangeHandler(moduleId));
+    }
+    return matchHandlersCache.get(moduleId)!;
+  }, [matchHandlersCache, getMatchConfigChangeHandler]);
 
   // Filter custom sources based on module type
   const getAvailableCustomSourcesForModule = (currentModuleId: string): InputSource[] => {
@@ -3061,11 +3265,11 @@ const RequestCreationPage: React.FC = () => {
 
             // Get assignment_sets and tiering_on directly from selfConfig
             const assignmentSets = selfSource?.selfConfig?.assignment_sets || [];
-            const tieringOn = selfSource?.selfConfig?.tiering_on || null;
+            const tieringOn = selfSource?.selfConfig?.tiering_on ?? null;
 
             const result: any = {
               sourceName: selfSource?.sourceName || 'Self_Source',
-              sourceType: 'F',
+              sourceType: 'self',
               dataSourceId: null,
               filePath: null,
               delimiter: null,
@@ -3089,9 +3293,9 @@ const RequestCreationPage: React.FC = () => {
             };
 
             // Include ID if this is an existing source (for update payload)
-            if ((selfSource as any).hasExistingId && selfSource.id) {
+            if ((selfSource as any)?.hasExistingId && selfSource?.id) {
               result.id = selfSource.id;
-              console.log('[Update Mode] Including append source ID:', selfSource.id, 'for source:', selfSource.sourceName);
+              console.log('[Update Mode] Including append source ID:', selfSource.id, 'for source:', selfSource?.sourceName);
             }
 
             console.log('✅ Transformed Self source:', result);
@@ -3850,10 +4054,31 @@ const RequestCreationPage: React.FC = () => {
         console.log('\n🔍 Extracting Append items (configs + versions) for workflow:');
         console.log('  Total append configurations:', appendConfigurations.length);
 
+        // Log configurations grouped by module
+        const configsByModule = new Map<string, number>();
+        appendConfigurations.forEach(config => {
+          const moduleId = config.createdByModuleId || 'unknown';
+          configsByModule.set(moduleId, (configsByModule.get(moduleId) || 0) + 1);
+        });
+        console.log('  Configurations by module:');
+        configsByModule.forEach((count, moduleId) => {
+          console.log(`    ${moduleId}: ${count} config(s)`);
+        });
+
         // Add append configurations with their createdAt timestamps
         appendConfigurations.forEach((config, configIndex) => {
-          console.log(`🔍 [DEBUG - Index.tsx] Step 9: Processing Append config ${configIndex + 1}`);
-          console.log('  config object =', config);
+          console.log(`\n🔍 [DEBUG - Index.tsx] Step 9: Processing Append config ${configIndex + 1}`);
+          console.log('  config.id =', config.id);
+          console.log('  config.createdByModuleId =', config.createdByModuleId);
+          console.log('  config.createdAt =', config.createdAt);
+
+          // Warn if configuration is missing critical properties
+          if (!config.createdByModuleId) {
+            console.warn('  ⚠️ WARNING: Configuration missing createdByModuleId!');
+          }
+          if (!config.createdAt) {
+            console.warn('  ⚠️ WARNING: Configuration missing createdAt timestamp!');
+          }
           console.log('  appendModuleFieldMappings =', appendModuleFieldMappings);
           console.log('  appendModuleFieldMappings?.length =', appendModuleFieldMappings?.length);
 
@@ -3960,14 +4185,19 @@ const RequestCreationPage: React.FC = () => {
 
           // Calculate stepOrder based on the config's createdByModuleId
           const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel2');
-          console.log(`🔍 [DEBUG - Index.tsx] Config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+          console.log(`🔍 [DEBUG - Index.tsx] Config created by module: ${config.createdByModuleId || 'DEFAULT (panel2)'}, calculated stepOrder: ${configStepOrder}`);
+
+          // Ensure configuration has a createdAt timestamp for proper sorting
+          // If missing, use current time plus index to ensure unique ordering
+          const createdAtTimestamp = config.createdAt || (Date.now() + configIndex);
 
           appendItems.push({
             stepOrder: configStepOrder,
             actionType: 'A',
             configJson,
-            createdAt: config.createdAt || 0,
+            createdAt: createdAtTimestamp,
             itemType: 'config',
+            moduleId: config.createdByModuleId || 'panel2', // Store moduleId for tracking
             // Include ID if this is an existing config (for update payload)
             ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
@@ -3981,8 +4211,21 @@ const RequestCreationPage: React.FC = () => {
 
         console.log('  Append versions found:', appendVersions.length);
 
-        appendVersions.forEach((source) => {
-          const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
+        appendVersions.forEach((source, versionIndex) => {
+          const { actionType, saveAsVersion, versionName, configJson, createdByModuleId } = source as any;
+
+          console.log(`\n  🔍 Processing Append Version ${versionIndex + 1}:`, {
+            versionName,
+            createdByModuleId,
+            storedStepOrder: (source as any).stepOrder,
+            hasCreatedByModuleId: !!createdByModuleId
+          });
+
+          // IMPORTANT: Recalculate stepOrder based on current module position
+          // Don't use stored stepOrder as it may be outdated if modules were reordered/duplicated
+          const versionStepOrder = createdByModuleId ? getStepOrder(createdByModuleId) : getStepOrder('panel2');
+
+          console.log(`    Calculated stepOrder: ${versionStepOrder} (from module: ${createdByModuleId || 'DEFAULT (panel2)'})`);
 
           // Inject module-level field mappings into the version (override any stored field mappings)
           const fieldMappingsForVersion = transformFieldMappings(appendModuleFieldMappings);
@@ -3992,48 +4235,80 @@ const RequestCreationPage: React.FC = () => {
           };
 
           appendItems.push({
-            stepOrder,
+            stepOrder: versionStepOrder, // Use recalculated stepOrder
             actionType,
             saveAsVersion,
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version',
+            moduleId: createdByModuleId || 'panel2', // Store moduleId for tracking
             // Include ID if this is an existing version (for update payload)
             ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
-        // Sort by createdAt timestamp (creation order)
-        appendItems.sort((a, b) => a.createdAt - b.createdAt);
-
-        // Assign sequential internalStepOrder based on sorted order
-        const workflowItems = appendItems.map((item, index) => {
-          const workflowItem: any = {
-            stepOrder: item.stepOrder,
-            internalStepOrder: index + 1,
-            actionType: item.actionType,
-            configJson: item.configJson
-          };
-
-          if (item.itemType === 'version') {
-            workflowItem.saveAsVersion = item.saveAsVersion;
-            workflowItem.versionName = item.versionName;
+        // Group items by stepOrder and assign internalStepOrder per module
+        const itemsByStepOrder = new Map<number, any[]>();
+        appendItems.forEach(item => {
+          const stepOrder = item.stepOrder;
+          if (!itemsByStepOrder.has(stepOrder)) {
+            itemsByStepOrder.set(stepOrder, []);
           }
+          itemsByStepOrder.get(stepOrder)!.push(item);
+        });
 
-          // Include ID if this is an existing workflow item (for update payload)
-          if (item.id) {
-            workflowItem.id = item.id;
-          }
+        // Sort each group by createdAt and assign internalStepOrder starting from 1
+        const workflowItems: any[] = [];
+        itemsByStepOrder.forEach((items, stepOrder) => {
+          // Sort by creation time within this module
+          items.sort((a, b) => a.createdAt - b.createdAt);
 
-          console.log(`  Append ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
-            internalStepOrder: index + 1,
-            createdAt: item.createdAt,
-            hasExistingId: !!item.id,
-            ...(item.itemType === 'version' && { versionName: item.versionName })
+          // Assign internalStepOrder starting from 1 for this module
+          items.forEach((item, indexInModule) => {
+            const workflowItem: any = {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1, // Reset to 1 for each module
+              actionType: item.actionType,
+              configJson: item.configJson
+            };
+
+            if (item.itemType === 'version') {
+              workflowItem.saveAsVersion = item.saveAsVersion;
+              workflowItem.versionName = item.versionName;
+            }
+
+            // Include ID if this is an existing workflow item (for update payload)
+            if (item.id) {
+              workflowItem.id = item.id;
+            }
+
+            console.log(`  Append ${item.itemType === 'config' ? 'Config' : 'Version'} (stepOrder ${stepOrder}, internal ${indexInModule + 1}):`, {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1,
+              createdAt: item.createdAt,
+              hasExistingId: !!item.id,
+              itemType: item.itemType,
+              ...(item.itemType === 'version' && { versionName: item.versionName })
+            });
+
+            workflowItems.push(workflowItem);
           });
+        });
 
-          return workflowItem;
+        // Log summary grouped by stepOrder
+        console.log('\n📊 Append Workflow Items Summary:');
+        console.log(`  Total items extracted: ${workflowItems.length}`);
+        const itemCountsByStepOrder = new Map<number, number>();
+        workflowItems.forEach(item => {
+          const stepOrder = item.stepOrder;
+          itemCountsByStepOrder.set(stepOrder, (itemCountsByStepOrder.get(stepOrder) || 0) + 1);
+        });
+        console.log('  Items by stepOrder:');
+        itemCountsByStepOrder.forEach((count, stepOrder) => {
+          const moduleIndex = stepOrder - 1;
+          const module = modules[moduleIndex];
+          console.log(`    stepOrder ${stepOrder} (${module?.title || 'Unknown'}): ${count} item(s)`);
         });
 
         return workflowItems;
@@ -4045,6 +4320,17 @@ const RequestCreationPage: React.FC = () => {
 
         console.log('\n🔍 Extracting Suppress items (configs + versions) for workflow:');
         console.log('  Total suppress configurations:', suppressConfigurations.length);
+
+        // Log configurations grouped by module
+        const configsByModule = new Map<string, number>();
+        suppressConfigurations.forEach(config => {
+          const moduleId = config.createdByModuleId || 'unknown';
+          configsByModule.set(moduleId, (configsByModule.get(moduleId) || 0) + 1);
+        });
+        console.log('  Configurations by module:');
+        configsByModule.forEach((count, moduleId) => {
+          console.log(`    ${moduleId}: ${count} config(s)`);
+        });
 
         // Add suppress configurations with their createdAt timestamps
         suppressConfigurations.forEach((config, index) => {
@@ -4131,14 +4417,18 @@ const RequestCreationPage: React.FC = () => {
 
           // Calculate stepOrder based on the config's createdByModuleId
           const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel3');
-          console.log(`🔍 [DEBUG - Index.tsx] Suppress config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+          console.log(`🔍 [DEBUG - Index.tsx] Suppress config created by module: ${config.createdByModuleId || 'DEFAULT (panel3)'}, calculated stepOrder: ${configStepOrder}`);
+
+          // Ensure configuration has a createdAt timestamp for proper sorting
+          const createdAtTimestamp = config.createdAt || (Date.now() + index);
 
           suppressItems.push({
             stepOrder: configStepOrder,
             actionType: 'S',
             configJson,
-            createdAt: config.createdAt || 0,
+            createdAt: createdAtTimestamp,
             itemType: 'config',
+            moduleId: config.createdByModuleId || 'panel3', // Store moduleId for tracking
             // Include ID if this is an existing config (for update payload)
             ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
@@ -4152,8 +4442,21 @@ const RequestCreationPage: React.FC = () => {
 
         console.log('  Suppress versions found:', suppressVersions.length);
 
-        suppressVersions.forEach((source) => {
-          const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
+        suppressVersions.forEach((source, versionIndex) => {
+          const { actionType, saveAsVersion, versionName, configJson, createdByModuleId } = source as any;
+
+          console.log(`\n  🔍 Processing Suppress Version ${versionIndex + 1}:`, {
+            versionName,
+            createdByModuleId,
+            storedStepOrder: (source as any).stepOrder,
+            hasCreatedByModuleId: !!createdByModuleId
+          });
+
+          // IMPORTANT: Recalculate stepOrder based on current module position
+          // Don't use stored stepOrder as it may be outdated if modules were reordered/duplicated
+          const versionStepOrder = createdByModuleId ? getStepOrder(createdByModuleId) : getStepOrder('panel3');
+
+          console.log(`    Calculated stepOrder: ${versionStepOrder} (from module: ${createdByModuleId || 'DEFAULT (panel3)'})`);
 
           // Inject module-level field mappings into the version (override any stored field mappings)
           const fieldMappingsForVersion = transformFieldMappings(suppressModuleFieldMappings);
@@ -4163,48 +4466,65 @@ const RequestCreationPage: React.FC = () => {
           };
 
           suppressItems.push({
-            stepOrder,
+            stepOrder: versionStepOrder, // Use recalculated stepOrder
             actionType,
             saveAsVersion,
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version',
+            moduleId: createdByModuleId || 'panel3', // Store moduleId for tracking
             // Include ID if this is an existing version (for update payload)
             ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
-        // Sort by createdAt timestamp (creation order)
-        suppressItems.sort((a, b) => a.createdAt - b.createdAt);
-
-        // Assign sequential internalStepOrder based on sorted order
-        const workflowItems = suppressItems.map((item, index) => {
-          const workflowItem: any = {
-            stepOrder: item.stepOrder,
-            internalStepOrder: index + 1,
-            actionType: item.actionType,
-            configJson: item.configJson
-          };
-
-          if (item.itemType === 'version') {
-            workflowItem.saveAsVersion = item.saveAsVersion;
-            workflowItem.versionName = item.versionName;
+        // Group items by stepOrder and assign internalStepOrder per module
+        const itemsByStepOrder = new Map<number, any[]>();
+        suppressItems.forEach(item => {
+          const stepOrder = item.stepOrder;
+          if (!itemsByStepOrder.has(stepOrder)) {
+            itemsByStepOrder.set(stepOrder, []);
           }
+          itemsByStepOrder.get(stepOrder)!.push(item);
+        });
 
-          // Include ID if this is an existing workflow item (for update payload)
-          if (item.id) {
-            workflowItem.id = item.id;
-          }
+        // Sort each group by createdAt and assign internalStepOrder starting from 1
+        const workflowItems: any[] = [];
+        itemsByStepOrder.forEach((items, stepOrder) => {
+          // Sort by creation time within this module
+          items.sort((a, b) => a.createdAt - b.createdAt);
 
-          console.log(`  Suppress ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
-            internalStepOrder: index + 1,
-            createdAt: item.createdAt,
-            hasExistingId: !!item.id,
-            ...(item.itemType === 'version' && { versionName: item.versionName })
+          // Assign internalStepOrder starting from 1 for this module
+          items.forEach((item, indexInModule) => {
+            const workflowItem: any = {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1, // Reset to 1 for each module
+              actionType: item.actionType,
+              configJson: item.configJson
+            };
+
+            if (item.itemType === 'version') {
+              workflowItem.saveAsVersion = item.saveAsVersion;
+              workflowItem.versionName = item.versionName;
+            }
+
+            // Include ID if this is an existing workflow item (for update payload)
+            if (item.id) {
+              workflowItem.id = item.id;
+            }
+
+            console.log(`  Suppress ${item.itemType === 'config' ? 'Config' : 'Version'} (stepOrder ${stepOrder}, internal ${indexInModule + 1}):`, {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1,
+              createdAt: item.createdAt,
+              hasExistingId: !!item.id,
+              itemType: item.itemType,
+              ...(item.itemType === 'version' && { versionName: item.versionName })
+            });
+
+            workflowItems.push(workflowItem);
           });
-
-          return workflowItem;
         });
 
         return workflowItems;
@@ -4217,8 +4537,19 @@ const RequestCreationPage: React.FC = () => {
         console.log('\n🔍 Extracting Match items (configs + versions) for workflow:');
         console.log('  Total match configurations:', matchConfigurations.length);
 
+        // Log configurations grouped by module
+        const configsByModule = new Map<string, number>();
+        matchConfigurations.forEach(config => {
+          const moduleId = config.createdByModuleId || 'unknown';
+          configsByModule.set(moduleId, (configsByModule.get(moduleId) || 0) + 1);
+        });
+        console.log('  Configurations by module:');
+        configsByModule.forEach((count, moduleId) => {
+          console.log(`    ${moduleId}: ${count} config(s)`);
+        });
+
         // Add match configurations with their createdAt timestamps
-        matchConfigurations.forEach((config) => {
+        matchConfigurations.forEach((config, index) => {
           // Transform input sources to the required format
           const inputSourcesForConfig = (config.inputSources || []).map(sourceId => {
             // Search in allAvailableInputSources (includes both inputSources and versionedSources)
@@ -4310,14 +4641,18 @@ const RequestCreationPage: React.FC = () => {
 
           // Calculate stepOrder based on the config's createdByModuleId
           const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel4');
-          console.log(`🔍 [DEBUG - Index.tsx] Match config created by module: ${config.createdByModuleId}, calculated stepOrder: ${configStepOrder}`);
+          console.log(`🔍 [DEBUG - Index.tsx] Match config created by module: ${config.createdByModuleId || 'DEFAULT (panel4)'}, calculated stepOrder: ${configStepOrder}`);
+
+          // Ensure configuration has a createdAt timestamp for proper sorting
+          const createdAtTimestamp = config.createdAt || (Date.now() + index);
 
           matchItems.push({
             stepOrder: configStepOrder,
             actionType: 'M',
             configJson,
-            createdAt: config.createdAt || 0,
+            createdAt: createdAtTimestamp,
             itemType: 'config',
+            moduleId: config.createdByModuleId || 'panel4', // Store moduleId for tracking
             // Include ID if this is an existing config (for update payload)
             ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
@@ -4331,8 +4666,21 @@ const RequestCreationPage: React.FC = () => {
 
         console.log('  Match versions found:', matchVersions.length);
 
-        matchVersions.forEach((source) => {
-          const { stepOrder, actionType, saveAsVersion, versionName, configJson } = source as any;
+        matchVersions.forEach((source, versionIndex) => {
+          const { actionType, saveAsVersion, versionName, configJson, createdByModuleId } = source as any;
+
+          console.log(`\n  🔍 Processing Match Version ${versionIndex + 1}:`, {
+            versionName,
+            createdByModuleId,
+            storedStepOrder: (source as any).stepOrder,
+            hasCreatedByModuleId: !!createdByModuleId
+          });
+
+          // IMPORTANT: Recalculate stepOrder based on current module position
+          // Don't use stored stepOrder as it may be outdated if modules were reordered/duplicated
+          const versionStepOrder = createdByModuleId ? getStepOrder(createdByModuleId) : getStepOrder('panel4');
+
+          console.log(`    Calculated stepOrder: ${versionStepOrder} (from module: ${createdByModuleId || 'DEFAULT (panel4)'})`);
 
           // Inject module-level field mappings into the version (override any stored field mappings)
           const fieldMappingsForVersion = transformFieldMappings(matchModuleFieldMappings);
@@ -4342,48 +4690,65 @@ const RequestCreationPage: React.FC = () => {
           };
 
           matchItems.push({
-            stepOrder,
+            stepOrder: versionStepOrder, // Use recalculated stepOrder
             actionType,
             saveAsVersion,
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
             itemType: 'version',
+            moduleId: createdByModuleId || 'panel4', // Store moduleId for tracking
             // Include ID if this is an existing version (for update payload)
             ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
-        // Sort by createdAt timestamp (creation order)
-        matchItems.sort((a, b) => a.createdAt - b.createdAt);
-
-        // Assign sequential internalStepOrder based on sorted order
-        const workflowItems = matchItems.map((item, index) => {
-          const workflowItem: any = {
-            stepOrder: item.stepOrder,
-            internalStepOrder: index + 1,
-            actionType: item.actionType,
-            configJson: item.configJson
-          };
-
-          if (item.itemType === 'version') {
-            workflowItem.saveAsVersion = item.saveAsVersion;
-            workflowItem.versionName = item.versionName;
+        // Group items by stepOrder and assign internalStepOrder per module
+        const itemsByStepOrder = new Map<number, any[]>();
+        matchItems.forEach(item => {
+          const stepOrder = item.stepOrder;
+          if (!itemsByStepOrder.has(stepOrder)) {
+            itemsByStepOrder.set(stepOrder, []);
           }
+          itemsByStepOrder.get(stepOrder)!.push(item);
+        });
 
-          // Include ID if this is an existing workflow item (for update payload)
-          if (item.id) {
-            workflowItem.id = item.id;
-          }
+        // Sort each group by createdAt and assign internalStepOrder starting from 1
+        const workflowItems: any[] = [];
+        itemsByStepOrder.forEach((items, stepOrder) => {
+          // Sort by creation time within this module
+          items.sort((a, b) => a.createdAt - b.createdAt);
 
-          console.log(`  Match ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
-            internalStepOrder: index + 1,
-            createdAt: item.createdAt,
-            hasExistingId: !!item.id,
-            ...(item.itemType === 'version' && { versionName: item.versionName })
+          // Assign internalStepOrder starting from 1 for this module
+          items.forEach((item, indexInModule) => {
+            const workflowItem: any = {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1, // Reset to 1 for each module
+              actionType: item.actionType,
+              configJson: item.configJson
+            };
+
+            if (item.itemType === 'version') {
+              workflowItem.saveAsVersion = item.saveAsVersion;
+              workflowItem.versionName = item.versionName;
+            }
+
+            // Include ID if this is an existing workflow item (for update payload)
+            if (item.id) {
+              workflowItem.id = item.id;
+            }
+
+            console.log(`  Match ${item.itemType === 'config' ? 'Config' : 'Version'} (stepOrder ${stepOrder}, internal ${indexInModule + 1}):`, {
+              stepOrder: item.stepOrder,
+              internalStepOrder: indexInModule + 1,
+              createdAt: item.createdAt,
+              hasExistingId: !!item.id,
+              itemType: item.itemType,
+              ...(item.itemType === 'version' && { versionName: item.versionName })
+            });
+
+            workflowItems.push(workflowItem);
           });
-
-          return workflowItem;
         });
 
         return workflowItems;
@@ -4406,11 +4771,33 @@ const RequestCreationPage: React.FC = () => {
       // Log workflow array for debugging
       console.log('\n=== WORKFLOW ARRAY ===');
       console.log('Total workflow items:', workflowArray.length);
-      console.log('  Input sources:', workflowArray.filter(w => w.actionType === 'I').length);
-      console.log('  Input versions:', workflowArray.filter(w => w.actionType === 'I').length);
-      console.log('  Append items:', workflowArray.filter(w => w.actionType === 'A').length);
-      console.log('  Match items:', workflowArray.filter(w => w.actionType === 'M').length);
-      console.log('  Suppress items:', workflowArray.filter(w => w.actionType === 'S').length);
+      console.log('  Input items:', inputSourcesAndVersions.length);
+      console.log('  Append items:', appendItems.length);
+      console.log('  Suppress items:', suppressItems.length);
+      console.log('  Match items:', matchItems.length);
+      console.log('\nBreakdown by actionType:');
+      console.log('  Input (I):', workflowArray.filter(w => w.actionType === 'I').length);
+      console.log('  Append (A):', workflowArray.filter(w => w.actionType === 'A').length);
+      console.log('  Suppress (S):', workflowArray.filter(w => w.actionType === 'S').length);
+      console.log('  Match (M):', workflowArray.filter(w => w.actionType === 'M').length);
+
+      // Show Append items grouped by stepOrder
+      const appendWorkflowItems = workflowArray.filter(w => w.actionType === 'A');
+      if (appendWorkflowItems.length > 0) {
+        console.log('\n📦 Append Items Breakdown by stepOrder:');
+        const appendByStep = new Map<number, any[]>();
+        appendWorkflowItems.forEach(item => {
+          if (!appendByStep.has(item.stepOrder)) {
+            appendByStep.set(item.stepOrder, []);
+          }
+          appendByStep.get(item.stepOrder)!.push(item);
+        });
+        appendByStep.forEach((items, stepOrder) => {
+          const moduleIndex = stepOrder - 1;
+          const module = modules[moduleIndex];
+          console.log(`  stepOrder ${stepOrder} (${module?.title || module?.id || 'Unknown'}): ${items.length} item(s)`);
+        });
+      }
 
       workflowArray.forEach((item, index) => {
         let itemType = '';
@@ -4760,35 +5147,36 @@ const RequestCreationPage: React.FC = () => {
         />
       );
     } else if (moduleId === 'panel2' || moduleId.startsWith('panel2_')) {
-      // For duplicated Append modules, only pass initial configs to the original module
-      const initialConfigs = moduleId === 'panel2' ? initialAppendConfigs : [];
-      console.log('[Index.tsx] Rendering AppendModule, allAvailableInputSources:', {
-        count: allAvailableInputSources.length,
-        sources: allAvailableInputSources.map(src => ({
-          id: src.id,
-          sourceName: src.sourceName,
-          isVersioned: src.isVersioned,
-          headersCount: src.headers?.length || 0,
-        })),
-        versionedSourcesCount: versionedSources.length,
-        versionedSources: versionedSources.map(v => ({
-          id: v.id,
-          sourceName: v.sourceName,
-          isVersioned: v.isVersioned,
-          sourceModule: v.sourceModule,
-          headersCount: v.headers?.length || 0
-        }))
+      // Calculate the stepOrder for this module based on its position in the modules array
+      const moduleStepOrder = modules.findIndex(m => m?.id === moduleId) + 1;
+
+      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
+      const moduleInitialConfigs = initialAppendConfigs.filter(c => c?.stepOrder === moduleStepOrder);
+
+      console.log('[Index.tsx] Rendering AppendModule:', {
+        moduleId,
+        moduleStepOrder,
+        moduleInitialConfigsCount: moduleInitialConfigs.length,
+        totalInitialConfigs: initialAppendConfigs.length,
+        configsByStepOrder: initialAppendConfigs.reduce((acc, c) => {
+          const key = c?.stepOrder ? `stepOrder-${c.stepOrder}` : 'no-stepOrder';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        allAvailableInputSourcesCount: allAvailableInputSources.length,
+        versionedSourcesCount: versionedSources.filter(v => v?.sourceModule === 'Append' && v?.stepOrder === moduleStepOrder).length
       });
+
       return <AppendModule
         moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, fieldMappings, appendFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, fieldMappings, appendFields)
         }
-        initialConfigs={initialConfigs}
+        initialConfigs={moduleInitialConfigs}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources.filter(v => v.sourceModule === 'Append' && v.createdByModuleId === moduleId)}
+        versionedSources={versionedSources.filter(v => v?.sourceModule === 'Append' && v?.stepOrder === moduleStepOrder)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onUpdateVersion={handleUpdateVersion}
@@ -4797,29 +5185,45 @@ const RequestCreationPage: React.FC = () => {
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
-        onConfigurationsChange={setAppendConfigurations}
+        onConfigurationsChange={getCachedAppendHandler(moduleId)}
         moduleFieldMappings={appendModuleFieldMappings}
         onModuleFieldMappingsChange={setAppendModuleFieldMappings}
       />;
     } else if (moduleId === 'panel3' || moduleId.startsWith('panel3_')) {
-      // For duplicated Suppression modules, only pass initial configs to the original module
-      const initialConfigs = moduleId === 'panel3' ? initialSuppressConfigs : [];
+      // Calculate the stepOrder for this module based on its position in the modules array
+      const moduleStepOrder = modules.findIndex(m => m?.id === moduleId) + 1;
+
+      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
+      const moduleInitialConfigs = initialSuppressConfigs.filter(c => c?.stepOrder === moduleStepOrder);
+
+      console.log('[Index.tsx] Rendering SuppressModule:', {
+        moduleId,
+        moduleStepOrder,
+        moduleInitialConfigsCount: moduleInitialConfigs.length,
+        totalInitialConfigs: initialSuppressConfigs.length,
+        configsByStepOrder: initialSuppressConfigs.reduce((acc, c) => {
+          const key = c?.stepOrder ? `stepOrder-${c.stepOrder}` : 'no-stepOrder';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
+
       return <SuppressModule
         moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
         }
-        initialConfigs={initialConfigs}
+        initialConfigs={moduleInitialConfigs}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources.filter(v => v.sourceModule === 'Suppress' && v.createdByModuleId === moduleId)}
+        versionedSources={versionedSources.filter(v => v?.sourceModule === 'Suppress' && v?.stepOrder === moduleStepOrder)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onUpdateVersion={handleUpdateVersion}
         onDeleteVersion={handleDeleteVersion}
         appendConfigurations={appendConfigurations}
-        onConfigurationsChange={handleSuppressConfigurationsChange}
+        onConfigurationsChange={getCachedSuppressHandler(moduleId)}
         sharedCustomSources={getAvailableCustomSourcesForModule(moduleId)}
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
@@ -4828,18 +5232,34 @@ const RequestCreationPage: React.FC = () => {
         onModuleFieldMappingsChange={setSuppressModuleFieldMappings}
       />;
     } else if (moduleId === 'panel4' || moduleId.startsWith('panel4_')) {
-      // For duplicated Match modules, only pass initial configs to the original module
-      const initialConfigs = moduleId === 'panel4' ? initialMatchConfigs : [];
+      // Calculate the stepOrder for this module based on its position in the modules array
+      const moduleStepOrder = modules.findIndex(m => m?.id === moduleId) + 1;
+
+      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
+      const moduleInitialConfigs = initialMatchConfigs.filter(c => c?.stepOrder === moduleStepOrder);
+
+      console.log('[Index.tsx] Rendering MatchModule:', {
+        moduleId,
+        moduleStepOrder,
+        moduleInitialConfigsCount: moduleInitialConfigs.length,
+        totalInitialConfigs: initialMatchConfigs.length,
+        configsByStepOrder: initialMatchConfigs.reduce((acc, c) => {
+          const key = c?.stepOrder ? `stepOrder-${c.stepOrder}` : 'no-stepOrder';
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
+
       return <MatchModule
         moduleId={moduleId}
         availableInputSources={allAvailableInputSources}
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, addFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, undefined, undefined, addFields)
         }
-        initialConfigs={initialConfigs}
+        initialConfigs={moduleInitialConfigs}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources.filter(v => v.sourceModule === 'Match' && v.createdByModuleId === moduleId)}
+        versionedSources={versionedSources.filter(v => v?.sourceModule === 'Match' && v?.stepOrder === moduleStepOrder)}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onDeleteVersion={handleDeleteVersion}
@@ -4849,7 +5269,7 @@ const RequestCreationPage: React.FC = () => {
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
-        onConfigurationsChange={setMatchConfigurations}
+        onConfigurationsChange={getCachedMatchHandler(moduleId)}
         moduleFieldMappings={matchModuleFieldMappings}
         onModuleFieldMappingsChange={setMatchModuleFieldMappings}
       />;
