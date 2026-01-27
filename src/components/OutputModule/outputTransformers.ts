@@ -36,6 +36,7 @@ export type DestinationConfig =
  * API format for single output configuration (NEW FORMAT)
  */
 export interface OutputConfigPayload {
+  id?: string | number; // Optional ID for existing output configs (for update payload)
   config: {
     input_sources: string[];  // Array of source names
     output_fields: string[];
@@ -197,6 +198,11 @@ export const transformOutputToAPIFormat = (
       shuffle_records: outputConfig.random || false
     }
   };
+
+  // Include ID if this is an existing output config (for update payload)
+  if ((outputConfig as any).hasExistingId && outputConfig.id) {
+    payload.id = outputConfig.id;
+  }
 
   console.log('');
   console.log('===============================================');

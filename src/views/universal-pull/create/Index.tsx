@@ -150,6 +150,9 @@ const RequestCreationPage: React.FC = () => {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [scheduledDateTime, setScheduledDateTime] = useState('');
 
+  // Request details ID (for edit mode update payload)
+  const [requestDetailsId, setRequestDetailsId] = useState<string | number | null>(null);
+
   // Versioned Sources State
   const [versionedSources, setVersionedSources] = useState<VersionedSource[]>([]);
   const [versionCounters, setVersionCounters] = useState({
@@ -191,12 +194,15 @@ const RequestCreationPage: React.FC = () => {
       transformedData.requestName = apiData.requestDetails.requestName;
     }
 
-    // Helper function to generate consistent ID from source name
-    const generateSourceId = (sourceName: string): string => {
-      if (!sourceName) return `input_${Date.now()}`;
-      // Create a deterministic ID based on source name
-      return `src_${sourceName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-    };
+    // Preserve requestDetails ID for update payload (if exists)
+    if (apiData?.requestDetails?.id) {
+      transformedData.requestDetailsId = apiData.requestDetails.id;
+      console.log('[Transform] Preserved requestDetails ID:', apiData.requestDetails.id);
+    }
+
+    // Build a map of source name to ID for consistent lookups
+    // This ensures that when configs reference source names, we can find the correct IDs
+    const sourceNameToIdMap: Map<string, string> = new Map();
 
     // Transform input sources - separate by inputType
     if (apiData?.inputSources && Array.isArray(apiData.inputSources)) {
@@ -208,13 +214,20 @@ const RequestCreationPage: React.FC = () => {
           ? source.selectedColumns.split(',').map((col: string) => col.trim())
           : source?.columns || [];
 
-        // Use existing ID or generate a consistent one from source name
-        const sourceId = source?.id || generateSourceId(source?.sourceName || `input_${index}`);
+        // Use existing ID from API if available (for edit mode), otherwise generate new one
+        // This preserves IDs for update payload while generating IDs for new sources
+        const sourceId = source?.id || `input_${Date.now()}_${index}`;
+        const hasExistingId = !!source?.id;
+
+        // Store the mapping from source name to ID
+        if (source?.sourceName) {
+          sourceNameToIdMap.set(source.sourceName, sourceId);
+        }
 
         console.log('[Transform] Input Source:', {
           sourceName: source?.sourceName,
-          generatedId: sourceId,
-          originalId: source?.id,
+          assignedId: sourceId,
+          hadExistingId: hasExistingId,
           inputType: source?.inputType
         });
 
@@ -265,7 +278,9 @@ const RequestCreationPage: React.FC = () => {
           // originalTableName: The actual database table name (for dropdown)
           // tableSourceId: The table ID (for API calls and precise lookup)
           originalTableName: actualTableName,
-          tableSourceId: source?.tableSourceId || source?.sourceOption
+          tableSourceId: source?.tableSourceId || source?.sourceOption,
+          // Flag to indicate if this source has an existing ID from API (for update payload)
+          hasExistingId: hasExistingId
         };
 
         // Separate sources based on inputType
@@ -280,11 +295,11 @@ const RequestCreationPage: React.FC = () => {
           let createdByModuleId = '';
 
           if (inputType === 'A') {
-            createdByModuleId = 'module_append'; // Append module
+            createdByModuleId = 'panel2'; // Append module (panel2)
           } else if (inputType === 'M') {
-            createdByModuleId = 'module_match'; // Match module
+            createdByModuleId = 'panel4'; // Match module (panel4)
           } else if (inputType === 'S') {
-            createdByModuleId = 'module_suppress'; // Suppress module
+            createdByModuleId = 'panel3'; // Suppress module (panel3)
           }
 
           customSources.push({
@@ -303,7 +318,14 @@ const RequestCreationPage: React.FC = () => {
     const mapSourceNameToId = (sourceName: string): string => {
       if (!sourceName) return '';
 
-      // Check in transformed input sources first
+      // First check the sourceNameToIdMap (built during source transformation)
+      if (sourceNameToIdMap.has(sourceName)) {
+        const mappedId = sourceNameToIdMap.get(sourceName)!;
+        console.log('[MapSourceId] Found in map:', { sourceName, mappedId });
+        return mappedId;
+      }
+
+      // Check in transformed input sources
       if (transformedData?.inputSources && Array.isArray(transformedData.inputSources)) {
         const source = transformedData.inputSources.find((src: any) =>
           src?.sourceName === sourceName ||
@@ -311,7 +333,7 @@ const RequestCreationPage: React.FC = () => {
           src?.id === sourceName
         );
         if (source?.id) {
-          console.log('[MapSourceId] Found in transformed sources:', { sourceName, mappedId: source.id });
+          console.log('[MapSourceId] Found in transformed input sources:', { sourceName, mappedId: source.id });
           return source.id;
         }
       }
@@ -324,27 +346,27 @@ const RequestCreationPage: React.FC = () => {
           src?.id === sourceName
         );
         if (source?.id) {
-          console.log('[MapSourceId] Found in custom sources:', { sourceName, mappedId: source.id });
+          console.log('[MapSourceId] Found in transformed custom sources:', { sourceName, mappedId: source.id });
           return source.id;
         }
       }
 
-      // Also check in the original API data input sources
-      if (apiData?.inputSources && Array.isArray(apiData.inputSources)) {
-        const apiSource = apiData.inputSources.find((src: any) => src?.sourceName === sourceName);
-        if (apiSource) {
-          // Return existing ID or generate consistent one
-          const mappedId = apiSource.id || generateSourceId(sourceName);
-          console.log('[MapSourceId] Found in API sources:', { sourceName, mappedId, originalId: apiSource.id });
-          return mappedId;
+      // Check in versioned sources that have been created
+      if (transformedData?.inputVersions && Array.isArray(transformedData.inputVersions)) {
+        const version = transformedData.inputVersions.find((v: any) =>
+          v?.sourceName === sourceName ||
+          v?.versionName === sourceName ||
+          v?.versionLabel === sourceName
+        );
+        if (version?.id) {
+          console.log('[MapSourceId] Found in input versions:', { sourceName, mappedId: version.id });
+          return version.id;
         }
       }
 
-      // If not found in any sources, generate a consistent ID from the source name
-      // This ensures consistency even when source isn't found
-      const fallbackId = generateSourceId(sourceName);
-      console.log('[MapSourceId] Not found, generating fallback:', { sourceName, fallbackId });
-      return fallbackId;
+      // If still not found, warn and return empty
+      console.warn('[MapSourceId] Source not found:', sourceName);
+      return '';
     };
 
     // Helper function to map preconfigured source name to ID
@@ -372,38 +394,64 @@ const RequestCreationPage: React.FC = () => {
         }
       }
 
-      // If not found in preconfigured tables or dbSource not available,
-      // generate a fallback ID from the source name
-      // This ensures the UI can still display and work with the source
-      const fallbackId = `${sourceModule}_${generateSourceId(sourceName)}`;
-      console.warn('[MapPreconfiguredSourceId] Not found in API, generating fallback:', {
+      // If not found, check if it might be a custom source in our sourceNameToIdMap
+      if (sourceNameToIdMap.has(sourceName)) {
+        const mappedId = sourceNameToIdMap.get(sourceName)!;
+        console.log('[MapPreconfiguredSourceId] Found in sourceNameToIdMap:', { sourceName, sourceModule, mappedId });
+        return mappedId;
+      }
+
+      // If still not found, warn and return empty
+      console.warn('[MapPreconfiguredSourceId] Source not found:', {
         sourceName,
         sourceModule,
-        fallbackId,
         availableTables: preconfiguredTables.map(t => ({ name: t?.tableName, id: t?.tableId }))
       });
-      return fallbackId;
+      return '';
     };
 
     // Transform workflow (Input Versions, Append, Suppress, Match configurations)
     if (apiData?.workflow && Array.isArray(apiData.workflow)) {
       const inputVersions: any[] = [];
       const appendConfigs: any[] = [];
+      const appendVersions: any[] = [];
       const suppressConfigs: any[] = [];
+      const suppressVersions: any[] = [];
       const matchConfigs: any[] = [];
+      const matchVersions: any[] = [];
+
+      // Module-level field mappings (extracted from the first config or version of each module)
+      let appendFieldMappings: any[] = [];
+      let matchFieldMappings: any[] = [];
+      let suppressFieldMappings: any[] = [];
 
       apiData.workflow.forEach((workflowItem: any, index: number) => {
         const actionType = workflowItem?.actionType;
         const configJson = workflowItem?.configJson;
+        const saveAsVersion = workflowItem?.saveAsVersion;
 
-        if (actionType === 'I' && configJson) {
-          // Input Version (actionType 'I' for Processing/Version)
+        if (actionType === 'I' && configJson && saveAsVersion) {
+          // Input Version (actionType 'I' with saveAsVersion flag)
           const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name || src) || [];
           const versionName = workflowItem?.versionName || `Version_${index}`;
 
+          // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+          const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+          const versionId = workflowItemId || `versioned_${Date.now()}_${index}`;
+          const hasExistingId = !!workflowItemId;
+
+          console.log('[Transform] Input Version:', {
+            versionName,
+            saveAsVersion,
+            inputSourceNames,
+            hasConfigJson: !!configJson,
+            workflowItemId: workflowItemId,
+            hasExistingId: hasExistingId
+          });
+
           // Create versioned source from workflow
           const versionedSource: any = {
-            id: `versioned_${Date.now()}_${index}`,
+            id: versionId,
             sourceName: versionName,
             sourceType: 'Version',
             subSourceType: 'Versioned',
@@ -416,100 +464,454 @@ const RequestCreationPage: React.FC = () => {
             // Store workflow properties for payload reconstruction
             stepOrder: workflowItem?.stepOrder || 1,
             actionType: 'I',
-            saveAsVersion: workflowItem?.saveAsVersion || 1,
+            saveAsVersion: saveAsVersion || 1,
             versionName: versionName,
             internalStepOrder: workflowItem?.internalStepOrder,
-            configJson: configJson
+            configJson: configJson,
+            // Flag to indicate if this has an existing ID from API (for update payload)
+            hasExistingId: hasExistingId,
+            workflowItemId: workflowItemId // Store original workflow item ID if exists
           };
 
           inputVersions.push(versionedSource);
+
+          // Add to sourceNameToIdMap so this version can be referenced in later configs
+          sourceNameToIdMap.set(versionName, versionId);
         } else if (actionType === 'A' && configJson) {
-          // Append configuration - map source names to IDs
-          const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
-          const inputSources = inputSourceNames.map((name: string) => mapSourceNameToId(name));
+          // Check if this is an Append version or regular Append config
+          if (saveAsVersion) {
+            // Append Version
+            const versionName = workflowItem?.versionName || `Append_Version_${index}`;
 
-          // For append sources: map to proper IDs (preconfigured or custom)
-          const appendSources = configJson?.append_sources?.map((src: any) => {
-            const sourceName = src?.source_name;
-            const sourceType = src?.source_type;
+            console.log('[Transform] Append Version:', {
+              versionName,
+              saveAsVersion,
+              hasConfigJson: !!configJson
+            });
 
-            // If it's a preconfigured source, look up its ID
-            if (sourceType === 'preconfigured') {
-              return mapPreconfiguredSourceNameToId(sourceName, 'append');
+            // Extract input sources from configJson
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name || src) || [];
+            const baseInputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean);
+
+            // Extract append sources (operation sources)
+            const appendSourceNames = configJson?.append_sources?.map((src: any) => src?.source_name) || [];
+            const operationSources = appendSourceNames
+              .map((name: string) => {
+                // Check if it's a preconfigured source
+                const src = configJson.append_sources.find((s: any) => s.source_name === name);
+                if (src?.source_type === 'preconfigured') {
+                  return mapPreconfiguredSourceNameToId(name, 'append');
+                }
+                return mapSourceNameToId(name);
+              })
+              .filter(Boolean);
+
+            // Extract operation fields (match_keys for Append)
+            const operationFields = configJson?.match_keys || [];
+
+            // Extract append fields (fields being added from append sources)
+            const appendFields = configJson?.append_sources?.flatMap((src: any) => src?.fields || []) || [];
+
+            // Get combined headers
+            const combinedHeaders = configJson?.field_mappings?.map((m: any) => m?.field_name) || [];
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const versionId = workflowItemId || `append_version_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            const versionedSource: any = {
+              id: versionId,
+              sourceName: versionName,
+              sourceType: 'Version',
+              subSourceType: 'Versioned',
+              isVersioned: true,
+              versionNumber: appendVersions.length + 1,
+              versionLabel: versionName,
+              sourceModule: 'Append',
+              headers: combinedHeaders,
+              selectedHeaders: combinedHeaders,
+              // Properties needed for version display and editing
+              baseInputSources: baseInputSources,
+              operationSources: operationSources,
+              operationFields: operationFields,
+              appendFields: appendFields,
+              combinedHeaders: combinedHeaders,
+              fieldMappings: configJson?.field_mappings || undefined,
+              // Store workflow properties for payload reconstruction
+              stepOrder: workflowItem?.stepOrder || 2,
+              actionType: 'A',
+              saveAsVersion: saveAsVersion || 1,
+              versionName: versionName,
+              internalStepOrder: workflowItem?.internalStepOrder,
+              configJson: configJson,
+              createdByModuleId: 'panel2', // Append module ID for filtering
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            };
+
+            console.log('[Transform] Append Version extracted data:', {
+              versionName,
+              baseInputSources,
+              operationSources,
+              operationFields,
+              appendFields,
+              hasExistingId: hasExistingId
+            });
+
+            appendVersions.push(versionedSource);
+
+            // Add to sourceNameToIdMap so this version can be referenced in later configs
+            sourceNameToIdMap.set(versionName, versionId);
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (appendFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              appendFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Append module field mappings:', appendFieldMappings.length);
             }
+          } else {
+            // Append configuration - map source names to IDs
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
+            const inputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean); // Remove empty IDs
 
-            // Otherwise map to ID (for custom sources from inputSources)
-            return mapSourceNameToId(sourceName);
-          }) || [];
+            // For append sources: map to proper IDs (preconfigured or custom)
+            const appendSources = (configJson?.append_sources?.map((src: any) => {
+              const sourceName = src?.source_name;
+              const sourceType = src?.source_type;
 
-          const fieldsToAppend = configJson?.append_sources?.flatMap((src: any) => src?.fields || []) || [];
+              // If it's a preconfigured source, look up its ID
+              if (sourceType === 'preconfigured') {
+                return mapPreconfiguredSourceNameToId(sourceName, 'append');
+              }
 
-          console.log('[Transform] Append Config:', {
-            inputSourceNames,
-            inputSources,
-            appendSources
-          });
+              // Otherwise map to ID (for custom sources from inputSources)
+              return mapSourceNameToId(sourceName);
+            }) || []).filter(Boolean); // Remove empty IDs
 
-          appendConfigs.push({
-            id: `append_${Date.now()}_${index}`,
-            inputSources: inputSources, // Array of source IDs
-            appendOnFields: configJson?.match_keys || [],
-            appendSources: appendSources, // Array of source IDs (preconfigured or custom)
-            appendFields: fieldsToAppend,
-            fieldMappings: configJson?.field_mappings || []
-          });
+            const fieldsToAppend = configJson?.append_sources?.flatMap((src: any) => src?.fields || []) || [];
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const configId = workflowItemId || `append_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            console.log('[Transform] Append Config:', {
+              inputSourceNames,
+              inputSources,
+              appendSources,
+              fieldMappingsCount: configJson?.field_mappings?.length || 0,
+              hasExistingId: hasExistingId
+            });
+
+            appendConfigs.push({
+              id: configId,
+              inputSources: inputSources, // Array of source IDs
+              appendOnFields: configJson?.match_keys || [],
+              appendSources: appendSources, // Array of source IDs (preconfigured or custom)
+              appendFields: fieldsToAppend,
+              fieldMappings: configJson?.field_mappings || [],
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            });
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (appendFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              appendFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Append module field mappings from config:', appendFieldMappings.length);
+            }
+          }
         } else if (actionType === 'S' && configJson) {
-          // Suppress configuration - map source names to IDs
-          const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
-          const inputSources = inputSourceNames.map((name: string) => mapSourceNameToId(name));
+          // Check if this is a Suppress version or regular Suppress config
+          if (saveAsVersion) {
+            // Suppress Version
+            const versionName = workflowItem?.versionName || `Suppress_Version_${index}`;
 
-          // For suppress sources: map to proper IDs (preconfigured or custom)
-          const suppressSources = configJson?.suppress_sources?.map((src: any) => {
-            const sourceName = src?.source_name;
-            const sourceType = src?.source_type;
+            console.log('[Transform] Suppress Version:', {
+              versionName,
+              saveAsVersion,
+              hasConfigJson: !!configJson
+            });
 
-            // If it's a preconfigured source, look up its ID
-            if (sourceType === 'preconfigured') {
-              return mapPreconfiguredSourceNameToId(sourceName, 'suppress');
+            // Extract input sources from configJson
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name || src) || [];
+            const baseInputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean);
+
+            // Extract suppress sources (operation sources)
+            const suppressSourceNames = configJson?.suppress_sources?.map((src: any) => src?.source_name) || [];
+            const operationSources = suppressSourceNames
+              .map((name: string) => {
+                // Check if it's a preconfigured source
+                const src = configJson.suppress_sources.find((s: any) => s.source_name === name);
+                if (src?.source_type === 'preconfigured') {
+                  return mapPreconfiguredSourceNameToId(name, 'suppress');
+                }
+                return mapSourceNameToId(name);
+              })
+              .filter(Boolean);
+
+            // Extract operation fields (suppress_on_fields for Suppress)
+            const operationFields = configJson?.suppress_on_fields || [];
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const versionId = workflowItemId || `suppress_version_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            const versionedSource: any = {
+              id: versionId,
+              sourceName: versionName,
+              sourceType: 'Version',
+              subSourceType: 'Versioned',
+              isVersioned: true,
+              versionNumber: suppressVersions.length + 1,
+              versionLabel: versionName,
+              sourceModule: 'Suppress',
+              headers: [], // Suppress versions don't add new fields
+              selectedHeaders: [],
+              // Properties needed for version display and editing
+              baseInputSources: baseInputSources,
+              operationSources: operationSources,
+              operationFields: operationFields,
+              combinedHeaders: [],
+              fieldMappings: configJson?.field_mappings || undefined,
+              // Store workflow properties for payload reconstruction
+              stepOrder: workflowItem?.stepOrder || 3,
+              actionType: 'S',
+              saveAsVersion: saveAsVersion || 1,
+              versionName: versionName,
+              internalStepOrder: workflowItem?.internalStepOrder,
+              configJson: configJson,
+              createdByModuleId: 'panel3', // Suppress module ID for filtering
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            };
+
+            console.log('[Transform] Suppress Version extracted data:', {
+              versionName,
+              baseInputSources,
+              operationSources,
+              operationFields,
+              hasExistingId: hasExistingId
+            });
+
+            suppressVersions.push(versionedSource);
+
+            // Add to sourceNameToIdMap so this version can be referenced in later configs
+            sourceNameToIdMap.set(versionName, versionId);
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (suppressFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              suppressFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Suppress module field mappings:', suppressFieldMappings.length);
             }
+          } else {
+            // Suppress configuration - map source names to IDs
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
+            const inputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean); // Remove empty IDs
 
-            // Otherwise map to ID (for custom sources from inputSources)
-            return mapSourceNameToId(sourceName);
-          }) || [];
+            // For suppress sources: map to proper IDs (preconfigured or custom)
+            const suppressSources = (configJson?.suppress_sources?.map((src: any) => {
+              const sourceName = src?.source_name;
+              const sourceType = src?.source_type;
 
-          suppressConfigs.push({
-            id: `suppress_${Date.now()}_${index}`,
-            inputSources: inputSources, // Array of source IDs
-            suppressOnFields: configJson?.suppress_on_fields || [],
-            suppressSources: suppressSources // Array of source IDs (preconfigured or custom)
-          });
+              // If it's a preconfigured source, look up its ID
+              if (sourceType === 'preconfigured') {
+                return mapPreconfiguredSourceNameToId(sourceName, 'suppress');
+              }
+
+              // Otherwise map to ID (for custom sources from inputSources)
+              return mapSourceNameToId(sourceName);
+            }) || []).filter(Boolean); // Remove empty IDs
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const configId = workflowItemId || `suppress_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            console.log('[Transform] Suppress Config:', {
+              inputSourceNames,
+              inputSources,
+              suppressSources,
+              suppressOnFields: configJson?.suppress_on_fields || [],
+              hasExistingId: hasExistingId
+            });
+
+            suppressConfigs.push({
+              id: configId,
+              inputSources: inputSources, // Array of source IDs
+              suppressOnFields: configJson?.suppress_on_fields || [],
+              suppressSources: suppressSources, // Array of source IDs (preconfigured or custom)
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            });
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (suppressFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              suppressFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Suppress module field mappings from config:', suppressFieldMappings.length);
+            }
+          }
         } else if (actionType === 'M' && configJson) {
-          // Match configuration - map source names to IDs
-          const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
-          const inputSources = inputSourceNames.map((name: string) => mapSourceNameToId(name));
+          // Check if this is a Match version or regular Match config
+          if (saveAsVersion) {
+            // Match Version
+            const versionName = workflowItem?.versionName || `Match_Version_${index}`;
 
-          // For match sources: map to proper IDs (preconfigured or custom)
-          const matchSources = configJson?.match_sources?.map((src: any) => {
-            const sourceName = src?.source_name;
-            const sourceType = src?.source_type;
+            console.log('[Transform] Match Version:', {
+              versionName,
+              saveAsVersion,
+              hasConfigJson: !!configJson
+            });
 
-            // If it's a preconfigured source, look up its ID
-            if (sourceType === 'preconfigured') {
-              return mapPreconfiguredSourceNameToId(sourceName, 'match');
+            // Extract input sources from configJson
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name || src) || [];
+            const baseInputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean);
+
+            // Extract match sources (operation sources)
+            const matchSourceNames = configJson?.match_sources?.map((src: any) => src?.source_name) || [];
+            const operationSources = matchSourceNames
+              .map((name: string) => {
+                // Check if it's a preconfigured source
+                const src = configJson.match_sources.find((s: any) => s.source_name === name);
+                if (src?.source_type === 'preconfigured') {
+                  return mapPreconfiguredSourceNameToId(name, 'match');
+                }
+                return mapSourceNameToId(name);
+              })
+              .filter(Boolean);
+
+            // Extract operation fields (match_on_fields for Match)
+            const operationFields = configJson?.match_on_fields || [];
+
+            // Extract add fields (fields being added from match sources)
+            const addFields = configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
+
+            // Get combined headers
+            const combinedHeaders = addFields;
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const versionId = workflowItemId || `match_version_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            const versionedSource: any = {
+              id: versionId,
+              sourceName: versionName,
+              sourceType: 'Version',
+              subSourceType: 'Versioned',
+              isVersioned: true,
+              versionNumber: matchVersions.length + 1,
+              versionLabel: versionName,
+              sourceModule: 'Match',
+              headers: combinedHeaders,
+              selectedHeaders: combinedHeaders,
+              // Properties needed for version display and editing
+              baseInputSources: baseInputSources,
+              operationSources: operationSources,
+              operationFields: operationFields,
+              addFields: addFields,
+              combinedHeaders: combinedHeaders,
+              fieldMappings: configJson?.field_mappings || undefined,
+              // Store workflow properties for payload reconstruction
+              stepOrder: workflowItem?.stepOrder || 4,
+              actionType: 'M',
+              saveAsVersion: saveAsVersion || 1,
+              versionName: versionName,
+              internalStepOrder: workflowItem?.internalStepOrder,
+              configJson: configJson,
+              createdByModuleId: 'panel4', // Match module ID for filtering
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            };
+
+            console.log('[Transform] Match Version extracted data:', {
+              versionName,
+              baseInputSources,
+              operationSources,
+              operationFields,
+              addFields,
+              hasExistingId: hasExistingId
+            });
+
+            matchVersions.push(versionedSource);
+
+            // Add to sourceNameToIdMap so this version can be referenced in later configs
+            sourceNameToIdMap.set(versionName, versionId);
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (matchFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              matchFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Match module field mappings:', matchFieldMappings.length);
             }
+          } else {
+            // Match configuration - map source names to IDs
+            const inputSourceNames = configJson?.input_sources?.map((src: any) => src?.source_name) || [];
+            const inputSources = inputSourceNames
+              .map((name: string) => mapSourceNameToId(name))
+              .filter(Boolean); // Remove empty IDs
 
-            // Otherwise map to ID (for custom sources from inputSources)
-            return mapSourceNameToId(sourceName);
-          }) || [];
+            // For match sources: map to proper IDs (preconfigured or custom)
+            const matchSources = (configJson?.match_sources?.map((src: any) => {
+              const sourceName = src?.source_name;
+              const sourceType = src?.source_type;
 
-          matchConfigs.push({
-            id: `match_${Date.now()}_${index}`,
-            inputSources: inputSources, // Array of source IDs
-            matchOnFields: configJson?.match_on_fields || [],
-            matchSources: matchSources, // Array of source IDs (preconfigured or custom)
-            expand: configJson?.expand !== undefined ? configJson.expand : false,
-            matchType: configJson?.match_type || 'full'
-          });
+              // If it's a preconfigured source, look up its ID
+              if (sourceType === 'preconfigured') {
+                return mapPreconfiguredSourceNameToId(sourceName, 'match');
+              }
+
+              // Otherwise map to ID (for custom sources from inputSources)
+              return mapSourceNameToId(sourceName);
+            }) || []).filter(Boolean); // Remove empty IDs
+
+            // Use existing workflow item ID if available (for edit mode), otherwise generate new one
+            const workflowItemId = workflowItem?.id || workflowItem?.workflowId;
+            const configId = workflowItemId || `match_${Date.now()}_${index}`;
+            const hasExistingId = !!workflowItemId;
+
+            console.log('[Transform] Match Config:', {
+              inputSourceNames,
+              inputSources,
+              matchSources,
+              matchOnFields: configJson?.match_on_fields || [],
+              expand: configJson?.expand,
+              matchType: configJson?.match_type,
+              hasExistingId: hasExistingId
+            });
+
+            matchConfigs.push({
+              id: configId,
+              inputSources: inputSources, // Array of source IDs
+              matchOnFields: configJson?.match_on_fields || [],
+              matchSources: matchSources, // Array of source IDs (preconfigured or custom)
+              expand: configJson?.expand !== undefined ? configJson.expand : false,
+              matchType: configJson?.match_type || 'full',
+              // Flag to indicate if this has an existing ID from API (for update payload)
+              hasExistingId: hasExistingId,
+              workflowItemId: workflowItemId // Store original workflow item ID if exists
+            });
+
+            // Extract field mappings if not already extracted (from first version/config)
+            if (matchFieldMappings.length === 0 && configJson?.field_mappings && configJson.field_mappings.length > 0) {
+              matchFieldMappings = configJson.field_mappings;
+              console.log('[Transform] Extracted Match module field mappings from config:', matchFieldMappings.length);
+            }
+          }
         }
       });
 
@@ -519,11 +921,82 @@ const RequestCreationPage: React.FC = () => {
       if (appendConfigs.length > 0) {
         transformedData.appendConfigs = appendConfigs;
       }
+      if (appendVersions.length > 0) {
+        transformedData.appendVersions = appendVersions;
+      }
       if (suppressConfigs.length > 0) {
         transformedData.suppressConfigs = suppressConfigs;
       }
+      if (suppressVersions.length > 0) {
+        transformedData.suppressVersions = suppressVersions;
+      }
       if (matchConfigs.length > 0) {
         transformedData.matchConfigs = matchConfigs;
+      }
+      if (matchVersions.length > 0) {
+        transformedData.matchVersions = matchVersions;
+      }
+
+      // Transform module-level field mappings from API format to UI format
+      const transformFieldMappingsForUI = (apiFieldMappings: any[]): any[] => {
+        if (!apiFieldMappings || apiFieldMappings.length === 0) return [];
+
+        return apiFieldMappings.map((mapping: any, index: number) => {
+          const fieldName = mapping?.field_name || '';
+          const sourceMappings = mapping?.source_mappings || '';
+
+          // Parse source_mappings: "Source1.Field1|Source2.Field2|Source3.Field3"
+          const mappingParts = sourceMappings.split('|').filter(Boolean);
+
+          // Extract source names and fields, then map to IDs
+          const selectedSources: string[] = [];
+          const selectedColumns: string[] = [];
+
+          mappingParts.forEach((part: string) => {
+            // Format: "SourceName.FieldName"
+            const [sourceName, fieldName] = part.split('.');
+            if (!sourceName || !fieldName) return;
+
+            // Map source name to ID using sourceNameToIdMap
+            const sourceId = sourceNameToIdMap.get(sourceName.trim()) || mapSourceNameToId(sourceName.trim());
+            if (!sourceId) {
+              console.warn('[TransformFieldMappings] Could not find source ID for:', sourceName);
+              return;
+            }
+
+            // Add to selectedSources (avoid duplicates)
+            if (!selectedSources.includes(sourceId)) {
+              selectedSources.push(sourceId);
+            }
+
+            // Add to selectedColumns in format "sourceId::fieldName"
+            const columnValue = `${sourceId}::${fieldName.trim()}`;
+            if (!selectedColumns.includes(columnValue)) {
+              selectedColumns.push(columnValue);
+            }
+          });
+
+          return {
+            id: `mapping_${Date.now()}_${index}`,
+            fieldName: fieldName,
+            selectedSources: selectedSources,
+            selectedColumns: selectedColumns
+          };
+        }).filter(mapping => mapping.selectedSources.length > 0); // Filter out mappings with no valid sources
+      };
+
+      // Store module-level field mappings (transformed to UI format)
+      if (appendFieldMappings.length > 0) {
+        transformedData.appendModuleFieldMappings = transformFieldMappingsForUI(appendFieldMappings);
+        console.log('[Transform] Transformed Append field mappings:', transformedData.appendModuleFieldMappings.length);
+      }
+      if (matchFieldMappings.length > 0) {
+        transformedData.matchModuleFieldMappings = transformFieldMappingsForUI(matchFieldMappings);
+        console.log('[Transform] Transformed Match field mappings:', transformedData.matchModuleFieldMappings.length);
+      }
+      if (suppressFieldMappings.length > 0) {
+        transformedData.suppressModuleFieldMappings = transformFieldMappingsForUI(suppressFieldMappings);
+        console.log('[Transform] Transformed Suppress field mappings:', transformedData.suppressModuleFieldMappings.length);
       }
     }
 
@@ -563,11 +1036,18 @@ const RequestCreationPage: React.FC = () => {
           }
         }
 
+        // Use existing stat ID if available (for edit mode), otherwise generate new one
+        const existingStatId = stat?.id;
+        const statId = existingStatId || `stats_${Date.now()}_${index}`;
+        const hasExistingId = !!existingStatId;
+
         return {
-          id: `stats_${Date.now()}_${index}`,
+          id: statId,
           inputSources: inputSourceNames, // Array of source NAMES (stats uses names, not IDs)
           countsOn: countsOn,
-          breakdownBy: stat?.breakdown_by || []
+          breakdownBy: stat?.breakdown_by || [],
+          // Flag to indicate if this has an existing ID from API (for update payload)
+          hasExistingId: hasExistingId
         };
       });
     }
@@ -598,8 +1078,13 @@ const RequestCreationPage: React.FC = () => {
         const destinationName = output?.destinationName || null;
         const destinationConfig = output?.destinationConfig || null;
 
+        // Use existing output ID if available (for edit mode), otherwise generate new one
+        const existingOutputId = output?.id;
+        const outputId = existingOutputId || `output_${Date.now()}_${index}`;
+        const hasExistingId = !!existingOutputId;
+
         return {
-          id: `output_${Date.now()}_${index}`,
+          id: outputId,
           inputSources: inputSources, // Array of source IDs
           outputFields: config?.output_fields || [],
           combineSources: config?.combine_sources !== undefined ? config.combine_sources : false,
@@ -615,7 +1100,9 @@ const RequestCreationPage: React.FC = () => {
           destinationType: destinationType,
           destinationName: destinationName,
           destinationConfig: destinationConfig,
-          destinations: [] // Legacy field
+          destinations: [], // Legacy field
+          // Flag to indicate if this has an existing ID from API (for update payload)
+          hasExistingId: hasExistingId
         };
       });
     }
@@ -635,6 +1122,120 @@ const RequestCreationPage: React.FC = () => {
         scheduledDateTime: apiData.requestDetails?.scheduledDateTime || ''
       };
     }
+
+    // Log transformation summary
+    console.log('\n=== TRANSFORMATION SUMMARY ===');
+    console.log('Request Name:', transformedData.requestName || 'N/A');
+    console.log('\nInput Sources:', transformedData.inputSources?.length || 0);
+    if (transformedData.inputSources?.length > 0) {
+      transformedData.inputSources.forEach((src: any, i: number) => {
+        console.log(`  ${i + 1}. ${src.sourceName} (ID: ${src.id})`);
+      });
+    }
+    console.log('\nCustom Sources:', transformedData.customSources?.length || 0);
+    if (transformedData.customSources?.length > 0) {
+      const appendCustomSources = transformedData.customSources.filter((s: any) => s.createdByModuleId === 'panel2');
+      const matchCustomSources = transformedData.customSources.filter((s: any) => s.createdByModuleId === 'panel4');
+      const suppressCustomSources = transformedData.customSources.filter((s: any) => s.createdByModuleId === 'panel3');
+
+      console.log(`  Append Custom Sources (panel2): ${appendCustomSources.length}`);
+      appendCustomSources.forEach((src: any, i: number) => {
+        console.log(`    ${i + 1}. ${src.sourceName} (ID: ${src.id}, Type: ${src.sourceType})`);
+      });
+
+      console.log(`  Match Custom Sources (panel4): ${matchCustomSources.length}`);
+      matchCustomSources.forEach((src: any, i: number) => {
+        console.log(`    ${i + 1}. ${src.sourceName} (ID: ${src.id}, Type: ${src.sourceType})`);
+      });
+
+      console.log(`  Suppress Custom Sources (panel3): ${suppressCustomSources.length}`);
+      suppressCustomSources.forEach((src: any, i: number) => {
+        console.log(`    ${i + 1}. ${src.sourceName} (ID: ${src.id}, Type: ${src.sourceType})`);
+      });
+    }
+    console.log('\nInput Versions:', transformedData.inputVersions?.length || 0);
+    if (transformedData.inputVersions?.length > 0) {
+      transformedData.inputVersions.forEach((v: any, i: number) => {
+        console.log(`  ${i + 1}. ${v.versionLabel} (ID: ${v.id})`);
+      });
+    }
+    console.log('\nAppend Configs:', transformedData.appendConfigs?.length || 0);
+    if (transformedData.appendConfigs?.length > 0) {
+      transformedData.appendConfigs.forEach((cfg: any, i: number) => {
+        console.log(`  ${i + 1}. Input Sources: ${cfg.inputSources?.length || 0}, Append Sources: ${cfg.appendSources?.length || 0}, Match Keys: ${cfg.appendOnFields?.length || 0}, Field Mappings: ${cfg.fieldMappings?.length || 0}`);
+      });
+    }
+    console.log('\nAppend Versions:', transformedData.appendVersions?.length || 0);
+    if (transformedData.appendVersions?.length > 0) {
+      transformedData.appendVersions.forEach((v: any, i: number) => {
+        console.log(`  ${i + 1}. ${v.versionLabel} (ID: ${v.id})`);
+      });
+    }
+    console.log('\nSuppress Configs:', transformedData.suppressConfigs?.length || 0);
+    if (transformedData.suppressConfigs?.length > 0) {
+      transformedData.suppressConfigs.forEach((cfg: any, i: number) => {
+        console.log(`  ${i + 1}. Input Sources: ${cfg.inputSources?.length || 0}, Suppress Sources: ${cfg.suppressSources?.length || 0}, Suppress On Fields: ${cfg.suppressOnFields?.length || 0}`);
+      });
+    }
+    console.log('\nSuppress Versions:', transformedData.suppressVersions?.length || 0);
+    if (transformedData.suppressVersions?.length > 0) {
+      transformedData.suppressVersions.forEach((v: any, i: number) => {
+        console.log(`  ${i + 1}. ${v.versionLabel} (ID: ${v.id})`);
+      });
+    }
+    console.log('\nMatch Configs:', transformedData.matchConfigs?.length || 0);
+    if (transformedData.matchConfigs?.length > 0) {
+      transformedData.matchConfigs.forEach((cfg: any, i: number) => {
+        console.log(`  ${i + 1}. Input Sources: ${cfg.inputSources?.length || 0}, Match Sources: ${cfg.matchSources?.length || 0}, Match On Fields: ${cfg.matchOnFields?.length || 0}`);
+      });
+    }
+    console.log('\nMatch Versions:', transformedData.matchVersions?.length || 0);
+    if (transformedData.matchVersions?.length > 0) {
+      transformedData.matchVersions.forEach((v: any, i: number) => {
+        console.log(`  ${i + 1}. ${v.versionLabel} (ID: ${v.id})`);
+      });
+    }
+    console.log('\nStats Configs:', transformedData.statsConfigs?.length || 0);
+    console.log('Output Configs:', transformedData.outputConfigs?.length || 0);
+    console.log('Schedule Config:', transformedData.scheduleConfig ? 'Yes' : 'No');
+    console.log('\nModule-Level Field Mappings:');
+    console.log('  Append:', transformedData.appendModuleFieldMappings?.length || 0);
+    console.log('  Match:', transformedData.matchModuleFieldMappings?.length || 0);
+    console.log('  Suppress:', transformedData.suppressModuleFieldMappings?.length || 0);
+
+    // Detect how many duplicate modules were created based on stepOrder
+    // Group workflow items by actionType and count unique stepOrders
+    if (apiData?.workflow && Array.isArray(apiData.workflow)) {
+      const appendStepOrders = new Set<number>();
+      const matchStepOrders = new Set<number>();
+      const suppressStepOrders = new Set<number>();
+
+      apiData.workflow.forEach((item: any) => {
+        const actionType = item?.actionType;
+        const stepOrder = item?.stepOrder;
+
+        if (actionType === 'A' && stepOrder) {
+          appendStepOrders.add(stepOrder);
+        } else if (actionType === 'M' && stepOrder) {
+          matchStepOrders.add(stepOrder);
+        } else if (actionType === 'S' && stepOrder) {
+          suppressStepOrders.add(stepOrder);
+        }
+      });
+
+      transformedData.moduleDuplicationInfo = {
+        appendModuleCount: appendStepOrders.size || 0,
+        matchModuleCount: matchStepOrders.size || 0,
+        suppressModuleCount: suppressStepOrders.size || 0
+      };
+
+      console.log('\nModule Duplication Info:');
+      console.log('  Append Modules:', appendStepOrders.size);
+      console.log('  Match Modules:', matchStepOrders.size);
+      console.log('  Suppress Modules:', suppressStepOrders.size);
+    }
+
+    console.log('================================\n');
 
     return transformedData;
   };
@@ -698,9 +1299,25 @@ const RequestCreationPage: React.FC = () => {
             setRequestName(name);
           }
 
-          // Load input sources
-          if (dataToLoad?.inputSources && Array.isArray(dataToLoad.inputSources)) {
-            setInputSources(dataToLoad.inputSources);
+          // Load requestDetails ID (for update payload) - NOT in duplicate mode
+          if (!isDuplicateMode && dataToLoad?.requestDetailsId) {
+            setRequestDetailsId(dataToLoad.requestDetailsId);
+            console.log('[Edit Mode] Loaded requestDetailsId:', dataToLoad.requestDetailsId);
+          }
+
+          // Load input sources (combine regular sources and Input module versions)
+          // Input versions should be added to inputSources array, not versionedSources
+          const allInputSources = [
+            ...(dataToLoad?.inputSources || []),
+            ...(dataToLoad?.inputVersions || [])
+          ];
+          if (allInputSources.length > 0) {
+            console.log('[Edit Mode] Loading input sources:', {
+              regularSources: dataToLoad?.inputSources?.length || 0,
+              inputVersions: dataToLoad?.inputVersions?.length || 0,
+              total: allInputSources.length
+            });
+            setInputSources(allInputSources);
           }
 
           // Load custom sources (from Append, Match, Suppress modules)
@@ -708,9 +1325,21 @@ const RequestCreationPage: React.FC = () => {
             setSharedCustomSources(dataToLoad.customSources);
           }
 
-          // Load input versions
-          if (dataToLoad?.inputVersions && Array.isArray(dataToLoad.inputVersions)) {
-            setVersionedSources(dataToLoad.inputVersions);
+          // Load versioned sources (versions from Append, Match, Suppress modules)
+          // These are separate from Input module versions
+          const allVersionedSources = [
+            ...(dataToLoad?.appendVersions || []),
+            ...(dataToLoad?.matchVersions || []),
+            ...(dataToLoad?.suppressVersions || [])
+          ];
+          if (allVersionedSources.length > 0) {
+            console.log('[Edit Mode] Loading versioned sources:', {
+              appendVersions: dataToLoad?.appendVersions?.length || 0,
+              matchVersions: dataToLoad?.matchVersions?.length || 0,
+              suppressVersions: dataToLoad?.suppressVersions?.length || 0,
+              total: allVersionedSources.length
+            });
+            setVersionedSources(allVersionedSources);
           }
 
           // Load append configurations
@@ -726,6 +1355,20 @@ const RequestCreationPage: React.FC = () => {
           // Load match configurations
           if (dataToLoad?.matchConfigs && Array.isArray(dataToLoad.matchConfigs) && dataToLoad.matchConfigs.length > 0) {
             setInitialMatchConfigs(dataToLoad.matchConfigs);
+          }
+
+          // Load module-level field mappings
+          if (dataToLoad?.appendModuleFieldMappings && Array.isArray(dataToLoad.appendModuleFieldMappings)) {
+            console.log('[Edit Mode] Loading Append module field mappings:', dataToLoad.appendModuleFieldMappings.length);
+            setAppendModuleFieldMappings(dataToLoad.appendModuleFieldMappings);
+          }
+          if (dataToLoad?.matchModuleFieldMappings && Array.isArray(dataToLoad.matchModuleFieldMappings)) {
+            console.log('[Edit Mode] Loading Match module field mappings:', dataToLoad.matchModuleFieldMappings.length);
+            setMatchModuleFieldMappings(dataToLoad.matchModuleFieldMappings);
+          }
+          if (dataToLoad?.suppressModuleFieldMappings && Array.isArray(dataToLoad.suppressModuleFieldMappings)) {
+            console.log('[Edit Mode] Loading Suppress module field mappings:', dataToLoad.suppressModuleFieldMappings.length);
+            setSuppressModuleFieldMappings(dataToLoad.suppressModuleFieldMappings);
           }
 
           // Load output configurations
@@ -746,6 +1389,66 @@ const RequestCreationPage: React.FC = () => {
             setNotificationWhen(schedConfig?.emailNotification || 'standard');
             if (schedConfig?.notificationEmails && Array.isArray(schedConfig.notificationEmails) && schedConfig.notificationEmails.length > 0) {
               setRecipientEmail(schedConfig.notificationEmails.join(', ') || '');
+            }
+          }
+
+          // Restore duplicate modules based on moduleDuplicationInfo
+          if (dataToLoad?.moduleDuplicationInfo) {
+            const duplicationInfo = dataToLoad.moduleDuplicationInfo;
+            console.log('[Edit Mode] Restoring duplicate modules:', duplicationInfo);
+
+            // Get the base module definitions
+            const baseModules = createModuleDefinitions();
+            const restoredModules = [...baseModules];
+
+            // Create duplicate Append modules
+            if (duplicationInfo.appendModuleCount > 1) {
+              const appendModule = baseModules.find(m => m.id === 'panel2');
+              if (appendModule) {
+                for (let i = 2; i <= duplicationInfo.appendModuleCount; i++) {
+                  restoredModules.splice(restoredModules.findIndex(m => m.id === 'panel2') + (i - 1), 0, {
+                    ...appendModule,
+                    id: `panel2_${i}`,
+                    title: `Append Module ${i}`,
+                  });
+                }
+                setModuleCounter(prev => ({ ...prev, Append: duplicationInfo.appendModuleCount }));
+              }
+            }
+
+            // Create duplicate Suppress modules
+            if (duplicationInfo.suppressModuleCount > 1) {
+              const suppressModule = baseModules.find(m => m.id === 'panel3');
+              if (suppressModule) {
+                for (let i = 2; i <= duplicationInfo.suppressModuleCount; i++) {
+                  restoredModules.splice(restoredModules.findIndex(m => m.id === 'panel3') + (i - 1), 0, {
+                    ...suppressModule,
+                    id: `panel3_${i}`,
+                    title: `Suppression Module ${i}`,
+                  });
+                }
+                setModuleCounter(prev => ({ ...prev, Suppression: duplicationInfo.suppressModuleCount }));
+              }
+            }
+
+            // Create duplicate Match modules
+            if (duplicationInfo.matchModuleCount > 1) {
+              const matchModule = baseModules.find(m => m.id === 'panel4');
+              if (matchModule) {
+                for (let i = 2; i <= duplicationInfo.matchModuleCount; i++) {
+                  restoredModules.splice(restoredModules.findIndex(m => m.id === 'panel4') + (i - 1), 0, {
+                    ...matchModule,
+                    id: `panel4_${i}`,
+                    title: `Match Module ${i}`,
+                  });
+                }
+                setModuleCounter(prev => ({ ...prev, Match: duplicationInfo.matchModuleCount }));
+              }
+            }
+
+            if (restoredModules.length > baseModules.length) {
+              console.log('[Edit Mode] Restored modules:', restoredModules.length, 'total');
+              setModules(restoredModules);
             }
           }
 
@@ -1676,12 +2379,21 @@ const RequestCreationPage: React.FC = () => {
         }
 
         // Return source with extracted filters, stepOrder, and internalStepOrder
-        return {
+        const result: any = {
           ...source,
           filters: filters,
           stepOrder: 1, // Input module sources have stepOrder = 1
           internalStepOrder: originalIndex + 1 // 1-based index from original position
         };
+
+        // Include ID if this is an existing source (for update payload)
+        // Only include if hasExistingId is true (source.id is the internal ID, not API ID)
+        if ((source as any).hasExistingId && source.id) {
+          result.id = source.id;
+          console.log('[Update Mode] Including input source ID:', source.id, 'for source:', source.sourceName);
+        }
+
+        return result;
       }
 
       // Handle File sources - transform from UI format to API format
@@ -1694,11 +2406,19 @@ const RequestCreationPage: React.FC = () => {
           hasSelectedHeaders: !!source?.selectedHeaders,
           selectedHeadersCount: source?.selectedHeaders?.length || 0
         });
-        return {
+        const result: any = {
           ...transformFileSourceToAPI(source),
           stepOrder: 1, // Input module sources have stepOrder = 1
           internalStepOrder: originalIndex + 1 // 1-based index from original position
         };
+
+        // Include ID if this is an existing source (for update payload)
+        if ((source as any).hasExistingId && source.id) {
+          result.id = source.id;
+          console.log('[Update Mode] Including input source ID:', source.id, 'for source:', source.sourceName);
+        }
+
+        return result;
       }
 
       // Handle Database sources
@@ -1784,6 +2504,12 @@ const RequestCreationPage: React.FC = () => {
           console.log('✅ Added sourceOption to result:', result.sourceOption);
         } else {
           console.warn('⚠️ No tableSourceId found for database source:', source?.sourceName);
+        }
+
+        // Include ID if this is an existing source (for update payload)
+        if ((source as any).hasExistingId && source.id) {
+          result.id = source.id;
+          console.log('[Update Mode] Including input source ID:', source.id, 'for source:', source.sourceName);
         }
 
         console.log('📦 Final Database source result:', result);
@@ -2018,6 +2744,12 @@ const RequestCreationPage: React.FC = () => {
         recipientEmail: recipientEmail || ''
       };
 
+      // Include ID if this is an existing request (for update payload)
+      if (requestDetailsId) {
+        requestDetails.id = requestDetailsId;
+        console.log('[Update Mode] Including requestDetails ID in payload:', requestDetailsId);
+      }
+
       // Include scheduledDateTime when requestType is 'S' (Schedule Later)
       if (scheduleType === 'scheduled_at' && scheduledDateTime) {
         requestDetails.scheduledDateTime = scheduledDateTime;
@@ -2120,12 +2852,20 @@ const RequestCreationPage: React.FC = () => {
 
           if (isAlreadyAPIFormat) {
             // Return source with inputType: 'A', stepOrder, and internalStepOrder
-            return {
+            const result: any = {
               ...source,
               inputType: 'A',
               stepOrder: appendStepOrder,
               internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including append source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform File sources
@@ -2191,7 +2931,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
 
-            return {
+            const result: any = {
               sourceName: source.sourceName,
               sourceType: 'F',
               dataSourceId: source.fileSourceId || null,
@@ -2210,6 +2950,14 @@ const RequestCreationPage: React.FC = () => {
               stepOrder: appendStepOrder,
               internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including append source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform Database sources
@@ -2293,6 +3041,12 @@ const RequestCreationPage: React.FC = () => {
               result.sourceOption = source.tableSourceId;
             }
 
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including append source ID:', source.id, 'for source:', source.sourceName);
+            }
+
             return result;
           }
 
@@ -2309,7 +3063,7 @@ const RequestCreationPage: React.FC = () => {
             const assignmentSets = selfSource?.selfConfig?.assignment_sets || [];
             const tieringOn = selfSource?.selfConfig?.tiering_on || null;
 
-            const result = {
+            const result: any = {
               sourceName: selfSource?.sourceName || 'Self_Source',
               sourceType: 'F',
               dataSourceId: null,
@@ -2333,6 +3087,12 @@ const RequestCreationPage: React.FC = () => {
               stepOrder: appendStepOrder,
               internalStepOrder: appendIndex + 1 // 1-based index within append sources
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((selfSource as any).hasExistingId && selfSource.id) {
+              result.id = selfSource.id;
+              console.log('[Update Mode] Including append source ID:', selfSource.id, 'for source:', selfSource.sourceName);
+            }
 
             console.log('✅ Transformed Self source:', result);
             return result;
@@ -2429,10 +3189,18 @@ const RequestCreationPage: React.FC = () => {
 
           if (isAlreadyAPIFormat) {
             // Return source with inputType: 'M'
-            return {
+            const result: any = {
               ...source,
               inputType: 'M'
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including match source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform File sources
@@ -2495,7 +3263,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
 
-            return {
+            const result: any = {
               sourceName: source.sourceName,
               sourceType: 'F',
               dataSourceId: source.fileSourceId || null,
@@ -2514,6 +3282,14 @@ const RequestCreationPage: React.FC = () => {
               stepOrder: matchStepOrder,
               internalStepOrder: matchIndex + 1 // 1-based index within match sources
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including match source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform Database sources
@@ -2587,6 +3363,12 @@ const RequestCreationPage: React.FC = () => {
               result.sourceOption = source.tableSourceId;
             }
 
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including match source ID:', source.id, 'for source:', source.sourceName);
+            }
+
             return result;
           }
 
@@ -2647,10 +3429,18 @@ const RequestCreationPage: React.FC = () => {
 
           if (isAlreadyAPIFormat) {
             // Return source with inputType: 'S'
-            return {
+            const result: any = {
               ...source,
               inputType: 'S'
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including suppress source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform File sources
@@ -2713,7 +3503,7 @@ const RequestCreationPage: React.FC = () => {
               }
             }
 
-            return {
+            const result: any = {
               sourceName: source.sourceName,
               sourceType: 'F',
               dataSourceId: source.fileSourceId || null,
@@ -2732,6 +3522,14 @@ const RequestCreationPage: React.FC = () => {
               stepOrder: suppressStepOrder,
               internalStepOrder: suppressIndex + 1 // 1-based index within suppress sources
             };
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including suppress source ID:', source.id, 'for source:', source.sourceName);
+            }
+
+            return result;
           }
 
           // Transform Database sources
@@ -2803,6 +3601,12 @@ const RequestCreationPage: React.FC = () => {
             // Include sourceOption (tableId) for preconfigured tables
             if (source?.tableSourceId) {
               result.sourceOption = source.tableSourceId;
+            }
+
+            // Include ID if this is an existing source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              result.id = source.id;
+              console.log('[Update Mode] Including suppress source ID:', source.id, 'for source:', source.sourceName);
             }
 
             return result;
@@ -2903,10 +3707,11 @@ const RequestCreationPage: React.FC = () => {
               sourceName: source.sourceName,
               versionName: versionName,
               hasConfigJson: !!configJson,
-              internalStepOrder: index + 1
+              internalStepOrder: index + 1,
+              hasExistingId: !!(source as any).hasExistingId
             });
 
-            return {
+            const workflowItem: any = {
               stepOrder: stepOrder || 1,
               actionType: actionType || 'I',
               saveAsVersion: saveAsVersion || 1,
@@ -2921,15 +3726,23 @@ const RequestCreationPage: React.FC = () => {
                 priority_order: source.headers || []
               }
             };
+
+            // Include ID if this is an existing version (for update payload)
+            if ((source as any).hasExistingId && (source as any).workflowItemId) {
+              workflowItem.id = (source as any).workflowItemId;
+            }
+
+            return workflowItem;
           } else {
             // This is a regular input source
             console.log(`  ${index + 1}. Input Source:`, {
               sourceName: source.sourceName,
               sourceType: source.sourceType,
-              internalStepOrder: index + 1
+              internalStepOrder: index + 1,
+              hasExistingId: !!(source as any).hasExistingId
             });
 
-            return {
+            const workflowItem: any = {
               stepOrder: 1,
               internalStepOrder: index + 1,  // Sequential based on creation order
               actionType: 'I',
@@ -2937,6 +3750,13 @@ const RequestCreationPage: React.FC = () => {
                 input_sources: [source.sourceName]
               }
             };
+
+            // Include ID if this is an existing input source (for update payload)
+            if ((source as any).hasExistingId && source.id) {
+              workflowItem.id = source.id;
+            }
+
+            return workflowItem;
           }
         });
       };
@@ -3147,7 +3967,9 @@ const RequestCreationPage: React.FC = () => {
             actionType: 'A',
             configJson,
             createdAt: config.createdAt || 0,
-            itemType: 'config'
+            itemType: 'config',
+            // Include ID if this is an existing config (for update payload)
+            ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
         });
 
@@ -3176,7 +3998,9 @@ const RequestCreationPage: React.FC = () => {
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
-            itemType: 'version'
+            itemType: 'version',
+            // Include ID if this is an existing version (for update payload)
+            ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
@@ -3197,9 +4021,15 @@ const RequestCreationPage: React.FC = () => {
             workflowItem.versionName = item.versionName;
           }
 
+          // Include ID if this is an existing workflow item (for update payload)
+          if (item.id) {
+            workflowItem.id = item.id;
+          }
+
           console.log(`  Append ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
             internalStepOrder: index + 1,
             createdAt: item.createdAt,
+            hasExistingId: !!item.id,
             ...(item.itemType === 'version' && { versionName: item.versionName })
           });
 
@@ -3308,7 +4138,9 @@ const RequestCreationPage: React.FC = () => {
             actionType: 'S',
             configJson,
             createdAt: config.createdAt || 0,
-            itemType: 'config'
+            itemType: 'config',
+            // Include ID if this is an existing config (for update payload)
+            ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
         });
 
@@ -3337,7 +4169,9 @@ const RequestCreationPage: React.FC = () => {
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
-            itemType: 'version'
+            itemType: 'version',
+            // Include ID if this is an existing version (for update payload)
+            ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
@@ -3358,9 +4192,15 @@ const RequestCreationPage: React.FC = () => {
             workflowItem.versionName = item.versionName;
           }
 
+          // Include ID if this is an existing workflow item (for update payload)
+          if (item.id) {
+            workflowItem.id = item.id;
+          }
+
           console.log(`  Suppress ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
             internalStepOrder: index + 1,
             createdAt: item.createdAt,
+            hasExistingId: !!item.id,
             ...(item.itemType === 'version' && { versionName: item.versionName })
           });
 
@@ -3477,7 +4317,9 @@ const RequestCreationPage: React.FC = () => {
             actionType: 'M',
             configJson,
             createdAt: config.createdAt || 0,
-            itemType: 'config'
+            itemType: 'config',
+            // Include ID if this is an existing config (for update payload)
+            ...(config.hasExistingId && config.workflowItemId && { id: config.workflowItemId })
           });
         });
 
@@ -3506,7 +4348,9 @@ const RequestCreationPage: React.FC = () => {
             versionName,
             configJson: updatedConfigJson,
             createdAt: (source as any).createdAt || 0,
-            itemType: 'version'
+            itemType: 'version',
+            // Include ID if this is an existing version (for update payload)
+            ...((source as any).hasExistingId && (source as any).workflowItemId && { id: (source as any).workflowItemId })
           });
         });
 
@@ -3527,9 +4371,15 @@ const RequestCreationPage: React.FC = () => {
             workflowItem.versionName = item.versionName;
           }
 
+          // Include ID if this is an existing workflow item (for update payload)
+          if (item.id) {
+            workflowItem.id = item.id;
+          }
+
           console.log(`  Match ${item.itemType === 'config' ? 'Config' : 'Version'} ${index + 1}:`, {
             internalStepOrder: index + 1,
             createdAt: item.createdAt,
+            hasExistingId: !!item.id,
             ...(item.itemType === 'version' && { versionName: item.versionName })
           });
 

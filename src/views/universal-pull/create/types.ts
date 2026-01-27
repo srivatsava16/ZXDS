@@ -15,6 +15,7 @@ export interface StatsConfiguration {
 
 // API format for Stats
 export interface StatsAPIFormat {
+  id?: string | number; // Optional ID for existing stats configs (for update payload)
   input_sources: Array<{
     source_name: string;
     columns: string[];
@@ -57,13 +58,20 @@ export const transformStatsConfigToAPI = (
     is_distinct: countField.isDistinct
   }));
 
-  return {
+  const result: StatsAPIFormat = {
     input_sources,
     generate_counts_config: {
       counts: counts
     },
     breakdown_by: config.breakdownBy
   };
+
+  // Include ID if this is an existing stats config (for update payload)
+  if ((config as any).hasExistingId && config.id) {
+    result.id = config.id;
+  }
+
+  return result;
 };
 
 // Helper function to transform all stats configurations to API format
