@@ -190,10 +190,13 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   const [suppressSourcesSearch, setSuppressSourcesSearch] = useState('');
 
   // Helper function to get all fields for a suppress source
-  const getSuppressSourceFields = (sourceId: string): string[] => {
+  const getSuppressSourceFields = (sourceId: string | number): string[] => {
+    // Ensure sourceId is a string
+    const sourceIdStr = String(sourceId);
+
     // Check if it's a predefined suppress source (from API)
-    if (sourceId.startsWith('suppress_')) {
-      const tableId = parseInt(sourceId.replace('suppress_', ''));
+    if (sourceIdStr.startsWith('suppress_')) {
+      const tableId = parseInt(sourceIdStr.replace('suppress_', ''));
       const suppressTable = apiSources?.dbSource?.preconfiguredTables?.suppress?.find(
         table => table.tableId === tableId
       );
@@ -204,7 +207,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     }
 
     // Check custom suppress sources
-    const customSource = customSuppressSources.find(src => src.id === sourceId);
+    const customSource = customSuppressSources.find(src => src.id === sourceId || src.id === sourceIdStr);
     if (customSource) {
       return customSource.selectedHeaders || customSource.headers || [];
     }
@@ -219,14 +222,17 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   };
 
   // Helper function to check if a source contains all selected suppress on fields
-  const sourceHasAllSuppressOnFields = (sourceId: string): boolean => {
+  const sourceHasAllSuppressOnFields = (sourceId: string | number): boolean => {
+    // Ensure sourceId is a string for comparisons
+    const sourceIdStr = String(sourceId);
+
     // If no suppress on fields are selected, all sources are enabled
     if (selectedSuppressOnFields.length === 0) {
       return true;
     }
 
     // Always enable sources that are selected as input sources
-    if (selectedInputSources.includes(sourceId)) {
+    if (selectedInputSources.includes(sourceIdStr) || selectedInputSources.includes(sourceId as any)) {
       return true;
     }
 

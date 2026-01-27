@@ -74,19 +74,8 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
       const source = availableSources.find(s => s.id === sourceId);
       if (!source) return;
 
-      // Use actual headers if provided, otherwise use mock data
-      let fields: string[] = [];
-
-      if (source.headers && source.headers.length > 0) {
-        // Use actual headers from the source
-        fields = source.headers;
-      } else if (source.type === 'input') {
-        // Fallback to mock data for input sources
-        fields = ['EMAIL_ID', 'PROFILE_ID', 'FIRST_NAME', 'LAST_NAME', 'ZIP_CODE'];
-      } else if (source.type === 'append') {
-        // Fallback to mock data for append sources
-        fields = ['CITY', 'STATE', 'COUNTY', 'LATITUDE', 'LONGITUDE'];
-      }
+      // Use actual headers from the source
+      const fields: string[] = source.headers && source.headers.length > 0 ? source.headers : [];
 
       fields.forEach(field => {
         const uniqueValue = `${sourceId}::${field}`;

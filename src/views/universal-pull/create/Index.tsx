@@ -4980,7 +4980,7 @@ const RequestCreationPage: React.FC = () => {
       {editRequestError && (
         <Box sx={{ mb: 2 }}>
           <Alert
-            severity={editRequestError.includes('Using sample data') ? 'warning' : 'error'}
+            severity="error"
             onClose={() => setEditRequestError('')}
           >
             {editRequestError}

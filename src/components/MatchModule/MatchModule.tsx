@@ -156,10 +156,13 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   const predefinedSources = getPredefinedSources(apiSources);
 
   // Helper function to get all fields for a match source
-  const getMatchSourceFields = (sourceId: string): string[] => {
+  const getMatchSourceFields = (sourceId: string | number): string[] => {
+    // Ensure sourceId is a string
+    const sourceIdStr = String(sourceId);
+
     // Check if it's a predefined match source (from API)
-    if (sourceId.startsWith('match_')) {
-      const tableId = parseInt(sourceId.replace('match_', ''));
+    if (sourceIdStr.startsWith('match_')) {
+      const tableId = parseInt(sourceIdStr.replace('match_', ''));
       const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
         table => table.tableId === tableId
       );
@@ -170,13 +173,13 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     }
 
     // Check custom match sources
-    const customSource = customSources.customMatchSources.find((src: any) => src.id === sourceId);
+    const customSource = customSources.customMatchSources.find((src: any) => src.id === sourceId || src.id === sourceIdStr);
     if (customSource) {
       return customSource.selectedHeaders || customSource.headers || [];
     }
 
     // Check versioned sources and regular input sources
-    const versionedSource = availableInputSources.find(src => src.id === sourceId);
+    const versionedSource = availableInputSources.find(src => src.id === sourceId || src.id === sourceIdStr);
     if (versionedSource) {
       return versionedSource.selectedHeaders || versionedSource.headers || [];
     }
@@ -185,14 +188,17 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   };
 
   // Helper function to check if a source contains all selected match on fields
-  const sourceHasAllMatchOnFields = (sourceId: string): boolean => {
+  const sourceHasAllMatchOnFields = (sourceId: string | number): boolean => {
+    // Ensure sourceId is a string for comparisons
+    const sourceIdStr = String(sourceId);
+
     // If no match on fields are selected, all sources are enabled
     if (matchConfig.selectedMatchOnFields.length === 0) {
       return true;
     }
 
     // Always enable sources that are selected as input sources
-    if (matchConfig.selectedInputSources.includes(sourceId)) {
+    if (matchConfig.selectedInputSources.includes(sourceIdStr) || matchConfig.selectedInputSources.includes(sourceId as any)) {
       return true;
     }
 

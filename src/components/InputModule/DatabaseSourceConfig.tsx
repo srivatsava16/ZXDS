@@ -790,97 +790,27 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
       onChange(updatedDataFromTop10);
     } catch (error) {
+      // Show error for all table types (preconfigured and custom)
+      let errorMsg = 'Failed to fetch table data. Please check your table configuration.';
 
-      // Only show mock data fallback for preconfigured tables
-      if (tableSelectionType === 'preconfigured') {
-        // Mock data fallback for preconfigured database tables
-        const mockResponse = {
-          columns: ['email_id', 'profile_id', 'list_id', 'email_md5', 'ma1566', 'credit_score', 'income', 'age', 'zip_code', 'first_name', 'last_name', 'phone_number', 'state', 'city', 'account_status', 'employment_status', 'account_balance'],
-          data: [
-            { EMAIL_ID: 'john.doe@example.com', PROFILE_ID: 'P12345', LIST_ID: 'L001', EMAIL_MD5: '5c5e3e9f8f9c2d6b8e3a1f7c9d4e2b1a', MA1566: 1, CREDIT_SCORE: 750, INCOME: 85000, AGE: 32, ZIP_CODE: '10001', FIRST_NAME: 'John', LAST_NAME: 'Doe', PHONE_NUMBER: '5551234567', STATE: 'NY', CITY: 'New York', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 15000 },
-            { EMAIL_ID: 'jane.smith@example.com', PROFILE_ID: 'P12346', LIST_ID: 'L002', EMAIL_MD5: '8f7d6e5c4b3a2e1f9d8c7b6a5e4d3c2b', MA1566: 1, CREDIT_SCORE: 720, INCOME: 72000, AGE: 28, ZIP_CODE: '10002', FIRST_NAME: 'Jane', LAST_NAME: 'Smith', PHONE_NUMBER: '5551234568', STATE: 'CA', CITY: 'Los Angeles', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 12500 },
-            { EMAIL_ID: 'bob.johnson@example.com', PROFILE_ID: 'P12347', LIST_ID: 'L003', EMAIL_MD5: '3a2b1c9d8e7f6a5b4c3d2e1f9a8b7c6d', MA1566: 0, CREDIT_SCORE: 680, INCOME: 65000, AGE: 45, ZIP_CODE: '10003', FIRST_NAME: 'Bob', LAST_NAME: 'Johnson', PHONE_NUMBER: '5551234569', STATE: 'TX', CITY: 'Houston', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Self-Employed', ACCOUNT_BALANCE: 8900 },
-            { EMAIL_ID: 'alice.williams@example.com', PROFILE_ID: 'P12348', LIST_ID: 'L004', EMAIL_MD5: '7c6d5e4f3a2b1c9d8e7f6a5b4c3d2e1f', MA1566: 1, CREDIT_SCORE: 785, INCOME: 95000, AGE: 38, ZIP_CODE: '10004', FIRST_NAME: 'Alice', LAST_NAME: 'Williams', PHONE_NUMBER: '5551234570', STATE: 'FL', CITY: 'Miami', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 22000 },
-            { EMAIL_ID: 'charlie.brown@example.com', PROFILE_ID: 'P12349', LIST_ID: 'L005', EMAIL_MD5: '2e1f9a8b7c6d5e4f3a2b1c9d8e7f6a5b', MA1566: 1, CREDIT_SCORE: 710, INCOME: 78000, AGE: 41, ZIP_CODE: '10005', FIRST_NAME: 'Charlie', LAST_NAME: 'Brown', PHONE_NUMBER: '5551234571', STATE: 'IL', CITY: 'Chicago', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 16500 },
-            { EMAIL_ID: 'david.miller@example.com', PROFILE_ID: 'P12350', LIST_ID: 'L006', EMAIL_MD5: '6a5b4c3d2e1f9a8b7c6d5e4f3a2b1c9d', MA1566: 0, CREDIT_SCORE: 665, INCOME: 58000, AGE: 29, ZIP_CODE: '10006', FIRST_NAME: 'David', LAST_NAME: 'Miller', PHONE_NUMBER: '5551234572', STATE: 'WA', CITY: 'Seattle', ACCOUNT_STATUS: 'Inactive', EMPLOYMENT_STATUS: 'Unemployed', ACCOUNT_BALANCE: 3200 },
-            { EMAIL_ID: 'emma.davis@example.com', PROFILE_ID: 'P12351', LIST_ID: 'L007', EMAIL_MD5: '1c9d8e7f6a5b4c3d2e1f9a8b7c6d5e4f', MA1566: 1, CREDIT_SCORE: 740, INCOME: 88000, AGE: 35, ZIP_CODE: '10007', FIRST_NAME: 'Emma', LAST_NAME: 'Davis', PHONE_NUMBER: '5551234573', STATE: 'MA', CITY: 'Boston', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 19000 },
-            { EMAIL_ID: 'frank.garcia@example.com', PROFILE_ID: 'P12352', LIST_ID: 'L008', EMAIL_MD5: '9a8b7c6d5e4f3a2b1c9d8e7f6a5b4c3d', MA1566: 1, CREDIT_SCORE: 795, INCOME: 105000, AGE: 42, ZIP_CODE: '10008', FIRST_NAME: 'Frank', LAST_NAME: 'Garcia', PHONE_NUMBER: '5551234574', STATE: 'CO', CITY: 'Denver', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 28000 },
-            { EMAIL_ID: 'grace.martinez@example.com', PROFILE_ID: 'P12353', LIST_ID: 'L009', EMAIL_MD5: '4c3d2e1f9a8b7c6d5e4f3a2b1c9d8e7f', MA1566: 0, CREDIT_SCORE: 690, INCOME: 62000, AGE: 31, ZIP_CODE: '10009', FIRST_NAME: 'Grace', LAST_NAME: 'Martinez', PHONE_NUMBER: '5551234575', STATE: 'AZ', CITY: 'Phoenix', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Employed', ACCOUNT_BALANCE: 9500 },
-            { EMAIL_ID: 'henry.rodriguez@example.com', PROFILE_ID: 'P12354', LIST_ID: 'L010', EMAIL_MD5: '8e7f6a5b4c3d2e1f9a8b7c6d5e4f3a2b', MA1566: 1, CREDIT_SCORE: 730, INCOME: 82000, AGE: 39, ZIP_CODE: '10010', FIRST_NAME: 'Henry', LAST_NAME: 'Rodriguez', PHONE_NUMBER: '5551234576', STATE: 'NV', CITY: 'Las Vegas', ACCOUNT_STATUS: 'Active', EMPLOYMENT_STATUS: 'Self-Employed', ACCOUNT_BALANCE: 17500 },
-          ]
-        };
-
-        // Process mock response
-        const { columns, data: responseData } = mockResponse;
-        const actualColumns = responseData.length > 0 ? Object.keys(responseData[0]) : columns.map(col => col.toUpperCase());
-
-        const mockFields = actualColumns.map(column => ({
-          name: column,
-          type: 'String',
-          description: FIELD_DESCRIPTIONS[column] || `${column} field`
-        }));
-
-        setFields(mockFields);
-        setTop10Records(responseData);
-        setShowTop10(true);
-        setSearchTerm('');
-        setAllAvailableHeaders(actualColumns);
-
-        // Check if we're in edit mode and should preserve existing selection
-        const isEditMode = data && data.id && Object.keys(data).length > 0;
-        const hasExistingSelection = data.selectedHeaders && Array.isArray(data.selectedHeaders) && data.selectedHeaders.length > 0;
-
-        let finalSelectedHeaders: string[];
-        if (isEditMode && hasExistingSelection) {
-          const isSelectionValid = data.selectedHeaders!.every(header => actualColumns.includes(header));
-          finalSelectedHeaders = isSelectionValid ? data.selectedHeaders! : actualColumns;
-        } else {
-          finalSelectedHeaders = actualColumns;
+      // Try to extract error message from the error object
+      if (error && typeof error === 'object') {
+        if ((error as any).response?.data?.message) {
+          errorMsg = (error as any).response.data.message;
+        } else if ((error as any).message) {
+          errorMsg = (error as any).message;
         }
-
-        setSelectedHeaders(finalSelectedHeaders);
-
-        // Auto-generate unique source name if not already set
-        let autoSourceName = tableSourceName;
-        if (!autoSourceName) {
-          autoSourceName = generateUniqueSourceName(selectedTable);
-          setTableSourceName(autoSourceName);
-        }
-
-        // Update parent component data with mock data
-        onChange({
-          ...data,
-          sourceName: autoSourceName,
-          subSourceType: 'Database',
-          headers: actualColumns,
-          selectedHeaders: finalSelectedHeaders,
-          dataTypes: actualColumns.reduce((acc, col) => ({ ...acc, [col]: 'String' }), {}),
-          previewData: responseData,
-          filterQuery,
-        });
-      } else {
-        // For custom tables, show inline error
-        let errorMsg = 'Failed to fetch table data. Please check your table configuration.';
-
-        // Try to extract error message from the error object
-        if (error && typeof error === 'object') {
-          if ((error as any).response?.data?.message) {
-            errorMsg = (error as any).response.data.message;
-          } else if ((error as any).message) {
-            errorMsg = (error as any).message;
-          }
-        }
-
-        setCustomTableError(errorMsg);
-
-        // Reset state on error
-        setFields([]);
-        setTop10Records([]);
-        setShowTop10(false);
-        setSearchTerm('');
-        setAllAvailableHeaders([]);
-        setSelectedHeaders([]);
       }
+
+      setCustomTableError(errorMsg);
+
+      // Reset state on error
+      setFields([]);
+      setTop10Records([]);
+      setShowTop10(false);
+      setSearchTerm('');
+      setAllAvailableHeaders([]);
+      setSelectedHeaders([]);
     } finally {
       setIsLoadingRecords(false);
     }
