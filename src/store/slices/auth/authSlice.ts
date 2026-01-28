@@ -27,11 +27,11 @@ export const loginAsync = createAsyncThunk(
       const response = await apiService.post<LoginResponse>('/auth/login', credentials)
       
       if (response?.success && response?.data?.token) {
-        localStorage.setItem('authToken', response.data.token)
-        if (response.data.refreshToken) {
-          localStorage.setItem('refreshToken', response.data.refreshToken)
+        localStorage?.setItem('authToken', response?.data?.token)
+        if (response?.data?.refreshToken) {
+          localStorage?.setItem('refreshToken', response?.data?.refreshToken)
         }
-        return response.data
+        return response?.data
       }
       
       throw new Error(response?.message || 'Login failed')
@@ -49,8 +49,8 @@ export const logoutAsync = createAsyncThunk(
     } catch (error) {
       // Continue with logout even if API call fails
     } finally {
-      localStorage.removeItem('authToken')
-      localStorage.removeItem('refreshToken')
+      localStorage?.removeItem('authToken')
+      localStorage?.removeItem('refreshToken')
     }
   }
 )
@@ -59,7 +59,7 @@ export const refreshTokenAsync = createAsyncThunk(
   'auth/refreshToken',
   async (_, { rejectWithValue }) => {
     try {
-      const refreshToken = localStorage.getItem('refreshToken')
+      const refreshToken = localStorage?.getItem('refreshToken')
       if (!refreshToken) {
         throw new Error('No refresh token available')
       }
@@ -69,11 +69,11 @@ export const refreshTokenAsync = createAsyncThunk(
       })
       
       if (response?.success && response?.data?.token) {
-        localStorage.setItem('authToken', response.data.token)
-        if (response.data.refreshToken) {
-          localStorage.setItem('refreshToken', response.data.refreshToken)
+        localStorage?.setItem('authToken', response?.data?.token)
+        if (response?.data?.refreshToken) {
+          localStorage?.setItem('refreshToken', response?.data?.refreshToken)
         }
-        return response.data
+        return response?.data
       }
       
       throw new Error(response?.message || 'Token refresh failed')

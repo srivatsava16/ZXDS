@@ -230,7 +230,7 @@ const RoleManagementPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {roles.map((role) => (
+            {roles?.map((role) => (
               <TableRow
                 key={role.id}
                 hover

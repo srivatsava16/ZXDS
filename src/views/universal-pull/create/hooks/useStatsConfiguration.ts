@@ -16,7 +16,7 @@ export const useStatsConfiguration = () => {
   }, [selectedInputSources]);
 
   const handleAddStatsConfig = useCallback(() => {
-    if (selectedInputSources.length === 0 || selectedCountsOn.length === 0) {
+    if (selectedInputSources?.length === 0 || selectedCountsOn?.length === 0) {
       return;
     }
 
@@ -29,7 +29,7 @@ export const useStatsConfiguration = () => {
 
     if (editingStatsId) {
       setStatsConfigurations(prev =>
-        prev.map(config => (config.id === editingStatsId ? newConfig : config))
+        prev?.map(config => (config.id === editingStatsId ? newConfig : config))
       );
       setEditingStatsId(null);
     } else {
@@ -50,7 +50,7 @@ export const useStatsConfiguration = () => {
   }, []);
 
   const handleDeleteStatsConfig = useCallback((configId: string) => {
-    setStatsConfigurations(prev => prev.filter(config => config.id !== configId));
+    setStatsConfigurations(prev => prev?.filter(config => config.id !== configId));
   }, []);
 
   const resetStatsForm = useCallback(() => {

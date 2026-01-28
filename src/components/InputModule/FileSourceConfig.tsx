@@ -95,6 +95,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [customHeadersError, setCustomHeadersError] = useState<string>('');
   const isUpdatingCustomHeaders = useRef(false); // Flag to prevent useEffect override
 
+  // Store the actual uploaded file for Desktop source
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+
   const prevDataLengthRef = useRef(Object.keys(data).length);
 
   // Initialize custom headers input from data (for display only)
@@ -114,7 +117,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       ...currentSources.awsSources,
       ...currentSources.nfsSources
     ];
-    const source = allSources.find(s => (s?.name || s) === sourceName);
+    const source = allSources?.find(s => (s?.name || s) === sourceName);
     return source?.id;
   };
 
@@ -125,7 +128,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       ...currentSources.awsSources,
       ...currentSources.nfsSources
     ];
-    const source = allSources.find(s => s?.id === sourceId);
+    const source = allSources?.find(s => s?.id === sourceId);
     return source?.name || '';
   };
 
@@ -202,7 +205,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         setAllAvailableHeaders(headersFromData);
 
         // Restore selectedHeaders from data.selectedHeaders if available, otherwise use all headers
-        if (data.selectedHeaders && data.selectedHeaders.length > 0) {
+        if (data.selectedHeaders && data.selectedHeaders?.length > 0) {
           setSelectedHeaders(data.selectedHeaders);
         } else {
           // Fallback to all headers if no specific selection is stored
@@ -252,7 +255,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     // 1. Already loading records
     // 2. Preview data already exists
     // 3. Source not initialized yet (still loading/restoring)
-    if (isLoadingRecords || (previewData && previewData.length > 0) || !isSourceInitialized) {
+    if (isLoadingRecords || (previewData && previewData?.length > 0) || !isSourceInitialized) {
       return;
     }
 
@@ -293,33 +296,80 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   };
 
   const handleGetTop10Records = async () => {
-    if (!fileName || !selectedSource) {
-
-      return;
+    // Validate based on file source type
+    if (fileSource === 'Desktop') {
+      if (!fileName || !uploadedFile) {
+        alert('Please select a file to upload.');
+        return;
+      }
+    } else {
+      if (!fileName || !selectedSource) {
+        return;
+      }
     }
 
     setIsLoadingRecords(true);
-    
-    try {
-      // Get the source ID instead of using the name
-      const sourceId = getSourceId(selectedSource);
-      if (!sourceId) {
 
-        setIsLoadingRecords(false);
-        return;
+    try {
+      let response: Top10RecordsResponse | any[];
+
+      // For Desktop source, send file using multipart/form-data
+      if (fileSource === 'Desktop' && uploadedFile) {
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        formData.append('fileSource', fileSource);
+        formData.append('sourceOption', '1'); // Default source option for Desktop
+        formData.append('sourceType', 'file');
+
+        // Console log FormData contents
+        console.log('=== Desktop File Upload - FormData Payload ===');
+        console.log('File:', uploadedFile);
+        console.log('File name:', uploadedFile.name);
+        console.log('File size:', uploadedFile.size, 'bytes');
+        console.log('File type:', uploadedFile.type);
+        console.log('FormData entries:');
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            console.log(`  ${key}:`, value.name, `(${value.size} bytes)`);
+          } else {
+            console.log(`  ${key}:`, value);
+          }
+        }
+        console.log('==========================================');
+
+        // Make the API call with FormData
+        response = await getTop10Records(formData as any);
+      } else {
+        // Get the source ID instead of using the name
+        const sourceId = getSourceId(selectedSource);
+        if (!sourceId) {
+          setIsLoadingRecords(false);
+          return;
+        }
+
+        // Construct the regular JSON payload for other sources
+        const payload: Top10RecordsRequest = {
+          fileSource: fileSource,
+          inputFilePath: fileName,
+          sourceOption: sourceId, // Send ID as number
+          sourceType: 'file'
+        };
+
+        // Console log JSON payload
+        console.log('=== File Source API Call - JSON Payload ===');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('==========================================');
+
+        // Make the API call
+        response = await getTop10Records(payload);
       }
 
-      // Construct the API payload
-      const payload: Top10RecordsRequest = {
-        fileSource: fileSource,
-        inputFilePath: fileName,
-        sourceOption: sourceId, // Send ID as number
-        sourceType: 'file'
-      };
-
-      // Make the API call
-      const response: Top10RecordsResponse | any[] = await getTop10Records(payload);
-
+      // Console log API response
+      console.log('=== API Response from getTop10Records ===');
+      console.log('Response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Is Array:', Array.isArray(response));
+      console.log('==========================================');
 
       // Handle multiple response formats:
       // 1. New format: { separator: string, data: object[], content: string }
@@ -334,7 +384,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         // New format: { separator: string, data: object[], content: string }
         responseData = response.data;
 
-        if (responseData.length === 0) {
+        if (responseData?.length === 0) {
           alert('No data found in the file. Please check the file format.');
           setIsLoadingRecords(false);
           return;
@@ -356,7 +406,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         }
       } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
         // Legacy format: { columns: string[], data: object[] }
-        if (!response.columns || !Array.isArray(response.columns) || response.columns.length === 0) {
+        if (!response.columns || !Array.isArray(response.columns) || response.columns?.length === 0) {
           alert('Invalid response format: missing columns.');
           setIsLoadingRecords(false);
           return;
@@ -365,7 +415,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         responseData = response.data;
       } else if (Array.isArray(response)) {
         // Plain array fallback: object[]
-        if (response.length === 0) {
+        if (response?.length === 0) {
           alert('No data found in the file. Please check the file format.');
           setIsLoadingRecords(false);
           return;
@@ -380,7 +430,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       }
 
       // Validate that we have data
-      if (!Array.isArray(columns) || columns.length === 0) {
+      if (!Array.isArray(columns) || columns?.length === 0) {
 
         alert('No columns found in the file. Please check the file format.');
         setIsLoadingRecords(false);
@@ -400,22 +450,22 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setHeadersFetched(true);
 
       // Check if custom headers are already provided and valid
-      const hasValidCustomHeaders = customHeadersInput.trim() &&
-        customHeadersInput.split(',').map(h => h.trim()).filter(h => h.length > 0).length === columns.length;
+      const hasValidCustomHeaders = customHeadersInput?.trim() &&
+        customHeadersInput?.split(',').map(h => h?.trim()).filter(h => h?.length > 0).length === columns?.length;
 
       let finalHeaders = columns;
       let finalPreviewData = responseData;
 
       if (hasValidCustomHeaders) {
         // Use custom headers
-        const customHeadersList = customHeadersInput.split(',').map(h => h.trim()).filter(h => h.length > 0);
+        const customHeadersList = customHeadersInput?.split(',').map(h => h?.trim()).filter(h => h?.length > 0);
         finalHeaders = customHeadersList;
         setCustomHeadersError('');
 
         // Transform preview data to use custom headers
-        finalPreviewData = responseData.map(row => {
+        finalPreviewData = responseData?.map(row => {
           const newRow: Record<string, any> = {};
-          columns.forEach((originalHeader, index) => {
+          columns?.forEach((originalHeader, index) => {
             newRow[customHeadersList[index]] = row[originalHeader];
           });
           return newRow;
@@ -428,7 +478,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
       // Initialize data types for all columns (default to 'String')
       const initialDataTypes: Record<string, string> = {};
-      finalHeaders.forEach(header => {
+      finalHeaders?.forEach(header => {
         initialDataTypes[header] = 'String';
       });
       setDataTypes(initialDataTypes);
@@ -464,9 +514,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Provide more specific error message
       let errorMessage = 'Failed to load data. ';
       if (error?.message) {
-        errorMessage += error.message;
+        errorMessage += error?.message;
       } else if (error?.response?.data?.message) {
-        errorMessage += error.response.data.message;
+        errorMessage += error?.response?.data?.message;
       } else {
         errorMessage += 'Please check the file name and source, then try again.';
       }
@@ -491,7 +541,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     // Update parent data with current custom headers (if any)
     updateParentData({
       hasHeader: value,
-      customHeaders: customHeadersInput.trim()
+      customHeaders: customHeadersInput?.trim()
     });
   };
 
@@ -499,12 +549,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     setCustomHeadersInput(value);
 
     // Validate custom headers count against original headers
-    const trimmedValue = value.trim();
-    if (trimmedValue && headers.length > 0) {
-      const customHeadersList = trimmedValue.split(',').map(h => h.trim()).filter(h => h.length > 0);
-      const originalHeadersCount = headers.length;
+    const trimmedValue = value?.trim();
+    if (trimmedValue && headers?.length > 0) {
+      const customHeadersList = trimmedValue?.split(',').map(h => h?.trim()).filter(h => h?.length > 0);
+      const originalHeadersCount = headers?.length;
 
-      if (customHeadersList.length !== originalHeadersCount) {
+      if (customHeadersList?.length !== originalHeadersCount) {
         setCustomHeadersError(
           `Error: File has ${originalHeadersCount} headers. You must enter exactly ${originalHeadersCount} comma-separated custom headers.`
         );
@@ -527,12 +577,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         let updatedDataTypes: Record<string, string> = {};
 
         // Transform preview data if original data exists
-        if (originalPreviewData.length > 0 && headers.length > 0) {
+        if (originalPreviewData?.length > 0 && headers?.length > 0) {
           // Transform original preview data to use custom headers
-          transformedData = originalPreviewData.map(row => {
+          transformedData = originalPreviewData?.map(row => {
             const newRow: Record<string, any> = {};
-            headers.forEach((originalHeader, index) => {
-              if (index < customHeadersList.length) {
+            headers?.forEach((originalHeader, index) => {
+              if (index < customHeadersList?.length) {
                 newRow[customHeadersList[index]] = row[originalHeader];
               }
             });
@@ -542,7 +592,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           setPreviewData(transformedData);
 
           // Update data types with new headers
-          customHeadersList.forEach(header => {
+          customHeadersList?.forEach(header => {
             updatedDataTypes[header] = 'String';
           });
           setDataTypes(updatedDataTypes);
@@ -554,14 +604,14 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           customHeaders: trimmedValue,
           headers: customHeadersList, // Use custom headers
           selectedHeaders: customHeadersList, // Use custom headers
-          previewData: transformedData.length > 0 ? transformedData : previewData,
+          previewData: transformedData?.length > 0 ? transformedData : previewData,
           dataTypes: Object.keys(updatedDataTypes).length > 0 ? updatedDataTypes : dataTypes
         });
       }
     } else {
       setCustomHeadersError('');
       // Reset to original headers if custom headers are cleared
-      if (!trimmedValue && headers.length > 0) {
+      if (!trimmedValue && headers?.length > 0) {
         setAllAvailableHeaders(headers);
         setSelectedHeaders(headers);
 
@@ -569,12 +619,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         let restoredDataTypes: Record<string, string> = {};
 
         // Restore original preview data if it exists
-        if (originalPreviewData.length > 0) {
+        if (originalPreviewData?.length > 0) {
           restoredData = originalPreviewData;
           setPreviewData(originalPreviewData);
 
           // Reset data types to original headers
-          headers.forEach(header => {
+          headers?.forEach(header => {
             restoredDataTypes[header] = 'String';
           });
           setDataTypes(restoredDataTypes);
@@ -607,7 +657,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     
     // Update data types to only include selected headers
     const updatedDataTypes: Record<string, string> = {};
-    newSelectedHeaders.forEach(header => {
+    newSelectedHeaders?.forEach(header => {
       updatedDataTypes[header] = dataTypes[header] || 'String';
     });
     setDataTypes(updatedDataTypes);
@@ -628,7 +678,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       fileName,
       delimiter,
       hasHeader,
-      customHeaders: customHeadersInput.trim(),
+      customHeaders: customHeadersInput?.trim(),
       // IMPORTANT: headers should always contain ALL available headers (original or custom)
       // selectedHeaders tracks which ones are actually selected
       headers: updates.headers !== undefined ? updates.headers : (allAvailableHeaders || []),
@@ -722,7 +772,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       )}
 
-      {/* Input FilePath/Name and Get Top 10 Records */}
+      {/* Input FilePath/Name and Get Sample Recods */}
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
           {fileSource === 'Desktop' ? 'Upload File' : 'Input FilePath/Name'} <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -747,10 +797,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                 <input
                   type="file"
                   hidden
-                  accept=".csv,.txt,.tsv,.dat"
+                  accept=".csv,.txt"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      // Store the actual file object for upload
+                      setUploadedFile(file);
                       setFileName(file.name);
                       setFilePath(file.name);
 
@@ -817,19 +869,19 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             variant="outlined"
             size="small"
             onClick={handleGetTop10Records}
-            disabled={!fileName || !selectedSource || isLoadingRecords}
+            disabled={!fileName || (fileSource !== 'Desktop' && !selectedSource) || isLoadingRecords}
             sx={{
               textTransform: 'none',
               flex: '1',
               whiteSpace: 'nowrap'
             }}
           >
-            {isLoadingRecords ? 'Loading...' : 'Get Top 10 Records'}
+            {isLoadingRecords ? 'Loading...' : 'Get Sample Recods'}
           </Button>
         </Box>
       </Box>
 
-      {/* Sections below are only shown after successful Get Top 10 Records */}
+      {/* Sections below are only shown after successful Get Sample Recods */}
       {headersFetched && (
         <>
           {/* Header Yes/No */}
@@ -876,8 +928,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
               {customHeadersInput
                 .split(',')
-                .map(header => header.trim())
-                .filter(header => header.length > 0)
+                .map(header => header?.trim())
+                .filter(header => header?.length > 0)
                 .map((header, index) => (
                   <Chip key={index} label={header} size="small" color="primary" variant="outlined" />
                 ))
@@ -890,13 +942,13 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       )}
 
       {/* Header Selection */}
-      {allAvailableHeaders.length > 0 && (
+      {allAvailableHeaders?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
               Select Headers
               <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
-                ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+                ({selectedHeaders?.length} of {allAvailableHeaders?.length} selected)
               </Typography>
             </Typography>
           </Box>
@@ -906,9 +958,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             value={selectedHeaders}
             onChange={(event, newValue) => {
               // Check if "Select All" was clicked
-              if (newValue.includes('__SELECT_ALL__')) {
+              if (newValue?.includes('__SELECT_ALL__')) {
                 // Toggle: if all are selected, deselect all; otherwise select all
-                if (selectedHeaders.length === allAvailableHeaders.length) {
+                if (selectedHeaders?.length === allAvailableHeaders?.length) {
                   handleHeaderSelectionChange([]);
                 } else {
                   handleHeaderSelectionChange(allAvailableHeaders);
@@ -921,8 +973,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
             renderOption={(props, option, { selected }) => {
               if (option === '__SELECT_ALL__') {
-                const allSelected = selectedHeaders.length === allAvailableHeaders.length;
-                const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                const allSelected = selectedHeaders?.length === allAvailableHeaders?.length;
+                const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;
                 return (
                   <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
                     <Checkbox
@@ -952,12 +1004,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             renderInput={(params) => (
               <TextField
                 {...params}
-                placeholder={selectedHeaders.length === 0 ? "Select headers..." : ""}
+                placeholder={selectedHeaders?.length === 0 ? "Select headers..." : ""}
                 size="small"
               />
             )}
             renderTags={(value, getTagProps) =>
-              value.slice(0, 3).map((option, index) => (
+              value?.slice(0, 3).map((option, index) => (
                 <Chip
                   {...getTagProps({ index })}
                   key={option}
@@ -977,11 +1029,11 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                   }}
                 />
               )).concat(
-                value.length > 3
+                value?.length > 3
                   ? [
                       <Chip
                         key="more"
-                        label={`+${value.length - 3} more`}
+                        label={`+${value?.length - 3} more`}
                         size="small"
                         sx={{
                           height: 20,
@@ -1000,7 +1052,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               },
             }}
           />
-          {selectedHeaders.length > 0 && (
+          {selectedHeaders?.length > 0 && (
             <Box sx={{ mt: 1 }}>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
                 Selected headers will be included in the data source. Unselected headers will be excluded from processing.
@@ -1011,7 +1063,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       )}
 
       {/* Preview Data Table */}
-      {previewData.length > 0 && (
+      {previewData?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1058,7 +1110,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                 }}
               >
                 <MenuItem value="all">All Columns</MenuItem>
-                {selectedHeaders.map((header) => (
+                {selectedHeaders?.map((header) => (
                   <MenuItem key={header} value={header}>
                     {header}
                   </MenuItem>
@@ -1097,7 +1149,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               overflowX: 'auto', // Enable horizontal scroll
             }}
           >
-            <Table stickyHeader size="small" sx={{ minWidth: (selectedColumn === 'all' ? selectedHeaders.length : 1) * 120 }}>
+            <Table stickyHeader size="small" sx={{ minWidth: (selectedColumn === 'all' ? selectedHeaders?.length : 1) * 120 }}>
               <TableHead>
                 <TableRow>
                   {(selectedColumn === 'all' ? selectedHeaders : [selectedColumn]).map((header) => (
@@ -1113,10 +1165,10 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                 {previewData
                   .filter((row) => {
                     // Filter rows based on search term
-                    if (!searchTerm.trim()) return true;
-                    const searchLower = searchTerm.toLowerCase();
+                    if (!searchTerm?.trim()) return true;
+                    const searchLower = searchTerm?.toLowerCase();
                     const columnsToSearch = selectedColumn === 'all' ? selectedHeaders : [selectedColumn];
-                    return columnsToSearch.some((header) =>
+                    return columnsToSearch?.some((header) =>
                       String(row[header] || '').toLowerCase().includes(searchLower)
                     );
                   })
@@ -1138,7 +1190,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       )}
 
-      {/* Delimiter Selection - Only shown after successful Get Top 10 Records */}
+      {/* Delimiter Selection - Only shown after successful Get Sample Recods */}
       {headersFetched && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
@@ -1156,7 +1208,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
             }
           }}
         >
-          {DELIMITERS.map((d) => (
+          {DELIMITERS?.map((d) => (
             <FormControlLabel
               key={d.value}
               value={d.value}
@@ -1193,7 +1245,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       )}
 
       {/* Filter Builder - Show only when headers are available */}
-      {allAvailableHeaders.length > 0 && (
+      {allAvailableHeaders?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <FilterBuilder 
             headers={allAvailableHeaders} 
@@ -1212,7 +1264,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       )}
 
       {/* Source Name */}
-      {allAvailableHeaders.length > 0 && (
+      {allAvailableHeaders?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
             Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>

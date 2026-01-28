@@ -53,7 +53,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const showAlert = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     setDialogState({
       open: true,
-      title: severity.charAt(0).toUpperCase() + severity.slice(1),
+      title: severity?.charAt(0)?.toUpperCase() + severity?.slice(1),
       message,
       type: 'alert',
       severity,
@@ -82,8 +82,8 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const handleDialogClose = (confirmed: boolean = false) => {
-    if (dialogState.resolve) {
-      dialogState.resolve(confirmed);
+    if (dialogState?.resolve) {
+      dialogState?.resolve?.(confirmed);
     }
     setDialogState((prev) => ({ ...prev, open: false }));
   };
@@ -93,7 +93,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getIcon = () => {
-    switch (dialogState.severity) {
+    switch (dialogState?.severity) {
       case 'success':
         return <CheckCircle sx={{ fontSize: 48, color: 'success.main' }} />;
       case 'error':
@@ -111,8 +111,8 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
       {/* Alert/Confirm Dialog */}
       <Dialog
-        open={dialogState.open}
-        onClose={() => dialogState.type === 'alert' && handleDialogClose(false)}
+        open={dialogState?.open}
+        onClose={() => dialogState?.type === 'alert' && handleDialogClose(false)}
         maxWidth="sm"
         fullWidth
         PaperProps={{
@@ -124,15 +124,15 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
           {getIcon()}
-          {dialogState.title}
+          {dialogState?.title}
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: 'text.primary', fontSize: '1rem' }}>
-            {dialogState.message}
+            {dialogState?.message}
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          {dialogState.type === 'confirm' ? (
+          {dialogState?.type === 'confirm' ? (
             <>
               <Button onClick={() => handleDialogClose(false)} color="inherit">
                 Cancel
@@ -140,7 +140,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
               <Button
                 onClick={() => handleDialogClose(true)}
                 variant="contained"
-                color={dialogState.severity === 'error' ? 'error' : 'primary'}
+                color={dialogState?.severity === 'error' ? 'error' : 'primary'}
                 autoFocus
               >
                 Confirm
@@ -156,13 +156,13 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
       {/* Snackbar for quick notifications */}
       <Snackbar
-        open={snackbarState.open}
+        open={snackbarState?.open}
         autoHideDuration={4000}
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert onClose={handleSnackbarClose} severity={snackbarState.severity} sx={{ width: '100%' }}>
-          {snackbarState.message}
+        <Alert onClose={handleSnackbarClose} severity={snackbarState?.severity} sx={{ width: '100%' }}>
+          {snackbarState?.message}
         </Alert>
       </Snackbar>
     </NotificationContext.Provider>

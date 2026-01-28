@@ -26,6 +26,7 @@ import {
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
+import { getTop10Records, type Top10RecordsRequest, type Top10RecordsResponse } from '../../services/api';
 
 interface SimpleFileSourceConfigProps {
   data: Partial<InputSource>;
@@ -57,6 +58,10 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
   const [headerDialogOpen, setHeaderDialogOpen] = useState(false);
   const [customHeader, setCustomHeader] = useState<string>('');
   const [customDelimiter, setCustomDelimiter] = useState<string>('');
+
+  // Store the actual uploaded file for Desktop source
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
 
   // Initialize state from data prop when editing
   useEffect(() => {
@@ -92,34 +97,113 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
     updateParentData({ subSourceType: value, fileSource: '' });
   };
 
-  const handleGetTop10Records = () => {
-    // Simulate fetching top 10 records with EMAIL_MD5 values
-    const mockData = [
-      { EMAIL_ID: 'john@example.com', PROFILE_ID: '12345', LIST_ID: 'L001', EMAIL_MD5: '5c5e3e9f8f9c2d6b8e3a1f7c9d4e2b1a' },
-      { EMAIL_ID: 'jane@example.com', PROFILE_ID: '12346', LIST_ID: 'L002', EMAIL_MD5: '8f7d6e5c4b3a2e1f9d8c7b6a5e4d3c2b' },
-      { EMAIL_ID: 'bob@example.com', PROFILE_ID: '12347', LIST_ID: 'L003', EMAIL_MD5: '3a2b1c9d8e7f6a5b4c3d2e1f9a8b7c6d' },
-      { EMAIL_ID: 'alice@example.com', PROFILE_ID: '12348', LIST_ID: 'L004', EMAIL_MD5: '7c6d5e4f3a2b1c9d8e7f6a5b4c3d2e1f' },
-      { EMAIL_ID: 'charlie@example.com', PROFILE_ID: '12349', LIST_ID: 'L005', EMAIL_MD5: '2e1f9a8b7c6d5e4f3a2b1c9d8e7f6a5b' },
-      { EMAIL_ID: 'david@example.com', PROFILE_ID: '12350', LIST_ID: 'L006', EMAIL_MD5: '6a5b4c3d2e1f9a8b7c6d5e4f3a2b1c9d' },
-      { EMAIL_ID: 'emma@example.com', PROFILE_ID: '12351', LIST_ID: 'L007', EMAIL_MD5: '1c9d8e7f6a5b4c3d2e1f9a8b7c6d5e4f' },
-      { EMAIL_ID: 'frank@example.com', PROFILE_ID: '12352', LIST_ID: 'L008', EMAIL_MD5: '9a8b7c6d5e4f3a2b1c9d8e7f6a5b4c3d' },
-      { EMAIL_ID: 'grace@example.com', PROFILE_ID: '12353', LIST_ID: 'L009', EMAIL_MD5: '4c3d2e1f9a8b7c6d5e4f3a2b1c9d8e7f' },
-      { EMAIL_ID: 'henry@example.com', PROFILE_ID: '12354', LIST_ID: 'L010', EMAIL_MD5: '8e7f6a5b4c3d2e1f9a8b7c6d5e4f3a2b' },
-    ];
+  const handleGetTop10Records = async () => {
+    if (!fileName || (fileSource !== 'Desktop' && !selectedSource)) {
+      alert('Please select a file source and enter a file name.');
+      return;
+    }
 
-    const detectedHeaders = Object.keys(mockData[0]);
+    // For Desktop source, validate that a file is uploaded
+    if (fileSource === 'Desktop' && !uploadedFile) {
+      alert('Please select a file to upload.');
+      return;
+    }
 
-    setPreviewData(mockData);
-    setHeaders(detectedHeaders);
+    setIsLoadingRecords(true);
 
-    // Auto-populate source name from filename (without extension)
-    const autoSourceName = fileName.split('/').pop()?.split('\\').pop()?.replace(/\.[^/.]+$/, '') || '';
+    try {
+      let response: Top10RecordsResponse | any[];
 
-    updateParentData({
-      previewData: mockData,
-      headers: detectedHeaders,
-      sourceName: autoSourceName,
-    });
+      // For Desktop source, send file using multipart/form-data
+      if (fileSource === 'Desktop' && uploadedFile) {
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+        formData.append('fileSource', fileSource);
+        formData.append('sourceOption', '1'); // Default source option for Desktop
+        formData.append('sourceType', 'file');
+
+        // Console log FormData contents
+        console.log('=== Append Module - Desktop File Upload - FormData Payload ===');
+        console.log('File:', uploadedFile);
+        console.log('File name:', uploadedFile.name);
+        console.log('File size:', uploadedFile.size, 'bytes');
+        console.log('File type:', uploadedFile.type);
+        console.log('FormData entries:');
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            console.log(`  ${key}:`, value.name, `(${value.size} bytes)`);
+          } else {
+            console.log(`  ${key}:`, value);
+          }
+        }
+        console.log('================================================================');
+
+        // Make the API call with FormData
+        response = await getTop10Records(formData as any);
+      } else {
+        // Construct the regular JSON payload for other sources
+        const payload: Top10RecordsRequest = {
+          fileSource: fileSource,
+          inputFilePath: fileName,
+          sourceOption: 1, // Default for custom sources
+          sourceType: 'file'
+        };
+
+        // Console log JSON payload
+        console.log('=== Append Module - File Source API Call - JSON Payload ===');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('============================================================');
+
+        // Make the API call
+        response = await getTop10Records(payload);
+      }
+
+      // Console log API response
+      console.log('=== Append Module - API Response from getTop10Records ===');
+      console.log('Response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Is Array:', Array.isArray(response));
+      console.log('==========================================================');
+
+      // Handle response data
+      let responseData: Record<string, any>[];
+
+      if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
+        responseData = response.data;
+      } else if (Array.isArray(response)) {
+        responseData = response;
+      } else {
+        alert('Invalid response format from API.');
+        setIsLoadingRecords(false);
+        return;
+      }
+
+      if (responseData?.length === 0) {
+        alert('No data found in the file. Please check the file format.');
+        setIsLoadingRecords(false);
+        return;
+      }
+
+      const detectedHeaders = Object.keys(responseData[0]);
+
+      setPreviewData(responseData);
+      setHeaders(detectedHeaders);
+
+      // Auto-populate source name from filename (without extension)
+      const autoSourceName = fileName.split('/').pop()?.split('\\').pop()?.replace(/\.[^/.]+$/, '') || '';
+
+      updateParentData({
+        previewData: responseData,
+        headers: detectedHeaders,
+        sourceName: autoSourceName,
+      });
+
+      setIsLoadingRecords(false);
+    } catch (error: any) {
+      console.error('Error fetching top 10 records:', error);
+      alert(error?.message || 'Failed to fetch data from the file. Please try again.');
+      setIsLoadingRecords(false);
+    }
   };
 
   const handleHeaderChange = (value: boolean) => {
@@ -131,7 +215,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
   };
 
   const handleSaveCustomHeader = () => {
-    const newHeaders = customHeader.split(delimiter).map(h => h.trim());
+    const newHeaders = customHeader?.split(delimiter).map(h => h?.trim());
 
     const newHeadersOnly = [...newHeaders];
 
@@ -204,7 +288,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
         </Box>
       )}
 
-      {/* Input FilePath/Name and Get Top 10 Records */}
+      {/* Input FilePath/Name and Get Sample Recods */}
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
           {fileSource === 'Desktop' ? 'Upload File' : 'Input FilePath/Name'} <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -229,13 +313,20 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
                 <input
                   type="file"
                   hidden
-                  accept=".csv,.txt,.tsv,.dat"
+                  accept=".csv,.txt"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      // Store the actual file object for upload
+                      setUploadedFile(file);
                       setFileName(file.name);
                       setFilePath(file.name);
-                      updateParentData({ fileName: file.name, filePath: file.name });
+
+                      // Reset preview when file changes
+                      setPreviewData([]);
+                      setHeaders([]);
+
+                      updateParentData({ fileName: file.name, filePath: file.name, headers: [], previewData: [] });
                     }
                   }}
                 />
@@ -257,20 +348,20 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
             variant="outlined"
             size="small"
             onClick={handleGetTop10Records}
-            disabled={!fileName}
+            disabled={!fileName || isLoadingRecords}
             sx={{
               textTransform: 'none',
               flex: '1',
               whiteSpace: 'nowrap'
             }}
           >
-            Get Top 10 Records
+            {isLoadingRecords ? 'Loading...' : 'Get Sample Recods'}
           </Button>
         </Box>
       </Box>
 
       {/* Preview Data Table */}
-      {previewData.length > 0 && (
+      {previewData?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
             Top 10 Records Preview
@@ -287,7 +378,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  {headers.map((header) => (
+                  {headers?.map((header) => (
                     <TableCell key={header} sx={{ backgroundColor: '#F8FAFB', fontWeight: 600, py: 1 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                         {header}
@@ -297,9 +388,9 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
                 </TableRow>
               </TableHead>
               <TableBody>
-                {previewData.map((row, idx) => (
+                {previewData?.map((row, idx) => (
                   <TableRow key={idx} hover>
-                    {headers.map((header) => (
+                    {headers?.map((header) => (
                       <TableCell key={header} sx={{ py: 0.5 }}>
                         <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                           {row[header]}
@@ -331,7 +422,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
             }
           }}
         >
-          {DELIMITERS.map((d) => (
+          {DELIMITERS?.map((d) => (
             <FormControlLabel
               key={d.value}
               value={d.value}
@@ -382,7 +473,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
       </Box>
 
       {/* Source Name */}
-      {headers.length > 0 && (
+      {headers?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
             Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>

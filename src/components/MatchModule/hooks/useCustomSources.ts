@@ -14,14 +14,14 @@ export const useCustomSources = () => {
   const handleEditCustomSource = useCallback((source: InputSource) => {
     if (editingSource) {
       setCustomMatchSources(prev =>
-        prev.map(s => s.id === editingSource.id ? { ...source, id: editingSource.id } : s)
+        prev?.map(s => s.id === editingSource.id ? { ...source, id: editingSource.id } : s)
       );
     }
   }, [editingSource]);
 
   const handleDeleteCustomSource = useCallback((id: string) => {
     if (window.confirm('Are you sure you want to delete this custom match source?')) {
-      setCustomMatchSources(prev => prev.filter(s => s.id !== id));
+      setCustomMatchSources(prev => prev?.filter(s => s.id !== id));
     }
   }, []);
 

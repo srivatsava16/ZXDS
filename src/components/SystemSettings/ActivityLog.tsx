@@ -107,12 +107,12 @@ const ActivityLog = () => {
     },
   ]);
 
-  const filteredLogs = logs.filter(
+  const filteredLogs = logs?.filter(
     (log) =>
-      log.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.module.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.description.toLowerCase().includes(searchQuery.toLowerCase())
+      log?.user?.toLowerCase()?.includes(searchQuery?.toLowerCase()) ||
+      log?.action?.toLowerCase()?.includes(searchQuery?.toLowerCase()) ||
+      log?.module?.toLowerCase()?.includes(searchQuery?.toLowerCase()) ||
+      log?.description?.toLowerCase()?.includes(searchQuery?.toLowerCase())
   );
 
   const handleChangePage = (_event: unknown, newPage: number) => {
@@ -209,7 +209,7 @@ const ActivityLog = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredLogs.length === 0 ? (
+            {filteredLogs?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -219,12 +219,12 @@ const ActivityLog = () => {
               </TableRow>
             ) : (
               filteredLogs
-                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                .map((log) => (
-                  <TableRow key={log.id} hover>
+                ?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                ?.map((log) => (
+                  <TableRow key={log?.id} hover>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                        {new Date(log.timestamp).toLocaleString('en-US', {
+                        {new Date(log?.timestamp).toLocaleString('en-US', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
@@ -235,17 +235,17 @@ const ActivityLog = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                        {log.user}
+                        {log?.user}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                        {log.action}
+                        {log?.action}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={log.module}
+                        label={log?.module}
                         size="small"
                         sx={{
                           backgroundColor: '#29669520',
@@ -261,16 +261,16 @@ const ActivityLog = () => {
                         color="text.secondary"
                         sx={{ fontSize: '0.8rem' }}
                       >
-                        {log.description}
+                        {log?.description}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={log.status}
+                        label={log?.status}
                         size="small"
                         sx={{
-                          backgroundColor: getStatusColor(log.status).bg,
-                          color: getStatusColor(log.status).color,
+                          backgroundColor: getStatusColor(log?.status)?.bg,
+                          color: getStatusColor(log?.status)?.color,
                           fontWeight: 600,
                           fontSize: '0.7rem',
                         }}
@@ -287,7 +287,7 @@ const ActivityLog = () => {
       <TablePagination
         rowsPerPageOptions={[5, 10, 25, 50]}
         component="div"
-        count={filteredLogs.length}
+        count={filteredLogs?.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={handleChangePage}

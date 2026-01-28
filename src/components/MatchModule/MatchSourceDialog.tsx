@@ -68,7 +68,7 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
 
   // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : existingSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : existingSources;
 
     return validateUniqueSourceName({
       sourceName: name,
@@ -105,7 +105,7 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
 
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
         setValidationError('Please fetch top 10 records to extract headers before adding this match source.');
         return;
       }
@@ -113,8 +113,8 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
 
     // Validation: For Database type sources, headers must be extracted
     if (sourceType === 'Database') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
-        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
+        setValidationError('Please click "Get Sample Recods" to fetch and verify the database source before saving.');
         return;
       }
     }
@@ -249,7 +249,7 @@ const MatchSourceDialog: React.FC<MatchSourceDialogProps> = ({
             onChange={setSourceData}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
-            allExistingSources={allExistingSources.length > 0 ? allExistingSources : existingSources}
+            allExistingSources={allExistingSources?.length > 0 ? allExistingSources : existingSources}
           />
         )}
       </DialogContent>

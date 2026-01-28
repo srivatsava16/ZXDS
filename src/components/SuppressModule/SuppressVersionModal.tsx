@@ -50,7 +50,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
   const [selectedSuppressSources, setSelectedSuppressSources] = useState<string[]>([]);
 
   // Filter out the currently editing version from available input sources
-  const filteredAvailableInputSources = availableInputSources.filter(source => {
+  const filteredAvailableInputSources = availableInputSources?.filter(source => {
     // If we're editing a version, exclude it from the dropdown
     if (version && version.id) {
       return source.id !== version.id;
@@ -67,15 +67,15 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
   }, [version, open]);
 
   const handleSave = () => {
-    if (!versionName.trim()) {
+    if (!versionName?.trim()) {
       setVersionNameError('Please enter a version name');
       return;
     }
 
     // Validate version name against API reserved names and existing sources
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : availableInputSources;
     const validationError = validateUniqueSourceName({
-      sourceName: versionName.trim(),
+      sourceName: versionName?.trim(),
       allExistingSources: sourcesToCheck,
       editingSourceId: version?.id,
       moduleName: 'Suppress Version',
@@ -87,19 +87,19 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
       return;
     }
 
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one input source');
       return;
     }
-    if (selectedSuppressSources.length === 0) {
+    if (selectedSuppressSources?.length === 0) {
       alert('Please select at least one suppress source');
       return;
     }
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName.trim(),
-      versionLabel: versionName.trim(),
+      sourceName: versionName?.trim(),
+      versionLabel: versionName?.trim(),
       baseInputSources: selectedInputSources,
       operationSources: selectedSuppressSources,
     };
@@ -108,10 +108,10 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources.find(s => s.id === id);
+    const inputSource = availableInputSources?.find(s => s.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const suppressSource = availableSuppressSources.find(s => s.id === id);
+    const suppressSource = availableSuppressSources?.find(s => s.id === id);
     if (suppressSource) return suppressSource.name;
 
     return id;
@@ -189,7 +189,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -207,9 +207,9 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                   },
                 }}
               >
-                {filteredAvailableInputSources.map((source) => (
+                {filteredAvailableInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedInputSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.sourceName} />
                   </MenuItem>
                 ))}
@@ -230,7 +230,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -248,9 +248,9 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                   },
                 }}
               >
-                {availableSuppressSources.map((source) => (
+                {availableSuppressSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedSuppressSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedSuppressSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.name} />
                   </MenuItem>
                 ))}
@@ -275,7 +275,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
           variant="contained"
           onClick={handleSave}
           startIcon={<Save />}
-          disabled={!versionName.trim() || selectedInputSources.length === 0 || selectedSuppressSources.length === 0}
+          disabled={!versionName?.trim() || selectedInputSources?.length === 0 || selectedSuppressSources?.length === 0}
           sx={{ textTransform: 'none', boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)' }}
         >
           Save Changes

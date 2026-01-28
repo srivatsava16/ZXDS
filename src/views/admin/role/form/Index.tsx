@@ -198,7 +198,7 @@ const RoleCreationPage: React.FC = () => {
                 <MenuItem value="">
                   <em>Select Role Type</em>
                 </MenuItem>
-                {roleTypes.map((type) => (
+                {roleTypes?.map((type) => (
                   <MenuItem key={type} value={type}>
                     {type}
                   </MenuItem>

@@ -13,10 +13,10 @@ export const useAuth = () => {
     async (credentials: LoginCredentials) => {
       try {
         const result = await dispatch(loginAsync(credentials))
-        if (loginAsync.fulfilled.match(result)) {
-          return result.payload
+        if (loginAsync?.fulfilled?.match(result)) {
+          return result?.payload
         }
-        throw new Error(result.payload as string)
+        throw new Error(result?.payload as string)
       } catch (error) {
         throw error
       }

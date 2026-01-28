@@ -123,17 +123,17 @@ const UniversalPullRequestPage: React.FC = () => {
   };
 
   // Filter fields based on search query
-  const filteredCountsFields = STATS_FIELDS.filter((field) =>
-    field.toLowerCase().includes(countsSearchQuery.toLowerCase())
+  const filteredCountsFields = STATS_FIELDS?.filter((field) =>
+    field?.toLowerCase().includes(countsSearchQuery?.toLowerCase())
   );
 
-  const filteredBreakdownFields = STATS_FIELDS.filter((field) =>
-    field.toLowerCase().includes(breakdownSearchQuery.toLowerCase())
+  const filteredBreakdownFields = STATS_FIELDS?.filter((field) =>
+    field?.toLowerCase().includes(breakdownSearchQuery?.toLowerCase())
   );
 
   // Add Combination handler
   const handleAddCombination = () => {
-    if (generateCountsOn.length === 0 && breakdownBy.length === 0) {
+    if (generateCountsOn?.length === 0 && breakdownBy?.length === 0) {
       alert('Please select at least one field for Generate Counts On or Breakdown By');
       return;
     }
@@ -155,7 +155,7 @@ const UniversalPullRequestPage: React.FC = () => {
 
   const handleDeleteCombination = (id: string) => {
     if (window.confirm('Are you sure you want to delete this combination?')) {
-      setStatsCombinations(statsCombinations.filter(c => c.id !== id));
+      setStatsCombinations(statsCombinations?.filter(c => c.id !== id));
     }
   };
 
@@ -163,16 +163,16 @@ const UniversalPullRequestPage: React.FC = () => {
   const getCombinationText = (combination: StatsCombination): string => {
     let text = '';
 
-    if (combination.generateCountsOn.length > 0) {
-      text += `Counts on ${combination.generateCountsOn.join(', ')}`;
+    if (combination.generateCountsOn?.length > 0) {
+      text += `Counts on ${combination.generateCountsOn?.join(', ')}`;
       if (combination.isDistinct) {
         text += ' (Distinct)';
       }
     }
 
-    if (combination.breakdownBy.length > 0) {
+    if (combination.breakdownBy?.length > 0) {
       if (text) text += ' and ';
-      text += `breakdown by ${combination.breakdownBy.join(', ')}`;
+      text += `breakdown by ${combination.breakdownBy?.join(', ')}`;
     }
 
     return text || 'No fields selected';
@@ -405,11 +405,11 @@ const UniversalPullRequestPage: React.FC = () => {
                   <Select
                     multiple
                     value={generateCountsOn}
-                    onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                    onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value)}
                     input={<OutlinedInput />}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
+                        {selected?.map((value) => (
                           <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
                         ))}
                       </Box>
@@ -420,9 +420,9 @@ const UniversalPullRequestPage: React.FC = () => {
                     <MenuItem disabled value="">
                       <em>Select fields...</em>
                     </MenuItem>
-                    {STATS_FIELDS.map((field) => (
+                    {STATS_FIELDS?.map((field) => (
                       <MenuItem key={field} value={field}>
-                        <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
+                        <Checkbox checked={generateCountsOn?.indexOf(field) > -1} size="small" />
                         <ListItemText primary={field} />
                       </MenuItem>
                     ))}
@@ -470,11 +470,11 @@ const UniversalPullRequestPage: React.FC = () => {
                   <Select
                     multiple
                     value={breakdownBy}
-                    onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                    onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value)}
                     input={<OutlinedInput />}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
+                        {selected?.map((value) => (
                           <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
                         ))}
                       </Box>
@@ -485,9 +485,9 @@ const UniversalPullRequestPage: React.FC = () => {
                     <MenuItem disabled value="">
                       <em>Select fields...</em>
                     </MenuItem>
-                    {STATS_FIELDS.map((field) => (
+                    {STATS_FIELDS?.map((field) => (
                       <MenuItem key={field} value={field}>
-                        <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
+                        <Checkbox checked={breakdownBy?.indexOf(field) > -1} size="small" />
                         <ListItemText primary={field} />
                       </MenuItem>
                     ))}
@@ -523,14 +523,14 @@ const UniversalPullRequestPage: React.FC = () => {
             </Box>
 
               {/* Stats Configurations Table */}
-              {statsCombinations.length > 0 && (
+              {statsCombinations?.length > 0 && (
                 <Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
                       Stats Configurations
                     </Typography>
                     <Chip
-                      label={`${statsCombinations.length} configuration${statsCombinations.length !== 1 ? 's' : ''}`}
+                      label={`${statsCombinations?.length} configuration${statsCombinations?.length !== 1 ? 's' : ''}`}
                       size="small"
                       sx={{
                         fontWeight: 600,
@@ -561,7 +561,7 @@ const UniversalPullRequestPage: React.FC = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {statsCombinations.map((combination) => (
+                        {statsCombinations?.map((combination) => (
                           <TableRow
                             key={combination.id}
                             hover
@@ -573,15 +573,15 @@ const UniversalPullRequestPage: React.FC = () => {
                           >
                             {/* Generate Counts On Column */}
                             <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                              {combination.generateCountsOn.length > 0 ? (
+                              {combination.generateCountsOn?.length > 0 ? (
                                 <Tooltip
                                   title={
                                     <Box sx={{ maxWidth: 400 }}>
                                       <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                        Counts On ({combination.generateCountsOn.length}):
+                                        Counts On ({combination.generateCountsOn?.length}):
                                       </Typography>
                                       <Typography variant="caption" sx={{ display: 'block' }}>
-                                        {combination.generateCountsOn.join(', ')}
+                                        {combination.generateCountsOn?.join(', ')}
                                       </Typography>
                                     </Box>
                                   }
@@ -590,7 +590,7 @@ const UniversalPullRequestPage: React.FC = () => {
                                 >
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                     <Chip
-                                      label={`${combination.generateCountsOn.length} field${combination.generateCountsOn.length !== 1 ? 's' : ''}`}
+                                      label={`${combination.generateCountsOn?.length} field${combination.generateCountsOn?.length !== 1 ? 's' : ''}`}
                                       size="small"
                                       sx={{
                                         backgroundColor: '#10B98120',
@@ -611,8 +611,8 @@ const UniversalPullRequestPage: React.FC = () => {
                                         whiteSpace: 'nowrap',
                                       }}
                                     >
-                                      {combination.generateCountsOn.slice(0, 2).join(', ')}
-                                      {combination.generateCountsOn.length > 2 ? '...' : ''}
+                                      {combination.generateCountsOn?.slice(0, 2).join(', ')}
+                                      {combination.generateCountsOn?.length > 2 ? '...' : ''}
                                     </Typography>
                                   </Box>
                                 </Tooltip>
@@ -641,15 +641,15 @@ const UniversalPullRequestPage: React.FC = () => {
 
                             {/* Breakdown By Column */}
                             <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                              {combination.breakdownBy.length > 0 ? (
+                              {combination.breakdownBy?.length > 0 ? (
                                 <Tooltip
                                   title={
                                     <Box sx={{ maxWidth: 400 }}>
                                       <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                        Breakdown By ({combination.breakdownBy.length} fields):
+                                        Breakdown By ({combination.breakdownBy?.length} fields):
                                       </Typography>
                                       <Typography variant="caption" sx={{ display: 'block' }}>
-                                        {combination.breakdownBy.join(', ')}
+                                        {combination.breakdownBy?.join(', ')}
                                       </Typography>
                                     </Box>
                                   }
@@ -658,7 +658,7 @@ const UniversalPullRequestPage: React.FC = () => {
                                 >
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                     <Chip
-                                      label={`${combination.breakdownBy.length} field${combination.breakdownBy.length !== 1 ? 's' : ''}`}
+                                      label={`${combination.breakdownBy?.length} field${combination.breakdownBy?.length !== 1 ? 's' : ''}`}
                                       size="small"
                                       sx={{
                                         backgroundColor: '#F59E0B20',
@@ -679,8 +679,8 @@ const UniversalPullRequestPage: React.FC = () => {
                                         whiteSpace: 'nowrap',
                                       }}
                                     >
-                                      {combination.breakdownBy.slice(0, 2).join(', ')}
-                                      {combination.breakdownBy.length > 2 ? '...' : ''}
+                                      {combination.breakdownBy?.slice(0, 2).join(', ')}
+                                      {combination.breakdownBy?.length > 2 ? '...' : ''}
                                     </Typography>
                                   </Box>
                                 </Tooltip>
@@ -919,11 +919,11 @@ const UniversalPullRequestPage: React.FC = () => {
                       <Select
                         multiple
                         value={generateCountsOn}
-                        onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                        onChange={(e) => setGenerateCountsOn(typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value)}
                         input={<OutlinedInput />}
                         renderValue={(selected) => (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => (
+                            {selected?.map((value) => (
                               <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
                             ))}
                           </Box>
@@ -934,9 +934,9 @@ const UniversalPullRequestPage: React.FC = () => {
                         <MenuItem disabled value="">
                           <em>Select fields...</em>
                         </MenuItem>
-                        {STATS_FIELDS.map((field) => (
+                        {STATS_FIELDS?.map((field) => (
                           <MenuItem key={field} value={field}>
-                            <Checkbox checked={generateCountsOn.indexOf(field) > -1} size="small" />
+                            <Checkbox checked={generateCountsOn?.indexOf(field) > -1} size="small" />
                             <ListItemText primary={field} />
                           </MenuItem>
                         ))}
@@ -984,11 +984,11 @@ const UniversalPullRequestPage: React.FC = () => {
                       <Select
                         multiple
                         value={breakdownBy}
-                        onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                        onChange={(e) => setBreakdownBy(typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value)}
                         input={<OutlinedInput />}
                         renderValue={(selected) => (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((value) => (
+                            {selected?.map((value) => (
                               <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem', backgroundColor: '#8B5CF620', color: '#8B5CF6', fontWeight: 600 }} />
                             ))}
                           </Box>
@@ -999,9 +999,9 @@ const UniversalPullRequestPage: React.FC = () => {
                         <MenuItem disabled value="">
                           <em>Select fields...</em>
                         </MenuItem>
-                        {STATS_FIELDS.map((field) => (
+                        {STATS_FIELDS?.map((field) => (
                           <MenuItem key={field} value={field}>
-                            <Checkbox checked={breakdownBy.indexOf(field) > -1} size="small" />
+                            <Checkbox checked={breakdownBy?.indexOf(field) > -1} size="small" />
                             <ListItemText primary={field} />
                           </MenuItem>
                         ))}
@@ -1037,14 +1037,14 @@ const UniversalPullRequestPage: React.FC = () => {
                 </Box>
 
                   {/* Stats Configurations Table */}
-                  {statsCombinations.length > 0 && (
+                  {statsCombinations?.length > 0 && (
                     <Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
                           Stats Configurations
                         </Typography>
                         <Chip
-                          label={`${statsCombinations.length} configuration${statsCombinations.length !== 1 ? 's' : ''}`}
+                          label={`${statsCombinations?.length} configuration${statsCombinations?.length !== 1 ? 's' : ''}`}
                           size="small"
                           sx={{
                             fontWeight: 600,
@@ -1075,7 +1075,7 @@ const UniversalPullRequestPage: React.FC = () => {
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {statsCombinations.map((combination) => (
+                            {statsCombinations?.map((combination) => (
                               <TableRow
                                 key={combination.id}
                                 hover
@@ -1087,15 +1087,15 @@ const UniversalPullRequestPage: React.FC = () => {
                               >
                                 {/* Generate Counts On Column */}
                                 <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                                  {combination.generateCountsOn.length > 0 ? (
+                                  {combination.generateCountsOn?.length > 0 ? (
                                     <Tooltip
                                       title={
                                         <Box sx={{ maxWidth: 400 }}>
                                           <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                            Counts On ({combination.generateCountsOn.length}):
+                                            Counts On ({combination.generateCountsOn?.length}):
                                           </Typography>
                                           <Typography variant="caption" sx={{ display: 'block' }}>
-                                            {combination.generateCountsOn.join(', ')}
+                                            {combination.generateCountsOn?.join(', ')}
                                           </Typography>
                                         </Box>
                                       }
@@ -1104,7 +1104,7 @@ const UniversalPullRequestPage: React.FC = () => {
                                     >
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                         <Chip
-                                          label={`${combination.generateCountsOn.length} field${combination.generateCountsOn.length !== 1 ? 's' : ''}`}
+                                          label={`${combination.generateCountsOn?.length} field${combination.generateCountsOn?.length !== 1 ? 's' : ''}`}
                                           size="small"
                                           sx={{
                                             backgroundColor: '#8B5CF620',
@@ -1125,8 +1125,8 @@ const UniversalPullRequestPage: React.FC = () => {
                                             whiteSpace: 'nowrap',
                                           }}
                                         >
-                                          {combination.generateCountsOn.slice(0, 2).join(', ')}
-                                          {combination.generateCountsOn.length > 2 ? '...' : ''}
+                                          {combination.generateCountsOn?.slice(0, 2).join(', ')}
+                                          {combination.generateCountsOn?.length > 2 ? '...' : ''}
                                         </Typography>
                                       </Box>
                                     </Tooltip>
@@ -1155,15 +1155,15 @@ const UniversalPullRequestPage: React.FC = () => {
 
                                 {/* Breakdown By Column */}
                                 <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                                  {combination.breakdownBy.length > 0 ? (
+                                  {combination.breakdownBy?.length > 0 ? (
                                     <Tooltip
                                       title={
                                         <Box sx={{ maxWidth: 400 }}>
                                           <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                            Breakdown By ({combination.breakdownBy.length}):
+                                            Breakdown By ({combination.breakdownBy?.length}):
                                           </Typography>
                                           <Typography variant="caption" sx={{ display: 'block' }}>
-                                            {combination.breakdownBy.join(', ')}
+                                            {combination.breakdownBy?.join(', ')}
                                           </Typography>
                                         </Box>
                                       }
@@ -1172,7 +1172,7 @@ const UniversalPullRequestPage: React.FC = () => {
                                     >
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                         <Chip
-                                          label={`${combination.breakdownBy.length} field${combination.breakdownBy.length !== 1 ? 's' : ''}`}
+                                          label={`${combination.breakdownBy?.length} field${combination.breakdownBy?.length !== 1 ? 's' : ''}`}
                                           size="small"
                                           sx={{
                                             backgroundColor: '#8B5CF620',
@@ -1193,8 +1193,8 @@ const UniversalPullRequestPage: React.FC = () => {
                                             whiteSpace: 'nowrap',
                                           }}
                                         >
-                                          {combination.breakdownBy.slice(0, 2).join(', ')}
-                                          {combination.breakdownBy.length > 2 ? '...' : ''}
+                                          {combination.breakdownBy?.slice(0, 2).join(', ')}
+                                          {combination.breakdownBy?.length > 2 ? '...' : ''}
                                         </Typography>
                                       </Box>
                                     </Tooltip>

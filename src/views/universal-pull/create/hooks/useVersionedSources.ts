@@ -13,11 +13,11 @@ export const useVersionedSources = () => {
 
   const getSourceNameById = useCallback((sourceId: string, inputSources: InputSource[]): string => {
     // Check in regular input sources
-    const inputSource = inputSources.find(s => s?.id === sourceId);
+    const inputSource = inputSources?.find(s => s?.id === sourceId);
     if (inputSource) return inputSource?.sourceName;
 
     // Check in versioned sources
-    const versionedSource = versionedSources.find(s => s?.id === sourceId);
+    const versionedSource = versionedSources?.find(s => s?.id === sourceId);
     if (versionedSource) return versionedSource?.sourceName;
 
     return sourceId; // fallback
@@ -34,11 +34,11 @@ export const useVersionedSources = () => {
     onError?: (message: string) => void
   ) => {
     // Validation: Must have at least one input source and one operation source
-    if (baseInputSources.length === 0) {
+    if (baseInputSources?.length === 0) {
       onError?.('Please select at least one Input Source before creating versions.');
       return;
     }
-    if (operationSources.length === 0) {
+    if (operationSources?.length === 0) {
       onError?.('Please select at least one Operation Source before creating versions.');
       return;
     }
@@ -47,12 +47,12 @@ export const useVersionedSources = () => {
     const newVersions: VersionedSource[] = [];
 
     // For each input source
-    baseInputSources.forEach(inputSourceId => {
-      const inputSource = allAvailableInputSources.find(s => s.id === inputSourceId);
+    baseInputSources?.forEach(inputSourceId => {
+      const inputSource = allAvailableInputSources?.find(s => s.id === inputSourceId);
       if (!inputSource) return;
 
       // For each operation source
-      operationSources.forEach(operationSourceId => {
+      operationSources?.forEach(operationSourceId => {
         const operationSourceName = getSourceNameById(operationSourceId, allAvailableInputSources);
 
         // Build distinct version name with format: {inputSource}_{operationSource}_version
@@ -73,7 +73,7 @@ export const useVersionedSources = () => {
         const versionedSource: VersionedSource = {
           id: `versioned_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
           isVersioned: true,
-          versionNumber: versionedSources.length + newVersions.length + 1,
+          versionNumber: versionedSources?.length + newVersions?.length + 1,
           versionLabel: versionName,
           sourceName: versionName,
           sourceModule,
@@ -88,14 +88,14 @@ export const useVersionedSources = () => {
           createdAt: timestamp, // Add timestamp for creation order
         };
 
-        newVersions.push(versionedSource);
+        newVersions?.push(versionedSource);
       });
     });
 
     // Update version counter for this module
     setVersionCounters(prev => ({
       ...prev,
-      [sourceModule]: prev[sourceModule] + newVersions.length
+      [sourceModule]: prev[sourceModule] + newVersions?.length
     }));
 
     // Add all new versions to the list
@@ -106,13 +106,13 @@ export const useVersionedSources = () => {
   }, [versionedSources, versionCounters, getSourceNameById]);
 
   const updateVersionName = useCallback((versionId: string, newName: string) => {
-    setVersionedSources(prev => prev.map(source =>
+    setVersionedSources(prev => prev?.map(source =>
       source?.id === versionId ? { ...source, sourceName: newName } : source
     ));
   }, []);
 
   const deleteVersion = useCallback((versionId: string) => {
-    setVersionedSources(prev => prev.filter(source => source?.id !== versionId));
+    setVersionedSources(prev => prev?.filter(source => source?.id !== versionId));
   }, []);
 
   return {

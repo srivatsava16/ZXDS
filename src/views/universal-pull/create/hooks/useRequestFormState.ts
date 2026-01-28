@@ -38,7 +38,7 @@ export const useRequestFormState = () => {
 
   // Handlers
   const handleAccordionChange = useCallback((panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
-    setExpanded(prev => isExpanded ? [...prev, panel] : prev.filter(p => p !== panel));
+    setExpanded(prev => isExpanded ? [...prev, panel] : prev?.filter(p => p !== panel));
   }, []);
 
   const toggleViewMode = useCallback(() => {
@@ -74,9 +74,9 @@ export const useRequestFormState = () => {
   ) => {
     const newVersionedSources: VersionedSource[] = [];
 
-    baseInputSources.forEach(baseSourceId => {
-      operationSources.forEach(opSourceId => {
-        const baseSource = inputSources.find(s => s.id === baseSourceId);
+    baseInputSources?.forEach(baseSourceId => {
+      operationSources?.forEach(opSourceId => {
+        const baseSource = inputSources?.find(s => s.id === baseSourceId);
         if (!baseSource) return;
 
         const versionLabel = `${baseSource.sourceName}_${sourceModule}_${opSourceId}`;
@@ -96,7 +96,7 @@ export const useRequestFormState = () => {
           combinedHeaders: baseSource.headers || [],
         };
 
-        newVersionedSources.push(newVersion);
+        newVersionedSources?.push(newVersion);
       });
     });
 

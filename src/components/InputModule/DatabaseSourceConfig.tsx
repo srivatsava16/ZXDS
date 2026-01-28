@@ -44,30 +44,6 @@ interface DatabaseSourceConfigProps {
   allExistingSources?: InputSource[]; // For auto-generating unique source names
 }
 
-// Preconfigured database tables
-const DATABASE_TABLES = [
-  { name: 'Permission', description: 'Permission based customer data', tableId: undefined },
-  { name: 'Non_Permission', description: 'Non-permission based customer data', tableId: undefined },
-  { name: 'Transunion', description: 'Transunion credit bureau data', tableId: undefined },
-  { name: 'Axiom', description: 'Axiom credit bureau data', tableId: undefined },
-  { name: 'Experian', description: 'Experian credit bureau data', tableId: undefined },
-  { name: 'Green_Profile', description: 'Green profile data', tableId: undefined },
-  { name: 'Orange_Profile', description: 'Orange profile data', tableId: undefined },
-  { name: 'Arcamax_Profile', description: 'Arcamax profile data', tableId: undefined },
-  { name: 'Publisher_Data', description: 'Publisher data', tableId: undefined },
-  { name: 'Green_Publisher_Data', description: 'Green publisher data', tableId: undefined },
-  { name: 'Orange_Publisher_Data', description: 'Orange publisher data', tableId: undefined },
-  { name: 'Arcamax_Publisher_Data', description: 'Arcamax publisher data', tableId: undefined },
-  { name: 'Best_Postal', description: 'Best postal data', tableId: undefined },
-  { name: 'All_Postal', description: 'All postal data', tableId: undefined },
-  { name: 'Phone_Numbers_Data', description: 'Phone numbers data', tableId: undefined },
-  { name: 'Zips_Radius_Data', description: 'ZIP radius data', tableId: undefined },
-  { name: 'Shahash_Data', description: 'Shahash data', tableId: undefined },
-  { name: 'Liveintent_Data', description: 'Liveintent data', tableId: undefined },
-  { name: 'DNS_Suppression_Data', description: 'DNS suppression data', tableId: undefined },
-  { name: 'Bacon_SBI_Policies_Data', description: 'Bacon SBI policies data', tableId: undefined },
-];
-
 // Field descriptions mapping
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   MA1566: 'Cibil score greater than 700',
@@ -102,11 +78,11 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
    * If baseName conflicts, appends _1, _2, _3, etc. until unique
    */
   const generateUniqueSourceName = (baseName: string): string => {
-    if (!baseName || !baseName.trim()) {
+    if (!baseName || !baseName?.trim()) {
       return baseName;
     }
 
-    const trimmedBase = baseName.trim();
+    const trimmedBase = baseName?.trim();
 
     // Get reserved names from API (file sources and table names)
     const reservedNames = getReservedNamesFromAPI(apiSources);
@@ -114,12 +90,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     // Get existing source names (excluding current source being edited)
     const existingSourceNames = allExistingSources
       .filter(source => data.id ? source.id !== data.id : true)
-      .map(source => source.sourceName.trim().toLowerCase());
+      .map(source => source.sourceName?.trim().toLowerCase());
 
     // Check if base name is unique
     const isNameTaken = (name: string): boolean => {
-      const nameLower = name.toLowerCase();
-      return reservedNames.includes(nameLower) || existingSourceNames.includes(nameLower);
+      const nameLower = name?.toLowerCase();
+      return reservedNames?.includes(nameLower) || existingSourceNames?.includes(nameLower);
     };
 
     // If base name is unique, return it
@@ -173,14 +149,14 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
   // Use API preconfigured tables or fallback to defaults
   const availableTables = apiSources?.dbSource?.preconfiguredTables?.input || [];
-  const currentTables = availableTables.length > 0 
-    ? availableTables.map(table => ({
+  const currentTables = availableTables?.length > 0 
+    ? availableTables?.map(table => ({
         name: table.tableName,
         description: table.description,
         tableId: table.tableId,
         columns: table.columns
       }))
-    : DATABASE_TABLES;
+    : [];
 
   // Get databases from API only - no fallbacks
   const getAvailableDatabases = () => {
@@ -196,7 +172,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     if (apiSources?.fileSource?.dataBase && selectedDatabase) {
       const schemas = apiSources?.fileSource?.dataBase?.[selectedDatabase];
       if (schemas && Array.isArray(schemas)) {
-        return schemas.map((schema: any) => schema?.name);
+        return schemas?.map((schema: any) => schema?.name);
       }
     }
     return [];
@@ -207,7 +183,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     if (apiSources?.fileSource?.dataBase && selectedDatabase) {
       const schemas = apiSources?.fileSource?.dataBase?.[selectedDatabase];
       if (schemas && Array.isArray(schemas)) {
-        const schema = schemas.find((s: any) => s?.name === schemaName);
+        const schema = schemas?.find((s: any) => s?.name === schemaName);
         return schema?.id;
       }
     }
@@ -266,9 +242,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         } else {
           // Parse source name to extract components (backward compatibility)
           const sourceName = data.sourceName || '';
-          const parts = sourceName.split('.');
+          const parts = sourceName?.split('.');
           
-          if (parts.length >= 4) {
+          if (parts?.length >= 4) {
             setSelectedSource(parts[0] || '');
             setSelectedDatabase(parts[1] || '');
             setSelectedSchema(parts[2] || '');
@@ -284,7 +260,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         }
         
         // Restore other custom table specific data
-        if (data.headers && data.headers.length > 0) {
+        if (data.headers && data.headers?.length > 0) {
           // For saved data, headers contains the selected headers (user's choice)
           // We need to restore them as both available and selected for backward compatibility
           // For new API structure, we could have separate fields but need to maintain compatibility
@@ -295,7 +271,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           setSelectedHeaders(savedSelectedHeaders);
           
           // Create fields from headers and dataTypes
-          const restoredFields = savedHeaders.map(header => ({
+          const restoredFields = savedHeaders?.map(header => ({
             name: header,
             type: data.dataTypes?.[header] || 'String',
             description: FIELD_DESCRIPTIONS[header] || `${header} field`
@@ -304,7 +280,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         }
         
         // Restore preview data if available
-        if (data.previewData && data.previewData.length > 0) {
+        if (data.previewData && data.previewData?.length > 0) {
           setTop10Records(data.previewData);
           setShowTop10(true);
         }
@@ -317,7 +293,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           console.log('[DatabaseSourceConfig] Restoring by tableId:', data.tableSourceId);
 
           // Find the table by tableId
-          const tableObj = availableTables.find(table => table.tableId === data.tableSourceId);
+          const tableObj = availableTables?.find(table => table.tableId === data.tableSourceId);
 
           if (tableObj) {
             console.log('[DatabaseSourceConfig] Found table by ID:', tableObj.tableName);
@@ -327,7 +303,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             console.warn('[DatabaseSourceConfig] Table not found by ID, trying by name');
             // Fallback to name-based lookup
             const tableNameToRestore = data.originalTableName || data.table || '';
-            const tableByName = availableTables.find(table => table.tableName === tableNameToRestore);
+            const tableByName = availableTables?.find(table => table.tableName === tableNameToRestore);
 
             if (tableByName) {
               setSelectedTable(tableByName.tableName);
@@ -343,7 +319,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           const tableNameToRestore = data.originalTableName || data.table || '';
 
           if (tableNameToRestore) {
-            const tableObj = availableTables.find(table => table.tableName === tableNameToRestore);
+            const tableObj = availableTables?.find(table => table.tableName === tableNameToRestore);
 
             if (tableObj) {
               setSelectedTable(tableObj.tableName);
@@ -367,7 +343,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         }
         
         // Restore other preconfigured table data
-        if (data.headers && data.headers.length > 0) {
+        if (data.headers && data.headers?.length > 0) {
           // For saved data, headers contains the selected headers (user's choice)
           // We need to restore them as both available and selected for backward compatibility
           const savedHeaders = data.headers;
@@ -376,7 +352,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           setAllAvailableHeaders(savedHeaders);
           setSelectedHeaders(savedSelectedHeaders);
           
-          const restoredFields = savedHeaders.map(header => ({
+          const restoredFields = savedHeaders?.map(header => ({
             name: header,
             type: data.dataTypes?.[header] || 'String',
             description: FIELD_DESCRIPTIONS[header] || `${header} field`
@@ -384,7 +360,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           setFields(restoredFields);
         }
         
-        if (data.previewData && data.previewData.length > 0) {
+        if (data.previewData && data.previewData?.length > 0) {
           setTop10Records(data.previewData);
           setShowTop10(true);
         }
@@ -412,8 +388,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     if (selectedSource && selectedDatabase) {
       const availableDbs = getAvailableDatabases();
       
-      if (!availableDbs.includes(selectedDatabase)) {
-        setSelectedDatabase(availableDbs.length > 0 ? availableDbs[0] : '');
+      if (!availableDbs?.includes(selectedDatabase)) {
+        setSelectedDatabase(availableDbs?.length > 0 ? availableDbs[0] : '');
       }
     }
   }, [selectedSource, apiSources, isRestoringData]); // Include restoration flag in dependencies
@@ -429,12 +405,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       const availableSchemas = getAvailableSchemas();
       
       // Check if the restored schema exists in current API data
-      const schemaExists = availableSchemas.some((schemaName: string) => {
+      const schemaExists = availableSchemas?.some((schemaName: string) => {
         const schemaId = getSchemaId(schemaName);
         return schemaName === selectedSchema || (schemaId !== undefined && schemaId.toString() === selectedSchema);
       });
       
-      if (!schemaExists && availableSchemas.length > 0) {
+      if (!schemaExists && availableSchemas?.length > 0) {
         const firstSchemaName = availableSchemas[0];
         const firstSchemaId = getSchemaId(firstSchemaName);
         setSelectedSchema(firstSchemaId !== undefined ? firstSchemaId.toString() : firstSchemaName);
@@ -442,7 +418,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     }
   }, [selectedDatabase, selectedSchema, apiSources, isRestoringData]);
 
-  // Auto-trigger Get Top 10 Records in edit mode when preview data is not available
+  // Auto-trigger Get Sample Recods in edit mode when preview data is not available
   useEffect(() => {
     // Only proceed after restoration is complete
     if (isRestoringData) {
@@ -453,7 +429,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     const isEditMode = data && data.id && Object.keys(data).length > 0;
 
     // Check if preview data is not available
-    const hasNoPreviewData = !data?.previewData || data.previewData.length === 0;
+    const hasNoPreviewData = !data?.previewData || data.previewData?.length === 0;
 
     // Check if we have a table selected
     const hasTableSelected = (selectedTable && tableSelectionType === 'preconfigured') ||
@@ -461,7 +437,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
     // Auto-trigger if all conditions are met and not already loading/showing
     if (isEditMode && hasNoPreviewData && hasTableSelected && !isLoadingRecords && !showTop10) {
-      console.log('[DatabaseSourceConfig] Auto-triggering Get Top 10 Records in edit mode');
+      console.log('[DatabaseSourceConfig] Auto-triggering Get Sample Recods in edit mode');
       handleGetTop10Records();
     }
   }, [isRestoringData, data, selectedTable, customTableName, tableSelectionType, isLoadingRecords, showTop10]);
@@ -475,7 +451,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     
     if (selectedSource && !selectedDatabase && (!data || Object.keys(data).length === 0)) {
       const availableDbs = getAvailableDatabases();
-      if (availableDbs.length > 0) {
+      if (availableDbs?.length > 0) {
         setSelectedDatabase(availableDbs[0]);
       }
     }
@@ -490,7 +466,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     
     if (selectedDatabase && !selectedSchema && (!data || Object.keys(data).length === 0)) {
       const availableSchemas = getAvailableSchemas();
-      if (availableSchemas.length > 0) {
+      if (availableSchemas?.length > 0) {
         const firstSchemaName = availableSchemas[0];
         const firstSchemaId = getSchemaId(firstSchemaName);
         setSelectedSchema(firstSchemaId !== undefined ? firstSchemaId.toString() : firstSchemaName);
@@ -502,16 +478,16 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setSelectedTable(tableName);
 
     // Find and store the tableId for this table
-    const selectedTableObj = currentTables.find(table => table.name === tableName);
+    const selectedTableObj = currentTables?.find(table => table.name === tableName);
     const tableId = selectedTableObj?.tableId;
 
     console.log('[DatabaseSourceConfig] Table selection changed:', {
       tableName,
       foundTable: !!selectedTableObj,
       tableId,
-      currentTablesCount: currentTables.length,
-      currentTablesPreview: currentTables.slice(0, 3).map(t => ({ name: t.name, id: t.tableId })),
-      availableTablesCount: availableTables.length,
+      currentTablesCount: currentTables?.length,
+      currentTablesPreview: currentTables?.slice(0, 3).map(t => ({ name: t.name, id: t.tableId })),
+      availableTablesCount: availableTables?.length,
       selectedTableObj: selectedTableObj
     });
 
@@ -522,7 +498,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setIsLoadingRecords(false);
 
     // Clear fields and headers when table name changes
-    // Fields will only be set after Get Top 10 Records is called
+    // Fields will only be set after Get Sample Recods is called
     setFields([]);
     setAllAvailableHeaders([]);
     setSelectedHeaders([]);
@@ -540,12 +516,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       sourceType: 'Database',
       sourceName: autoSourceName,
       subSourceType: 'Database',
-      headers: [], // Will be populated after Get Top 10 Records
-      selectedHeaders: [], // Will be populated after Get Top 10 Records
-      dataTypes: {}, // Will be populated after Get Top 10 Records
+      headers: [], // Will be populated after Get Sample Recods
+      selectedHeaders: [], // Will be populated after Get Sample Recods
+      dataTypes: {}, // Will be populated after Get Sample Recods
       filterQuery: '', // Reset filter when table changes
       filterJson: null, // Reset filter config
-      previewData: [], // Will be populated after Get Top 10 Records
+      previewData: [], // Will be populated after Get Sample Recods
       originalTableName: tableName, // Store original table name for restoration
       database: undefined,
       schema: undefined,
@@ -649,7 +625,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         // New format: { separator: string, data: object[] } or { data: object[] }
         responseData = response.data;
 
-        if (responseData.length === 0) {
+        if (responseData?.length === 0) {
           const errorMsg = 'No data found in the table. Please check the table name.';
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
@@ -664,7 +640,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         columns = Object.keys(responseData[0]);
       } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
         // Legacy format: { columns: string[], data: object[] }
-        if (!response.columns || !Array.isArray(response.columns) || response.columns.length === 0) {
+        if (!response.columns || !Array.isArray(response.columns) || response.columns?.length === 0) {
           const errorMsg = 'Invalid response format: missing columns.';
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
@@ -678,7 +654,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         responseData = response.data;
       } else if (Array.isArray(response)) {
         // Plain array fallback: object[]
-        if (response.length === 0) {
+        if (response?.length === 0) {
           const errorMsg = 'No data found in the table. Please check the table name.';
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
@@ -703,10 +679,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       }
 
       // Extract actual column names from the data (uppercase format)
-      const actualColumns = responseData.length > 0 ? Object.keys(responseData[0]) : columns.map(col => col.toUpperCase());
+      const actualColumns = responseData?.length > 0 ? Object.keys(responseData[0]) : columns?.map(col => col?.toUpperCase());
       
       // Create fields based on actual data columns
-      const responseFields = actualColumns.map(column => ({
+      const responseFields = actualColumns?.map(column => ({
         name: column,
         type: typeof responseData[0]?.[column] === 'number' ? 'Number' : 'String',
         description: FIELD_DESCRIPTIONS[column] || `${column} field`
@@ -721,12 +697,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
       // Check if we're in edit mode and should preserve existing selection
       const isEditMode = data && data.id && Object.keys(data).length > 0;
-      const hasExistingSelection = data.selectedHeaders && Array.isArray(data.selectedHeaders) && data.selectedHeaders.length > 0;
+      const hasExistingSelection = data.selectedHeaders && Array.isArray(data.selectedHeaders) && data.selectedHeaders?.length > 0;
 
       let finalSelectedHeaders: string[];
       if (isEditMode && hasExistingSelection) {
         // In edit mode, validate and preserve existing selection
-        const isSelectionValid = data.selectedHeaders!.every(header => actualColumns.includes(header));
+        const isSelectionValid = data.selectedHeaders!.every(header => actualColumns?.includes(header));
         finalSelectedHeaders = isSelectionValid ? data.selectedHeaders! : actualColumns;
       } else {
         // New mode - select all headers
@@ -754,7 +730,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         subSourceType: tableSelectionType === 'preconfigured' ? 'Database' : 'Custom Database',
         headers: actualColumns, // All available headers
         selectedHeaders: finalSelectedHeaders, // Preserve selection in edit mode
-        dataTypes: actualColumns.reduce((acc, col) => ({ ...acc, [col]: 'String' }), {}),
+        dataTypes: actualColumns?.reduce((acc, col) => ({ ...acc, [col]: 'String' }), {}),
         previewData: responseData,
         filterQuery,
       };
@@ -795,10 +771,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
       // Try to extract error message from the error object
       if (error && typeof error === 'object') {
-        if ((error as any).response?.data?.message) {
-          errorMsg = (error as any).response.data.message;
-        } else if ((error as any).message) {
-          errorMsg = (error as any).message;
+        if ((error as any)?.response?.data?.message) {
+          errorMsg = (error as any)?.response?.data?.message;
+        } else if ((error as any)?.message) {
+          errorMsg = (error as any)?.message;
         }
       }
 
@@ -884,7 +860,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     setCustomTableError(''); // Clear error when user modifies table name
 
     // Clear fields and headers when table name changes
-    // Fields will only be set after Get Top 10 Records is called
+    // Fields will only be set after Get Sample Recods is called
     setFields([]);
     setAllAvailableHeaders([]);
     setSelectedHeaders([]);
@@ -895,7 +871,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     // Don't spread old data to avoid keeping stale fields
     onChange({
       sourceType: 'Database',
-      sourceName: tableName.trim() ? (tableSourceName || tableName) : '',
+      sourceName: tableName?.trim() ? (tableSourceName || tableName) : '',
       subSourceType: 'Custom Database',
       headers: [],
       selectedHeaders: [],
@@ -976,8 +952,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     Object.keys(dictionaryData).forEach((tableName) => {
       const tableFields = dictionaryData[tableName];
       if (Array.isArray(tableFields)) {
-        tableFields.forEach((field) => {
-          allEntries.push({
+        tableFields?.forEach((field) => {
+          allEntries?.push({
             tableName,
             field,
           });
@@ -1080,8 +1056,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 )}
                 {!sourcesLoading && currentTables
                   .filter((table) =>
-                    table.name.toLowerCase().includes(tableSearch.toLowerCase()) ||
-                    table.description.toLowerCase().includes(tableSearch.toLowerCase())
+                    table.name?.toLowerCase().includes(tableSearch?.toLowerCase()) ||
+                    table.description?.toLowerCase().includes(tableSearch?.toLowerCase())
                   )
                   .map((table) => (
                     <MenuItem key={table.name} value={table.name}>
@@ -1107,7 +1083,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   minWidth: '160px',
                 }}
               >
-                {isLoadingRecords ? 'Loading...' : 'Get Top 10 Records'}
+                {isLoadingRecords ? 'Loading...' : 'Get Sample Recods'}
               </Button>
               <Tooltip title="View Table Dictionary" arrow>
                 <span>
@@ -1134,7 +1110,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           </Box>
 
           {/* Top 10 Records Preview - Inline */}
-          {showTop10 && top10Records.length > 0 && (
+          {showTop10 && top10Records?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1195,8 +1171,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   <TableBody>
                     {top10Records
                       .filter((row) => {
-                        if (!searchTerm.trim()) return true;
-                        const searchLower = searchTerm.toLowerCase();
+                        if (!searchTerm?.trim()) return true;
+                        const searchLower = searchTerm?.toLowerCase();
                         return Object.values(row).some((value) =>
                           String(value || '').toLowerCase().includes(searchLower)
                         );
@@ -1219,14 +1195,14 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             </Box>
           )}
 
-          {/* Header Selection - Only show after Get Top 10 Records is fetched or in edit mode */}
-          {allAvailableHeaders.length > 0 && (
+          {/* Header Selection - Only show after Get Sample Recods is fetched or in edit mode */}
+          {allAvailableHeaders?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
                   Select Headers
                   <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
-                    ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+                    ({selectedHeaders?.length} of {allAvailableHeaders?.length} selected)
                   </Typography>
                 </Typography>
               </Box>
@@ -1236,9 +1212,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 value={selectedHeaders}
                 onChange={(event, newValue) => {
                   // Check if "Select All" was clicked
-                  if (newValue.includes('__SELECT_ALL__')) {
+                  if (newValue?.includes('__SELECT_ALL__')) {
                     // Toggle: if all are selected, deselect all; otherwise select all
-                    if (selectedHeaders.length === allAvailableHeaders.length) {
+                    if (selectedHeaders?.length === allAvailableHeaders?.length) {
                       handleHeaderSelectionChange([]);
                     } else {
                       handleHeaderSelectionChange(allAvailableHeaders);
@@ -1251,8 +1227,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
                 renderOption={(props, option, { selected }) => {
                   if (option === '__SELECT_ALL__') {
-                    const allSelected = selectedHeaders.length === allAvailableHeaders.length;
-                    const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                    const allSelected = selectedHeaders?.length === allAvailableHeaders?.length;
+                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;
                     return (
                       <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
                         <Checkbox
@@ -1282,12 +1258,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    placeholder={selectedHeaders.length === 0 ? "Select headers..." : ""}
+                    placeholder={selectedHeaders?.length === 0 ? "Select headers..." : ""}
                     size="small"
                   />
                 )}
                 renderTags={(value, getTagProps) =>
-                  value.slice(0, 3).map((option, index) => (
+                  value?.slice(0, 3).map((option, index) => (
                     <Chip
                       {...getTagProps({ index })}
                       key={option}
@@ -1307,11 +1283,11 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                       }}
                     />
                   )).concat(
-                    value.length > 3
+                    value?.length > 3
                       ? [
                           <Chip
                             key="more"
-                            label={`+${value.length - 3} more`}
+                            label={`+${value?.length - 3} more`}
                             size="small"
                             sx={{
                               height: 20,
@@ -1330,7 +1306,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   },
                 }}
               />
-              {selectedHeaders.length > 0 && (
+              {selectedHeaders?.length > 0 && (
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
                     Selected headers will be included in the data source. Unselected headers will be excluded from processing.
@@ -1340,8 +1316,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             </Box>
           )}
 
-          {/* Filters Module for Preconfigured Table - Only show after Get Top 10 Records is fetched or in edit mode */}
-          {fields.length > 0 && selectedHeaders.length > 0 && (
+          {/* Filters Module for Preconfigured Table - Only show after Get Sample Recods is fetched or in edit mode */}
+          {fields?.length > 0 && selectedHeaders?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <FilterBuilder 
                 headers={selectedHeaders} 
@@ -1378,8 +1354,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             </Box>
           )}
 
-          {/* Table Source Name - Only shown after Get Top 10 Records is clicked, appears after Filters */}
-          {allAvailableHeaders.length > 0 && (
+          {/* Table Source Name - Only shown after Get Sample Recods is clicked, appears after Filters */}
+          {allAvailableHeaders?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
                 Table Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -1423,7 +1399,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
               <MenuItem value="">
                 <em>Select Snowflake Account</em>
               </MenuItem>
-              {SNOWFLAKE_SOURCES.map((source) => (
+              {SNOWFLAKE_SOURCES?.map((source) => (
                 <MenuItem key={source.id} value={source.id}>
                   <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
                     {source.name}
@@ -1485,7 +1461,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   />
                 </MenuItem>
                 {getAvailableDatabases()
-                  ?.filter((db) => db.toLowerCase().includes(databaseSearch.toLowerCase()))
+                  ?.filter((db) => db?.toLowerCase().includes(databaseSearch?.toLowerCase()))
                   .map((db) => (
                     <MenuItem key={db} value={db}>
                       <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
@@ -1559,7 +1535,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     minWidth: '160px',
                   }}
                 >
-                  {isLoadingRecords ? 'Loading...' : 'Get Top 10 Records'}
+                  {isLoadingRecords ? 'Loading...' : 'Get Sample Recods'}
                 </Button>
               </Box>
 
@@ -1582,13 +1558,13 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
 
           {/* Header Selection for Custom Table */}
-          {allAvailableHeaders.length > 0 && (
+          {allAvailableHeaders?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
                   Select Headers
                   <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
-                    ({selectedHeaders.length} of {allAvailableHeaders.length} selected)
+                    ({selectedHeaders?.length} of {allAvailableHeaders?.length} selected)
                   </Typography>
                 </Typography>
               </Box>
@@ -1598,9 +1574,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 value={selectedHeaders}
                 onChange={(event, newValue) => {
                   // Check if "Select All" was clicked
-                  if (newValue.includes('__SELECT_ALL__')) {
+                  if (newValue?.includes('__SELECT_ALL__')) {
                     // Toggle: if all are selected, deselect all; otherwise select all
-                    if (selectedHeaders.length === allAvailableHeaders.length) {
+                    if (selectedHeaders?.length === allAvailableHeaders?.length) {
                       handleHeaderSelectionChange([]);
                     } else {
                       handleHeaderSelectionChange(allAvailableHeaders);
@@ -1613,8 +1589,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
                 renderOption={(props, option, { selected }) => {
                   if (option === '__SELECT_ALL__') {
-                    const allSelected = selectedHeaders.length === allAvailableHeaders.length;
-                    const someSelected = selectedHeaders.length > 0 && selectedHeaders.length < allAvailableHeaders.length;
+                    const allSelected = selectedHeaders?.length === allAvailableHeaders?.length;
+                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;
                     return (
                       <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
                         <Checkbox
@@ -1644,12 +1620,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    placeholder={(selectedHeaders.length > 0 ? selectedHeaders : (data.headers || [])).length === 0 ? "Select headers..." : ""}
+                    placeholder={(selectedHeaders?.length > 0 ? selectedHeaders : (data.headers || [])).length === 0 ? "Select headers..." : ""}
                     size="small"
                   />
                 )}
                 renderTags={(value, getTagProps) =>
-                  value.slice(0, 3).map((option, index) => (
+                  value?.slice(0, 3).map((option, index) => (
                     <Chip
                       {...getTagProps({ index })}
                       key={option}
@@ -1669,11 +1645,11 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                       }}
                     />
                   )).concat(
-                    value.length > 3
+                    value?.length > 3
                       ? [
                           <Chip
                             key="more"
-                            label={`+${value.length - 3} more`}
+                            label={`+${value?.length - 3} more`}
                             size="small"
                             sx={{
                               height: 20,
@@ -1692,7 +1668,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   },
                 }}
               />
-              {(selectedHeaders.length > 0 ? selectedHeaders : (data.headers || [])).length > 0 && (
+              {(selectedHeaders?.length > 0 ? selectedHeaders : (data.headers || [])).length > 0 && (
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
                     Selected headers will be included in the data source. Unselected headers will be excluded from processing.
@@ -1703,7 +1679,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Top 10 Records Preview - Inline for Custom Table */}
-          {showTop10 && top10Records.length > 0 && (
+          {showTop10 && top10Records?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1764,8 +1740,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   <TableBody>
                     {top10Records
                       .filter((row) => {
-                        if (!searchTerm.trim()) return true;
-                        const searchLower = searchTerm.toLowerCase();
+                        if (!searchTerm?.trim()) return true;
+                        const searchLower = searchTerm?.toLowerCase();
                         return Object.values(row).some((value) =>
                           String(value || '').toLowerCase().includes(searchLower)
                         );
@@ -1789,7 +1765,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Filters Module for Custom Table */}
-          {fields.length > 0 && selectedHeaders.length > 0 && (
+          {fields?.length > 0 && selectedHeaders?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <FilterBuilder 
                 headers={selectedHeaders} 
@@ -1827,7 +1803,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           )}
 
           {/* Source Name for Custom Table */}
-          {customTableName && fields.length > 0 && (
+          {customTableName && fields?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
                 Source Name <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -1981,8 +1957,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     if (field.field_values && Array.isArray(field.field_values)) {
                       // Take first 3 unique values
                       const uniqueValues = [...new Set(field.field_values)].slice(0, 3);
-                      sampleValues = uniqueValues.join(', ');
-                      if (field.field_values.length > 3) {
+                      sampleValues = uniqueValues?.join(', ');
+                      if (field.field_values?.length > 3) {
                         sampleValues += ', ...';
                       }
                     } else if (field.availableValues) {

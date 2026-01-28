@@ -12,7 +12,7 @@ export class BaseApiService {
   }
 
   private getHeaders(): Record<string, string> {
-    const token = localStorage.getItem('authToken')
+    const token = localStorage?.getItem('authToken')
     return {
       ...this.defaultHeaders,
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -31,10 +31,10 @@ export class BaseApiService {
       }
 
       const response = await fetch(url, config)
-      const data = await response.json()
+      const data = await response?.json()
 
-      if (!response.ok) {
-        throw new Error(data?.message || `HTTP error! status: ${response.status}`)
+      if (!response?.ok) {
+        throw new Error(data?.message || `HTTP error! status: ${response?.status}`)
       }
 
       return data
@@ -74,9 +74,9 @@ export class BaseApiService {
 
   // Upload file with form data
   async upload<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
-    const token = localStorage.getItem('authToken')
+    const token = localStorage?.getItem('authToken')
     const headers: Record<string, string> = {}
-    
+
     if (token) {
       headers.Authorization = `Bearer ${token}`
     }

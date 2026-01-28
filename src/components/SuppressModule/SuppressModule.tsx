@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -178,7 +178,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
   // Use shared custom sources from props, excluding Self-type sources
   // Self-type sources are only for internal use within the specific module that created them
-  const customSuppressSources = sharedCustomSources.filter(source => source.sourceType !== 'Self');
+  const customSuppressSources = sharedCustomSources?.filter(source => source.sourceType !== 'Self');
 
   // Get predefined sources from API or use fallback
   const predefinedSources = getPredefinedSources(apiSources);
@@ -200,25 +200,25 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     const sourceIdStr = String(sourceId);
 
     // Check if it's a predefined suppress source (from API)
-    if (sourceIdStr.startsWith('suppress_')) {
-      const tableId = parseInt(sourceIdStr.replace('suppress_', ''));
+    if (sourceIdStr?.startsWith('suppress_')) {
+      const tableId = parseInt(sourceIdStr?.replace('suppress_', ''));
       const suppressTable = apiSources?.dbSource?.preconfiguredTables?.suppress?.find(
         table => table.tableId === tableId
       );
       if (suppressTable?.columns) {
-        return suppressTable.columns.map(col => col.name);
+        return suppressTable.columns?.map(col => col.name);
       }
       return [];
     }
 
     // Check custom suppress sources
-    const customSource = customSuppressSources.find(src => src.id === sourceId || src.id === sourceIdStr);
+    const customSource = customSuppressSources?.find(src => src.id === sourceId || src.id === sourceIdStr);
     if (customSource) {
       return customSource.selectedHeaders || customSource.headers || [];
     }
 
     // Check versioned sources and regular input sources
-    const versionedSource = availableInputSources.find(src => src.id === sourceId);
+    const versionedSource = availableInputSources?.find(src => src.id === sourceId);
     if (versionedSource) {
       return versionedSource.selectedHeaders || versionedSource.headers || [];
     }
@@ -232,12 +232,12 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     const sourceIdStr = String(sourceId);
 
     // If no suppress on fields are selected, all sources are enabled
-    if (selectedSuppressOnFields.length === 0) {
+    if (selectedSuppressOnFields?.length === 0) {
       return true;
     }
 
     // Always enable sources that are selected as input sources
-    if (selectedInputSources.includes(sourceIdStr) || selectedInputSources.includes(sourceId as any)) {
+    if (selectedInputSources?.includes(sourceIdStr) || selectedInputSources?.includes(sourceId as any)) {
       return true;
     }
 
@@ -245,49 +245,60 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     const sourceFields = getSuppressSourceFields(sourceId);
 
     // If source has no fields (couldn't retrieve from API or custom sources), disable it
-    if (sourceFields.length === 0) {
+    if (sourceFields?.length === 0) {
       return false;
     }
 
     // Check if all selected suppress on fields exist in the source fields (case-insensitive)
-    return selectedSuppressOnFields.every(suppressKey =>
-      sourceFields.some(field => field.toLowerCase() === suppressKey.toLowerCase())
+    return selectedSuppressOnFields?.every(suppressKey =>
+      sourceFields?.some(field => field?.toLowerCase() === suppressKey?.toLowerCase())
     );
   };
 
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
-    if (initialConfigs && initialConfigs.length > 0) {
+    if (initialConfigs && initialConfigs?.length > 0) {
       setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
 
+  // Track previous configs to prevent infinite loops
+  const prevConfigsRef = useRef<string>('');
+
   // Notify parent component when configurations change
   useEffect(() => {
     if (onConfigurationsChange) {
-      onConfigurationsChange(configs);
+      // Use JSON.stringify to compare deep equality
+      const currentConfigsString = JSON.stringify(configs);
+
+      // Only call callback if configs actually changed
+      if (currentConfigsString !== prevConfigsRef.current) {
+        prevConfigsRef.current = currentConfigsString;
+        onConfigurationsChange(configs);
+      }
     }
-  }, [configs, onConfigurationsChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configs]);
 
   // Auto-deselect suppress sources that don't have all selected suppress on fields
   useEffect(() => {
-    if (selectedSuppressOnFields.length > 0 && selectedSuppressSources.length > 0) {
+    if (selectedSuppressOnFields?.length > 0 && selectedSuppressSources?.length > 0) {
       // Filter out sources that don't have all suppress on fields, but keep selected input sources
-      const validSources = selectedSuppressSources.filter(sourceId => {
+      const validSources = selectedSuppressSources?.filter(sourceId => {
         // Always keep selected input sources
-        if (selectedInputSources.includes(sourceId)) {
+        if (selectedInputSources?.includes(sourceId)) {
           return true;
         }
 
         // For other sources, check if they have all suppress on fields
         const sourceFields = getSuppressSourceFields(sourceId);
-        return selectedSuppressOnFields.every(suppressKey =>
-          sourceFields.some(field => field.toLowerCase() === suppressKey.toLowerCase())
+        return selectedSuppressOnFields?.every(suppressKey =>
+          sourceFields?.some(field => field?.toLowerCase() === suppressKey?.toLowerCase())
         );
       });
 
       // Update if any sources were filtered out
-      if (validSources.length !== selectedSuppressSources.length) {
+      if (validSources?.length !== selectedSuppressSources?.length) {
         setSelectedSuppressSources(validSources);
       }
     }
@@ -300,16 +311,16 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     const allFields = new Set<string>(originalHeaders);
 
     // Find all append configurations where this source is an input source
-    appendConfigurations.forEach(config => {
+    appendConfigurations?.forEach(config => {
       // Check if this source is one of the input sources for this append config
-      const isInputSource = config.inputSources.some(inputSourceId => {
-        const inputSource = availableInputSources.find(s => s.id === inputSourceId);
+      const isInputSource = config.inputSources?.some(inputSourceId => {
+        const inputSource = availableInputSources?.find(s => s.id === inputSourceId);
         return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
       });
 
       // If this source is used in the append config, add the appended fields
       if (isInputSource && config.appendFields) {
-        config.appendFields.forEach(field => allFields.add(field));
+        config.appendFields?.forEach(field => allFields.add(field));
       }
     });
 
@@ -318,24 +329,24 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
   // Get common or all fields based on input source selection, with field mappings applied
   const getSuppressOnFields = (sourceIds: string[]): string[] => {
-    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) return [];
+    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds?.length === 0) return [];
 
-    const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
-    if (selectedSources.length === 0) return [];
+    const selectedSources = availableInputSources?.filter(src => sourceIds?.includes(src.id));
+    if (selectedSources?.length === 0) return [];
 
     // Build a map of original field -> mapped field name (or original if no mapping)
     const fieldsMap = new Map<string, string>();
 
-    selectedSources.forEach(source => {
+    selectedSources?.forEach(source => {
       const headers = getSourceFieldsWithAppends(source); // Include appended fields
 
-      headers.forEach(field => {
+      headers?.forEach(field => {
         const sourceFieldKey = `${source.id}::${field}`;
 
         // Check if this field has a mapping
-        const mapping = fieldMappings.find(m => {
-          return m.selectedColumns.some((col: string) => {
-            const [colSourceId, colFieldName] = col.split('::');
+        const mapping = fieldMappings?.find(m => {
+          return m.selectedColumns?.some((col: string) => {
+            const [colSourceId, colFieldName] = col?.split('::');
             return colSourceId === source.id && colFieldName === field;
           });
         });
@@ -351,7 +362,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     });
 
     // If only one source selected, return all its fields (mapped or original)
-    if (selectedSources.length === 1) {
+    if (selectedSources?.length === 1) {
       return Array.from(fieldsMap.values());
     }
 
@@ -360,8 +371,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     const fieldNameOccurrences = new Map<string, number>();
     const fieldNameCasing = new Map<string, string>(); // Track original casing
 
-    fieldsMap.forEach((displayName) => {
-      const displayNameLower = displayName.toLowerCase();
+    fieldsMap?.forEach((displayName) => {
+      const displayNameLower = displayName?.toLowerCase();
       fieldNameOccurrences.set(displayNameLower, (fieldNameOccurrences.get(displayNameLower) || 0) + 1);
 
       // Preserve the casing from the first occurrence
@@ -372,9 +383,9 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
     // Return fields that appear in all sources (case-insensitive), preserving original casing
     const commonFields: string[] = [];
-    fieldNameOccurrences.forEach((count, fieldNameLower) => {
-      if (count === selectedSources.length) {
-        commonFields.push(fieldNameCasing.get(fieldNameLower) || fieldNameLower);
+    fieldNameOccurrences?.forEach((count, fieldNameLower) => {
+      if (count === selectedSources?.length) {
+        commonFields?.push(fieldNameCasing.get(fieldNameLower) || fieldNameLower);
       }
     });
 
@@ -382,29 +393,29 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   };
 
   const handleAddOrUpdateConfig = () => {
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source');
       return;
     }
-    if (selectedSuppressOnFields.length === 0) {
+    if (selectedSuppressOnFields?.length === 0) {
       alert('Please select at least one Suppress On field');
       return;
     }
-    if (selectedSuppressSources.length === 0) {
+    if (selectedSuppressSources?.length === 0) {
       alert('Please select at least one Suppress Source');
       return;
     }
 
     if (editingConfigId) {
       // Update existing config
-      setConfigs(configs.map(config =>
+      setConfigs(configs?.map(config =>
         config.id === editingConfigId
           ? {
               ...config,
               inputSources: selectedInputSources,
               suppressOnFields: selectedSuppressOnFields,
               suppressSources: selectedSuppressSources,
-              fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
+              fieldMappings: fieldMappings && fieldMappings?.length > 0 ? fieldMappings : undefined,
             }
           : config
       ));
@@ -417,7 +428,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         inputSources: selectedInputSources,
         suppressOnFields: selectedSuppressOnFields,
         suppressSources: selectedSuppressSources,
-        fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
+        fieldMappings: fieldMappings && fieldMappings?.length > 0 ? fieldMappings : undefined,
         createdAt: timestamp, // Add timestamp for creation order
       };
       setConfigs([...configs, newConfig]);
@@ -450,7 +461,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
   const handleDeleteConfig = (id: string) => {
     if (window.confirm('Are you sure you want to delete this suppress configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
+      setConfigs(configs?.filter(c => c.id !== id));
       if (editingConfigId === id) {
         handleCancelEdit();
       }
@@ -459,11 +470,11 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
   const handleCreateVersion = () => {
     // Validation
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source before creating versions');
       return;
     }
-    if (selectedSuppressSources.length === 0) {
+    if (selectedSuppressSources?.length === 0) {
       alert('Please select at least one Suppress Source before creating versions');
       return;
     }
@@ -481,13 +492,13 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources.find(src => src.id === id);
+    const inputSource = availableInputSources?.find(src => src.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const predefined = predefinedSources.find(src => src.id === id);
+    const predefined = predefinedSources?.find(src => src.id === id);
     if (predefined) return predefined.name;
 
-    const customSource = customSuppressSources.find(src => src.id === id);
+    const customSource = customSuppressSources?.find(src => src.id === id);
     if (customSource) return customSource.sourceName;
 
     return id;
@@ -496,37 +507,37 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   const suppressOnFields = getSuppressOnFields(selectedInputSources);
 
   // Extract versioned sources from availableInputSources
-  const localVersionedSources = availableInputSources.filter(src =>
+  const localVersionedSources = availableInputSources?.filter(src =>
     (src as any).isVersioned === true
   );
 
   // Extract regular input sources (non-versioned)
-  const regularInputSources = availableInputSources.filter(src =>
+  const regularInputSources = availableInputSources?.filter(src =>
     !(src as any).isVersioned
   );
 
   const allSuppressSources = [
-    ...predefinedSources.map(src => ({ id: src.id, name: src.name })),
-    ...customSuppressSources.map(src => ({ id: src.id, name: src.sourceName })),
-    ...localVersionedSources.map(src => ({ id: src.id, name: src.sourceName })),
-    ...regularInputSources.map(src => ({ id: src.id, name: src.sourceName })),
+    ...predefinedSources?.map(src => ({ id: src.id, name: src.name })),
+    ...customSuppressSources?.map(src => ({ id: src.id, name: src.sourceName })),
+    ...localVersionedSources?.map(src => ({ id: src.id, name: src.sourceName })),
+    ...regularInputSources?.map(src => ({ id: src.id, name: src.sourceName })),
   ];
 
   // Filtered lists based on search queries
-  const filteredInputSources = availableInputSources.filter(source =>
+  const filteredInputSources = availableInputSources?.filter(source =>
     source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
-  const filteredSuppressOnFields = suppressOnFields.filter(field =>
-    field.toLowerCase().includes(suppressOnFieldsSearch.toLowerCase())
+  const filteredSuppressOnFields = suppressOnFields?.filter(field =>
+    field?.toLowerCase().includes(suppressOnFieldsSearch?.toLowerCase())
   );
 
-  const filteredSuppressSources = allSuppressSources.filter(source =>
+  const filteredSuppressSources = allSuppressSources?.filter(source =>
     source?.name && typeof source.name === 'string' && 
-    source.name.toLowerCase().includes(suppressSourcesSearch.toLowerCase())
+    source.name?.toLowerCase().includes(suppressSourcesSearch?.toLowerCase())
   );
 
-  if (availableInputSources.length === 0) {
+  if (availableInputSources?.length === 0) {
     return (
       <Box
         sx={{
@@ -586,9 +597,9 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             }}
           >
             Field Mapping
-            {fieldMappings.length > 0 && (
+            {fieldMappings?.length > 0 && (
               <Chip
-                label={fieldMappings.length}
+                label={fieldMappings?.length}
                 size="small"
                 sx={{
                   ml: 1,
@@ -693,13 +704,13 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               multiple
               value={selectedInputSources}
               onChange={(e) => {
-                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                if (value.includes('select-all-input-sources')) {
-                  if (selectedInputSources.length === filteredInputSources.length) {
+                const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                if (value?.includes('select-all-input-sources')) {
+                  if (selectedInputSources?.length === filteredInputSources?.length) {
                     setSelectedInputSources([]);
                     setSelectedSuppressOnFields([]);
                   } else {
-                    setSelectedInputSources(filteredInputSources.map(s => s.id));
+                    setSelectedInputSources(filteredInputSources?.map(s => s.id));
                   }
                 } else {
                   setSelectedInputSources(value);
@@ -709,7 +720,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               onClose={() => setInputSourcesSearch('')}
               input={<OutlinedInput />}
               renderValue={(selected) => {
-                if (selected.length === 0) {
+                if (selected?.length === 0) {
                   return (
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                       Select
@@ -718,7 +729,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 }
                 return (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Tooltip key={value} title={getSourceName(value)} arrow>
                         <Chip
                           label={getSourceName(value)}
@@ -795,32 +806,32 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 <em>Select Input Sources</em>
               </MenuItem>
               {/* Select All Option */}
-              {filteredInputSources.length > 0 && (
+              {filteredInputSources?.length > 0 && (
                 <MenuItem
                   value="select-all-input-sources"
                   sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                 >
                   <Checkbox
                     checked={
-                      filteredInputSources.length > 0 &&
-                      filteredInputSources.every(src => selectedInputSources.includes(src.id))
+                      filteredInputSources?.length > 0 &&
+                      filteredInputSources?.every(src => selectedInputSources?.includes(src.id))
                     }
                     indeterminate={
-                      filteredInputSources.some(src => selectedInputSources.includes(src.id)) &&
-                      !filteredInputSources.every(src => selectedInputSources.includes(src.id))
+                      filteredInputSources?.some(src => selectedInputSources?.includes(src.id)) &&
+                      !filteredInputSources?.every(src => selectedInputSources?.includes(src.id))
                     }
                     size="small"
                   />
                   <ListItemText primary="Select All" />
                 </MenuItem>
               )}
-              {filteredInputSources.map((source) => (
+              {filteredInputSources?.map((source) => (
                 <MenuItem key={source.id} value={source.id}>
-                  <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} size="small" />
+                  <Checkbox checked={selectedInputSources?.indexOf(source.id) > -1} size="small" />
                   <ListItemText primary={source.sourceName} />
                 </MenuItem>
               ))}
-              {filteredInputSources.length === 0 && (
+              {filteredInputSources?.length === 0 && (
                 <MenuItem disabled>
                   <em>No sources match your search</em>
                 </MenuItem>
@@ -865,11 +876,11 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             <Select
               key={`suppress-on-fields-${[...selectedInputSources].sort().join('-') || 'none'}`}
               multiple
-              value={selectedSuppressOnFields.filter(field => suppressOnFields.includes(field))}
+              value={selectedSuppressOnFields?.filter(field => suppressOnFields?.includes(field))}
               onChange={(e) => {
-                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                if (value.includes('select-all-suppress-fields')) {
-                  if (selectedSuppressOnFields.length === filteredSuppressOnFields.length) {
+                const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                if (value?.includes('select-all-suppress-fields')) {
+                  if (selectedSuppressOnFields?.length === filteredSuppressOnFields?.length) {
                     setSelectedSuppressOnFields([]);
                   } else {
                     setSelectedSuppressOnFields(filteredSuppressOnFields);
@@ -881,7 +892,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               onClose={() => setSuppressOnFieldsSearch('')}
               input={<OutlinedInput />}
               renderValue={(selected) => {
-                if (selected.length === 0) {
+                if (selected?.length === 0) {
                   return (
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                       Select
@@ -890,7 +901,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 }
                 return (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Tooltip key={value} title={value} arrow>
                         <Chip
                           label={value}
@@ -922,7 +933,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   </Box>
                 );
               }}
-              disabled={suppressOnFields.length === 0}
+              disabled={suppressOnFields?.length === 0}
               displayEmpty
               sx={{
                 '& .MuiOutlinedInput-notchedOutline': {
@@ -968,38 +979,38 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               </MenuItem>
               <MenuItem disabled value="">
                 <em>
-                  {suppressOnFields.length === 0
+                  {suppressOnFields?.length === 0
                     ? 'Select input sources first'
                     : 'Select Suppress On Fields'}
                 </em>
               </MenuItem>
               {/* Select All Option */}
-              {filteredSuppressOnFields.length > 0 && (
+              {filteredSuppressOnFields?.length > 0 && (
                 <MenuItem
                   value="select-all-suppress-fields"
                   sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                 >
                   <Checkbox
                     checked={
-                      filteredSuppressOnFields.length > 0 &&
-                      filteredSuppressOnFields.every(field => selectedSuppressOnFields.includes(field))
+                      filteredSuppressOnFields?.length > 0 &&
+                      filteredSuppressOnFields?.every(field => selectedSuppressOnFields?.includes(field))
                     }
                     indeterminate={
-                      filteredSuppressOnFields.some(field => selectedSuppressOnFields.includes(field)) &&
-                      !filteredSuppressOnFields.every(field => selectedSuppressOnFields.includes(field))
+                      filteredSuppressOnFields?.some(field => selectedSuppressOnFields?.includes(field)) &&
+                      !filteredSuppressOnFields?.every(field => selectedSuppressOnFields?.includes(field))
                     }
                     size="small"
                   />
                   <ListItemText primary="Select All" />
                 </MenuItem>
               )}
-              {filteredSuppressOnFields.map((field) => (
+              {filteredSuppressOnFields?.map((field) => (
                 <MenuItem key={field} value={field}>
-                  <Checkbox checked={selectedSuppressOnFields.indexOf(field) > -1} size="small" />
+                  <Checkbox checked={selectedSuppressOnFields?.indexOf(field) > -1} size="small" />
                   <ListItemText primary={field} />
                 </MenuItem>
               ))}
-              {filteredSuppressOnFields.length === 0 && suppressOnFields.length > 0 && (
+              {filteredSuppressOnFields?.length === 0 && suppressOnFields?.length > 0 && (
                 <MenuItem disabled>
                   <em>No fields match your search</em>
                 </MenuItem>
@@ -1045,14 +1056,14 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               multiple
               value={selectedSuppressSources}
               onChange={(e) => {
-                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                if (value.includes('select-all-suppress-sources')) {
+                const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                if (value?.includes('select-all-suppress-sources')) {
                   // Only select sources that have all suppress on fields (enabled sources)
-                  const enabledSources = filteredSuppressSources.filter(s => sourceHasAllSuppressOnFields(s.id));
-                  if (selectedSuppressSources.length === enabledSources.length) {
+                  const enabledSources = filteredSuppressSources?.filter(s => sourceHasAllSuppressOnFields(s.id));
+                  if (selectedSuppressSources?.length === enabledSources?.length) {
                     setSelectedSuppressSources([]);
                   } else {
-                    setSelectedSuppressSources(enabledSources.map(s => s.id));
+                    setSelectedSuppressSources(enabledSources?.map(s => s.id));
                   }
                 } else {
                   setSelectedSuppressSources(value);
@@ -1061,7 +1072,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               onClose={() => setSuppressSourcesSearch('')}
               input={<OutlinedInput />}
               renderValue={(selected) => {
-                if (selected.length === 0) {
+                if (selected?.length === 0) {
                   return (
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                       Select
@@ -1070,7 +1081,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 }
                 return (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Tooltip key={value} title={getSourceName(value)} arrow>
                         <Chip
                           label={getSourceName(value)}
@@ -1151,20 +1162,20 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
               {/* Select All Option */}
               {(() => {
                 // Only count enabled sources for Select All
-                const enabledSources = filteredSuppressSources.filter(s => sourceHasAllSuppressOnFields(s.id));
-                return enabledSources.length > 0 ? (
+                const enabledSources = filteredSuppressSources?.filter(s => sourceHasAllSuppressOnFields(s.id));
+                return enabledSources?.length > 0 ? (
                   <MenuItem
                     value="select-all-suppress-sources"
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
                       checked={
-                        enabledSources.length > 0 &&
-                        enabledSources.every(src => selectedSuppressSources.includes(src.id))
+                        enabledSources?.length > 0 &&
+                        enabledSources?.every(src => selectedSuppressSources?.includes(src.id))
                       }
                       indeterminate={
-                        enabledSources.some(src => selectedSuppressSources.includes(src.id)) &&
-                        !enabledSources.every(src => selectedSuppressSources.includes(src.id))
+                        enabledSources?.some(src => selectedSuppressSources?.includes(src.id)) &&
+                        !enabledSources?.every(src => selectedSuppressSources?.includes(src.id))
                       }
                       size="small"
                     />
@@ -1172,8 +1183,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   </MenuItem>
                 ) : null;
               })()}
-              {filteredSuppressSources.map((source) => {
-                const isCustomSource = customSuppressSources.some(cs => cs.id === source.id);
+              {filteredSuppressSources?.map((source) => {
+                const isCustomSource = customSuppressSources?.some(cs => cs.id === source.id);
                 const hasAllSuppressOnFields = sourceHasAllSuppressOnFields(source.id);
                 const isDisabled = !hasAllSuppressOnFields;
                 const sourceFields = getSuppressSourceFields(source.id);
@@ -1192,7 +1203,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                     } : {}}
                   >
                     <Checkbox
-                      checked={selectedSuppressSources.indexOf(source.id) > -1}
+                      checked={selectedSuppressSources?.indexOf(source.id) > -1}
                       size="small"
                       disabled={isDisabled}
                     />
@@ -1209,29 +1220,29 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                     >
                       <Tooltip
                         title={
-                          sourceFields.length > 0 ? (
+                          sourceFields?.length > 0 ? (
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Available Fields ({sourceFields.length}):
+                                Available Fields ({sourceFields?.length}):
                               </Typography>
                               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 300, overflowY: 'auto' }}>
-                                {sourceFields.map((field, idx) => (
+                                {sourceFields?.map((field, idx) => (
                                   <Chip
                                     key={idx}
                                     label={field}
                                     size="small"
                                     sx={{
-                                      backgroundColor: selectedSuppressOnFields.includes(field) ? '#F8717120' : '#E5E7EB',
-                                      color: selectedSuppressOnFields.includes(field) ? '#F87171' : '#374151',
-                                      border: selectedSuppressOnFields.includes(field) ? '1px solid #F87171' : '1px solid transparent',
+                                      backgroundColor: selectedSuppressOnFields?.includes(field) ? '#F8717120' : '#E5E7EB',
+                                      color: selectedSuppressOnFields?.includes(field) ? '#F87171' : '#374151',
+                                      border: selectedSuppressOnFields?.includes(field) ? '1px solid #F87171' : '1px solid transparent',
                                       fontSize: '0.65rem',
                                       height: '20px',
-                                      fontWeight: selectedSuppressOnFields.includes(field) ? 600 : 400,
+                                      fontWeight: selectedSuppressOnFields?.includes(field) ? 600 : 400,
                                     }}
                                   />
                                 ))}
                               </Box>
-                              {selectedSuppressOnFields.length > 0 && (
+                              {selectedSuppressOnFields?.length > 0 && (
                                 <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', color: '#9CA3AF' }}>
                                   Red = Suppress on fields present
                                 </Typography>
@@ -1273,7 +1284,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   </MenuItem>
                 );
               })}
-              {filteredSuppressSources.length === 0 && (
+              {filteredSuppressSources?.length === 0 && (
                 <MenuItem disabled>
                   <em>No sources match your search</em>
                 </MenuItem>
@@ -1333,18 +1344,18 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         // Combine configurations and versions for unified display
         // Sort by creation time to show items in the order they were created
         const combinedItems = [
-          ...configs.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
-          ...versionedSources.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 }))
+          ...configs?.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
+          ...versionedSources?.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 }))
         ].sort((a, b) => a.createdAt - b.createdAt);
 
-        return combinedItems.length > 0 && (
+        return combinedItems?.length > 0 && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
                 Configured Suppress Operations  & Versions
               </Typography>
               <Chip
-                label={`${combinedItems.length} item${combinedItems.length !== 1 ? 's' : ''}`}
+                label={`${combinedItems?.length} item${combinedItems?.length !== 1 ? 's' : ''}`}
                 size="small"
                 sx={{
                   fontWeight: 600,
@@ -1377,7 +1388,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {combinedItems.map((item) => {
+                {combinedItems?.map((item) => {
                   const isVersion = item.type === 'version';
                   const config = item.type === 'config' ? item.data : null;
                   const version = item.type === 'version' ? item.data : null;
@@ -1424,7 +1435,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                         </Tooltip>
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          Configuration #{configs.indexOf(config!) + 1}
+                          Configuration #{configs?.indexOf(config!) + 1}
                         </Typography>
                       )}
                     </TableCell>
@@ -1432,15 +1443,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                     {/* Input Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        version?.baseInputSources && version.baseInputSources.length > 0 ? (
+                        version?.baseInputSources && version.baseInputSources?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Input Sources ({version.baseInputSources.length}):
+                                  Input Sources ({version.baseInputSources?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                  {version.baseInputSources?.map((id: string) => getSourceName(id)).join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1449,7 +1460,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                                label={`${version.baseInputSources?.length} source${version.baseInputSources?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#29669520',
@@ -1472,7 +1483,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {version.baseInputSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1481,15 +1492,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.inputSources && config.inputSources.length > 0 ? (
+                      ) : config && config.inputSources && config.inputSources?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Input Sources ({config.inputSources.length}):
+                                Input Sources ({config.inputSources?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {config.inputSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1498,7 +1509,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
+                              label={`${config.inputSources?.length} source${config.inputSources?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#29669520',
@@ -1521,7 +1532,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
+                              {config.inputSources?.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1535,15 +1546,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                     {/* Suppress On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        version?.operationFields && version.operationFields.length > 0 ? (
+                        version?.operationFields && version.operationFields?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Suppress On Fields ({version.operationFields.length}):
+                                  Suppress On Fields ({version.operationFields?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.operationFields.join(', ')}
+                                  {version.operationFields?.join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1552,7 +1563,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.operationFields.length} field${version.operationFields.length !== 1 ? 's' : ''}`}
+                                label={`${version.operationFields?.length} field${version.operationFields?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#F8717120',
@@ -1575,7 +1586,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.operationFields.join(', ')}
+                                {version.operationFields?.join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1584,15 +1595,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.suppressOnFields && config.suppressOnFields.length > 0 ? (
+                      ) : config && config.suppressOnFields && config.suppressOnFields?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Suppress On Fields ({config.suppressOnFields.length}):
+                                Suppress On Fields ({config.suppressOnFields?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.suppressOnFields.join(', ')}
+                                {config.suppressOnFields?.join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1601,7 +1612,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.suppressOnFields.length} field${config.suppressOnFields.length !== 1 ? 's' : ''}`}
+                              label={`${config.suppressOnFields?.length} field${config.suppressOnFields?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#F8717120',
@@ -1624,7 +1635,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.suppressOnFields.join(', ')}
+                              {config.suppressOnFields?.join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1638,15 +1649,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                     {/* Suppress Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        version?.operationSources && version.operationSources.length > 0 ? (
+                        version?.operationSources && version.operationSources?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Suppress Sources ({version.operationSources.length}):
+                                  Suppress Sources ({version.operationSources?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                  {version.operationSources?.map((id: string) => getSourceName(id)).join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1655,7 +1666,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                                label={`${version.operationSources?.length} source${version.operationSources?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#F8717120',
@@ -1678,7 +1689,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {version.operationSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1687,15 +1698,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.suppressSources && config.suppressSources.length > 0 ? (
+                      ) : config && config.suppressSources && config.suppressSources?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Suppress Sources ({config.suppressSources.length}):
+                                Suppress Sources ({config.suppressSources?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.suppressSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {config.suppressSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1704,7 +1715,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.suppressSources.length} source${config.suppressSources.length !== 1 ? 's' : ''}`}
+                              label={`${config.suppressSources?.length} source${config.suppressSources?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#F8717120',
@@ -1727,7 +1738,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.suppressSources.map((id: string) => getSourceName(id)).join(', ')}
+                              {config.suppressSources?.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1824,14 +1835,14 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
       })()}
 
       {/* Custom Suppress Sources List */}
-      {customSuppressSources.length > 0 && (
+      {customSuppressSources?.length > 0 && (
         <Box sx={{ mt: 4, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Custom Suppress Sources
             </Typography>
             <Chip
-              label={`${customSuppressSources.length} custom source${customSuppressSources.length !== 1 ? 's' : ''}`}
+              label={`${customSuppressSources?.length} custom source${customSuppressSources?.length !== 1 ? 's' : ''}`}
               size="small"
               color="secondary"
               sx={{ fontWeight: 600 }}
@@ -1856,7 +1867,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {customSuppressSources.map((customSource) => (
+                {customSuppressSources?.map((customSource) => (
                   <TableRow
                     key={customSource.id}
                     hover
@@ -1897,15 +1908,15 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
 
                     {/* Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {customSource.selectedHeaders && customSource.selectedHeaders.length > 0 ? (
+                      {customSource.selectedHeaders && customSource.selectedHeaders?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Fields ({customSource.selectedHeaders.length}):
+                                Fields ({customSource.selectedHeaders?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {customSource.selectedHeaders.join(', ')}
+                                {customSource.selectedHeaders?.join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1913,7 +1924,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                           placement="top"
                         >
                           <Chip
-                            label={`${customSource.selectedHeaders.length} field${customSource.selectedHeaders.length !== 1 ? 's' : ''}`}
+                            label={`${customSource.selectedHeaders?.length} field${customSource.selectedHeaders?.length !== 1 ? 's' : ''}`}
                             size="small"
                             sx={{
                               backgroundColor: '#9C27B020',
@@ -2008,10 +2019,10 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             // Extract nested fields from configJson.added_fields if they exist
             if (src.configJson?.added_fields) {
               const addedFields = src.configJson.added_fields;
-              addedFields.forEach((sourceFields: any) => {
+              addedFields?.forEach((sourceFields: any) => {
                 if (sourceFields.source_name === src.sourceName && sourceFields.fields) {
-                  sourceFields.fields.forEach((field: any) => {
-                    nestedFieldNames.push(field.field_name);
+                  sourceFields.fields?.forEach((field: any) => {
+                    nestedFieldNames?.push(field.field_name);
                   });
                 }
               });
@@ -2025,7 +2036,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
           // 2. Custom sources created in Append module (Step 2 - panel2)
           const sources = [
             // All input sources (regular + versioned) - include nested fields
-            ...availableInputSources.map(src => ({
+            ...availableInputSources?.map(src => ({
               id: src.id,
               name: src.sourceName,
               type: 'input' as const,
@@ -2035,7 +2046,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
             ...sharedCustomSources
               .filter(src => {
                 const createdBy = src.createdByModuleId;
-                return createdBy && (createdBy === 'panel2' || createdBy.startsWith('panel2_'));
+                return createdBy && (createdBy === 'panel2' || createdBy?.startsWith('panel2_'));
               })
               .map(src => ({
                 id: src.id,
@@ -2134,8 +2145,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   Columns ({viewingSource.headers?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingSource.headers && viewingSource.headers.length > 0 ? (
-                    viewingSource.headers.map((header, index) => (
+                  {viewingSource.headers && viewingSource.headers?.length > 0 ? (
+                    viewingSource.headers?.map((header, index) => (
                       <Chip
                         key={index}
                         label={header}
@@ -2202,8 +2213,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   Input Sources ({viewingVersion.baseInputSources?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources.length > 0 ? (
-                    viewingVersion.baseInputSources.map((sourceId: string) => (
+                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources?.length > 0 ? (
+                    viewingVersion.baseInputSources?.map((sourceId: string) => (
                       <Chip
                         key={sourceId}
                         label={getSourceNameById?.(sourceId) || sourceId}
@@ -2224,8 +2235,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   {viewingVersion.sourceModule} Sources ({viewingVersion.operationSources?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingVersion.operationSources && viewingVersion.operationSources.length > 0 ? (
-                    viewingVersion.operationSources.map((sourceId: string) => (
+                  {viewingVersion.operationSources && viewingVersion.operationSources?.length > 0 ? (
+                    viewingVersion.operationSources?.map((sourceId: string) => (
                       <Chip
                         key={sourceId}
                         label={getSourceNameById?.(sourceId) || sourceId}
@@ -2241,13 +2252,13 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
                   )}
                 </Box>
               </Box>
-              {viewingVersion.headers && viewingVersion.headers.length > 0 && (
+              {viewingVersion.headers && viewingVersion.headers?.length > 0 && (
                 <Box>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                    Headers ({viewingVersion.headers.length})
+                    Headers ({viewingVersion.headers?.length})
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflowY: 'auto' }}>
-                    {viewingVersion.headers.map((header: string, index: number) => (
+                    {viewingVersion.headers?.map((header: string, index: number) => (
                       <Chip
                         key={index}
                         label={header}
@@ -2280,7 +2291,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         }}
         version={editingVersion}
         availableInputSources={availableInputSources}
-        availableSuppressSources={[...predefinedSources.map(s => ({ id: s.id, name: s.name })), ...sharedCustomSources.map(s => ({ id: s.id, name: s.sourceName }))]}
+        availableSuppressSources={[...predefinedSources?.map(s => ({ id: s.id, name: s.name })), ...sharedCustomSources?.map(s => ({ id: s.id, name: s.sourceName }))]}
         apiSources={apiSources}
         allExistingSources={[...availableInputSources, ...sharedCustomSources]}
         onSave={handleSaveVersion}

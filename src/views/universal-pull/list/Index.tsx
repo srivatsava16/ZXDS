@@ -196,7 +196,7 @@ const UniversalPullPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {reports.length === 0 ? (
+              {reports?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                     <Typography variant="body2" color="text.secondary">
@@ -294,7 +294,7 @@ const UniversalPullPage: React.FC = () => {
           <TablePagination
             rowsPerPageOptions={[5, 10, 25]}
             component="div"
-            count={reports.length}
+            count={reports?.length}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}

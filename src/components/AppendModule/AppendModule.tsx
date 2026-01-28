@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -60,19 +60,19 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   moduleFieldMappings = [],
   onModuleFieldMappingsChange
 }) => {
-  // Debug logging
-  useEffect(() => {
-    console.log('[AppendModule] Received props:', {
-      availableInputSourcesCount: availableInputSources.length,
-      availableInputSources: availableInputSources.map(src => ({
-        id: src.id,
-        sourceName: src.sourceName,
-        isVersioned: src.isVersioned,
-        headersCount: src.headers?.length || 0
-      })),
-      versionedSourcesCount: versionedSources.length
-    });
-  }, [availableInputSources, versionedSources]);
+  // Debug logging (commented out to prevent continuous output)
+  // useEffect(() => {
+  //   console.log('[AppendModule] Received props:', {
+  //     availableInputSourcesCount: availableInputSources.length,
+  //     availableInputSources: availableInputSources.map(src => ({
+  //       id: src.id,
+  //       sourceName: src.sourceName,
+  //       isVersioned: src.isVersioned,
+  //       headersCount: src.headers?.length || 0
+  //     })),
+  //     versionedSourcesCount: versionedSources.length
+  //   });
+  // }, [availableInputSources, versionedSources]);
   // Use custom hooks for state management
   const {
     configs,
@@ -157,7 +157,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
   // Use shared custom sources from props, excluding Self-type sources
   // Self-type sources are only for internal use within the specific module that created them
-  const customAppendSources = sharedCustomSources.filter(source => source.sourceType !== 'Self');
+  const customAppendSources = sharedCustomSources?.filter(source => source.sourceType !== 'Self');
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -172,19 +172,19 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   // Helper function to get all fields for a source
   const getSourceFields = (sourceId: string): string[] => {
     // Check predefined sources
-    const predefined = PREDEFINED_SOURCES.find(src => src.id === sourceId);
+    const predefined = PREDEFINED_SOURCES?.find(src => src.id === sourceId);
     if (predefined) {
       return predefined.fields || [];
     }
 
     // Check custom append sources
-    const customSource = customAppendSources.find(src => src.id === sourceId);
+    const customSource = customAppendSources?.find(src => src.id === sourceId);
     if (customSource) {
       return customSource.selectedHeaders || customSource.headers || [];
     }
 
     // Check versioned sources and regular input sources
-    const versionedSource = availableInputSources.find(src => src.id === sourceId);
+    const versionedSource = availableInputSources?.find(src => src.id === sourceId);
     if (versionedSource) {
       return versionedSource.selectedHeaders || versionedSource.headers || [];
     }
@@ -195,12 +195,12 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   // Helper function to check if a source contains all selected match keys
   const sourceHasAllMatchKeys = (sourceId: string): boolean => {
     // If no match keys are selected, all sources are enabled
-    if (selectedAppendOnFields.length === 0) {
+    if (selectedAppendOnFields?.length === 0) {
       return true;
     }
 
     // Always enable sources that are selected as input sources
-    if (selectedInputSources.includes(sourceId)) {
+    if (selectedInputSources?.includes(sourceId)) {
       return true;
     }
 
@@ -208,8 +208,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     const sourceFields = getSourceFields(sourceId);
 
     // Check if all selected match keys exist in the source fields (case-insensitive)
-    return selectedAppendOnFields.every(matchKey =>
-      sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+    return selectedAppendOnFields?.every(matchKey =>
+      sourceFields?.some(field => field?.toLowerCase() === matchKey?.toLowerCase())
     );
   };
 
@@ -220,32 +220,43 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     }
   }, [initialConfigs, setConfigs]);
 
+  // Track previous configs to prevent infinite loops
+  const prevConfigsRef = useRef<string>('');
+
   // Notify parent component when configurations change (for dependency validation)
   useEffect(() => {
     if (onConfigurationsChange) {
-      onConfigurationsChange(configs);
+      // Use JSON.stringify to compare deep equality
+      const currentConfigsString = JSON.stringify(configs);
+
+      // Only call callback if configs actually changed
+      if (currentConfigsString !== prevConfigsRef.current) {
+        prevConfigsRef.current = currentConfigsString;
+        onConfigurationsChange(configs);
+      }
     }
-  }, [configs, onConfigurationsChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configs]);
 
   // Auto-deselect append sources that don't have all selected match keys
   useEffect(() => {
-    if (selectedAppendOnFields.length > 0 && selectedAppendSources.length > 0) {
+    if (selectedAppendOnFields?.length > 0 && selectedAppendSources?.length > 0) {
       // Filter out sources that don't have all match keys, but keep selected input sources
-      const validSources = selectedAppendSources.filter(sourceId => {
+      const validSources = selectedAppendSources?.filter(sourceId => {
         // Always keep selected input sources
-        if (selectedInputSources.includes(sourceId)) {
+        if (selectedInputSources?.includes(sourceId)) {
           return true;
         }
 
         // For other sources, check if they have all match keys
         const sourceFields = getSourceFields(sourceId);
-        return selectedAppendOnFields.every(matchKey =>
-          sourceFields.some(field => field.toLowerCase() === matchKey.toLowerCase())
+        return selectedAppendOnFields?.every(matchKey =>
+          sourceFields?.some(field => field?.toLowerCase() === matchKey?.toLowerCase())
         );
       });
 
       // Update if any sources were filtered out
-      if (validSources.length !== selectedAppendSources.length) {
+      if (validSources?.length !== selectedAppendSources?.length) {
         setSelectedAppendSources(validSources);
         // Also clear append fields since sources changed
         setSelectedAppendFields([]);
@@ -261,25 +272,25 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
   // Get common or all fields based on input source selection, with field mappings applied
   const getAppendOnFields = (sourceIds: string[]): string[] => {
-    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) return [];
+    if (!sourceIds || !Array.isArray(sourceIds) || sourceIds?.length === 0) return [];
 
-    const selectedSources = availableInputSources.filter(src => sourceIds.includes(src.id));
+    const selectedSources = availableInputSources?.filter(src => sourceIds?.includes(src.id));
 
-    if (selectedSources.length === 0) return [];
+    if (selectedSources?.length === 0) return [];
 
     // Build a map of original field -> mapped field name (or original if no mapping)
     const fieldsMap = new Map<string, string>();
 
-    selectedSources.forEach(source => {
+    selectedSources?.forEach(source => {
       const headers = source?.selectedHeaders || source?.headers || [];
 
-      headers.forEach(field => {
+      headers?.forEach(field => {
         const sourceFieldKey = `${source.id}::${field}`;
 
         // Check if this field has a mapping
-        const mapping = moduleFieldMappings.find(m => {
-          return m.selectedColumns.some((col: string) => {
-            const [colSourceId, colFieldName] = col.split('::');
+        const mapping = moduleFieldMappings?.find(m => {
+          return m.selectedColumns?.some((col: string) => {
+            const [colSourceId, colFieldName] = col?.split('::');
             return colSourceId === source.id && colFieldName === field;
           });
         });
@@ -295,7 +306,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     });
 
     // If only one source selected, return all its fields (mapped or original)
-    if (selectedSources.length === 1) {
+    if (selectedSources?.length === 1) {
       return Array.from(fieldsMap.values());
     }
 
@@ -303,15 +314,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     // Group fields by their display name (mapped or original)
     const fieldNameOccurrences = new Map<string, number>();
 
-    fieldsMap.forEach((displayName) => {
+    fieldsMap?.forEach((displayName) => {
       fieldNameOccurrences.set(displayName, (fieldNameOccurrences.get(displayName) || 0) + 1);
     });
 
     // Return fields that appear in all sources
     const commonFields: string[] = [];
-    fieldNameOccurrences.forEach((count, fieldName) => {
-      if (count === selectedSources.length) {
-        commonFields.push(fieldName);
+    fieldNameOccurrences?.forEach((count, fieldName) => {
+      if (count === selectedSources?.length) {
+        commonFields?.push(fieldName);
       }
     });
 
@@ -320,21 +331,21 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
   // Get common fields (intersection) from all append sources
   const getAppendFields = (appendSourceIds: string[]): string[] => {
-    if (appendSourceIds.length === 0) return [];
+    if (appendSourceIds?.length === 0) return [];
 
     // Helper function to get fields from a source
     const getFieldsFromSource = (sourceId: string): string[] => {
-      const predefined = PREDEFINED_SOURCES.find(src => src.id === sourceId);
+      const predefined = PREDEFINED_SOURCES?.find(src => src.id === sourceId);
       if (predefined) {
         return predefined.fields;
       }
 
-      const customSource = customAppendSources.find(src => src.id === sourceId);
+      const customSource = customAppendSources?.find(src => src.id === sourceId);
       if (customSource?.selectedHeaders || customSource?.headers) {
         return customSource.selectedHeaders || customSource.headers || [];
       }
 
-      const versionedSource = availableInputSources.find(src => src.id === sourceId);
+      const versionedSource = availableInputSources?.find(src => src.id === sourceId);
       if (versionedSource?.selectedHeaders || versionedSource?.headers) {
         return versionedSource.selectedHeaders || versionedSource.headers || [];
       }
@@ -346,16 +357,16 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     const firstSourceFields = getFieldsFromSource(appendSourceIds[0]);
 
     // If only one source, return all its fields
-    if (appendSourceIds.length === 1) {
+    if (appendSourceIds?.length === 1) {
       return firstSourceFields;
     }
 
     // For multiple sources, return only common fields (intersection)
-    const commonFields = firstSourceFields.filter(field => {
+    const commonFields = firstSourceFields?.filter(field => {
       // Check if this field exists in all other sources
-      return appendSourceIds.slice(1).every(sourceId => {
+      return appendSourceIds?.slice(1).every(sourceId => {
         const sourceFields = getFieldsFromSource(sourceId);
-        return sourceFields.includes(field);
+        return sourceFields?.includes(field);
       });
     });
 
@@ -369,28 +380,28 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
   // Handle deletion of append source from priority list
   const handleDeleteAppendSource = (id: string) => {
-    const updatedSelection = selectedAppendSources.filter(sourceId => sourceId !== id);
+    const updatedSelection = selectedAppendSources?.filter(sourceId => sourceId !== id);
     setSelectedAppendSources(updatedSelection);
-    if (updatedSelection.length === 0) {
+    if (updatedSelection?.length === 0) {
       setSelectedAppendFields([]);
     }
   };
 
   const handleCreateVersion = () => {
     // Validation
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source before creating versions');
       return;
     }
-    if (selectedAppendSources.length === 0) {
+    if (selectedAppendSources?.length === 0) {
       alert('Please select at least one Append Source before creating versions');
       return;
     }
-    if (selectedAppendOnFields.length === 0) {
+    if (selectedAppendOnFields?.length === 0) {
       alert('Please select at least one Match Key field before creating versions');
       return;
     }
-    if (selectedAppendFields.length === 0) {
+    if (selectedAppendFields?.length === 0) {
       alert('Please select at least one Field to Append before creating versions');
       return;
     }
@@ -409,14 +420,14 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   };
 
   // Filter self-append sources from shared custom sources
-  const selfAppendSources = sharedCustomSources.filter(source => source.sourceType === 'Self');
+  const selfAppendSources = sharedCustomSources?.filter(source => source.sourceType === 'Self');
 
   // Combine configurations, versions, and self-append sources for unified display
   // Sort by creation time to show items in the order they were created
   const combinedItems = [
-    ...configs.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
-    ...versionedSources.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 })),
-    ...selfAppendSources.map(selfSource => ({ type: 'self' as const, data: selfSource, createdAt: (selfSource as any).createdAt || 0 }))
+    ...configs?.map(config => ({ type: 'config' as const, data: config, createdAt: config.createdAt || 0 })),
+    ...versionedSources?.map(version => ({ type: 'version' as const, data: version, createdAt: version.createdAt || 0 })),
+    ...selfAppendSources?.map(selfSource => ({ type: 'self' as const, data: selfSource, createdAt: (selfSource as any).createdAt || 0 }))
   ].sort((a, b) => a.createdAt - b.createdAt);
 
 
@@ -426,13 +437,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources.find(src => src.id === id);
+    const inputSource = availableInputSources?.find(src => src.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const predefined = PREDEFINED_SOURCES.find(src => src.id === id);
+    const predefined = PREDEFINED_SOURCES?.find(src => src.id === id);
     if (predefined) return predefined.name;
 
-    const customSource = customAppendSources.find(src => src.id === id);
+    const customSource = customAppendSources?.find(src => src.id === id);
     if (customSource) return customSource.sourceName;
 
     return id;
@@ -442,24 +453,24 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   const availableAppendFields = getAppendFields(selectedAppendSources);
 
   // Extract versioned sources from availableInputSources
-  const localVersionedSources = availableInputSources.filter(src =>
+  const localVersionedSources = availableInputSources?.filter(src =>
     src.isVersioned === true
   );
 
   // Extract regular input sources (non-versioned)
-  const regularInputSources = availableInputSources.filter(src =>
+  const regularInputSources = availableInputSources?.filter(src =>
     !src.isVersioned
   );
 
   const allAppendSources = [
-    ...PREDEFINED_SOURCES.map(src => ({ id: src?.id, name: src?.name })),
-    ...customAppendSources.map(src => ({ id: src?.id, name: src?.sourceName })),
-    ...localVersionedSources.map(src => ({ id: src?.id, name: src?.sourceName })),
-    ...regularInputSources.map(src => ({ id: src?.id, name: src?.sourceName })),
+    ...PREDEFINED_SOURCES?.map(src => ({ id: src?.id, name: src?.name })),
+    ...customAppendSources?.map(src => ({ id: src?.id, name: src?.sourceName })),
+    ...localVersionedSources?.map(src => ({ id: src?.id, name: src?.sourceName })),
+    ...regularInputSources?.map(src => ({ id: src?.id, name: src?.sourceName })),
   ];
 
   // Filtered lists based on search queries
-  const filteredInputSources = availableInputSources.filter(source =>
+  const filteredInputSources = availableInputSources?.filter(source =>
     source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
@@ -468,26 +479,26 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     console.log('[AppendModule] Dropdown state:', {
       editingConfigId,
       selectedInputSources,
-      availableInputSourcesCount: availableInputSources.length,
-      availableInputSourcesIds: availableInputSources.map(s => ({ id: s.id, name: s.sourceName })),
-      filteredInputSourcesCount: filteredInputSources.length
+      availableInputSourcesCount: availableInputSources?.length,
+      availableInputSourcesIds: availableInputSources?.map(s => ({ id: s.id, name: s.sourceName })),
+      filteredInputSourcesCount: filteredInputSources?.length
     });
   }
 
-  const filteredAppendOnFields = appendOnFields.filter(field =>
-    field.toLowerCase().includes(appendOnFieldsSearch.toLowerCase())
+  const filteredAppendOnFields = appendOnFields?.filter(field =>
+    field?.toLowerCase().includes(appendOnFieldsSearch?.toLowerCase())
   );
 
-  const filteredAppendSources = allAppendSources.filter(source =>
+  const filteredAppendSources = allAppendSources?.filter(source =>
     source?.name && typeof source.name === 'string' && 
-    source.name.toLowerCase().includes(appendSourcesSearch.toLowerCase())
+    source.name?.toLowerCase().includes(appendSourcesSearch?.toLowerCase())
   );
 
-  const filteredAppendFields = availableAppendFields.filter(field =>
-    field.toLowerCase().includes(appendFieldsSearch.toLowerCase())
+  const filteredAppendFields = availableAppendFields?.filter(field =>
+    field?.toLowerCase().includes(appendFieldsSearch?.toLowerCase())
   );
 
-  if (availableInputSources.length === 0) {
+  if (availableInputSources?.length === 0) {
     return (
       <Box
         sx={{
@@ -547,9 +558,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             }}
           >
             Field Mapping
-            {moduleFieldMappings.length > 0 && (
+            {moduleFieldMappings?.length > 0 && (
               <Chip
-                label={moduleFieldMappings.length}
+                label={moduleFieldMappings?.length}
                 size="small"
                 sx={{
                   ml: 1,
@@ -569,7 +580,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               startIcon={<Add />}
               onClick={() => {
                 console.log('[AppendModule] Opening Add Custom Append Source dialog, availableInputSources:',
-                  availableInputSources.map(src => ({
+                  availableInputSources?.map(src => ({
                     id: src.id,
                     sourceName: src.sourceName,
                     isVersioned: src.isVersioned,
@@ -660,13 +671,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 multiple
                 value={selectedInputSources}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-input-sources-append')) {
-                    if (selectedInputSources.length === filteredInputSources.length) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-input-sources-append')) {
+                    if (selectedInputSources?.length === filteredInputSources?.length) {
                       setSelectedInputSources([]);
                       setSelectedAppendOnFields([]);
                     } else {
-                      setSelectedInputSources(filteredInputSources.map(s => s.id));
+                      setSelectedInputSources(filteredInputSources?.map(s => s.id));
                     }
                   } else {
                     setSelectedInputSources(value);
@@ -676,7 +687,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 onClose={() => setInputSourcesSearch('')}
                 input={<OutlinedInput />}
                 renderValue={(selected) => {
-                  if (selected.length === 0) {
+                  if (selected?.length === 0) {
                     return (
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                         Select
@@ -685,7 +696,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   }
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                      {selected.map((value) => (
+                      {selected?.map((value) => (
                         <Tooltip key={value} title={getSourceName(value)} arrow>
                           <Chip
                             label={getSourceName(value)}
@@ -762,32 +773,32 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   <em>Select Input Sources</em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredInputSources.length > 0 && (
+                {filteredInputSources?.length > 0 && (
                   <MenuItem
                     value="select-all-input-sources-append"
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
                       checked={
-                        filteredInputSources.length > 0 &&
-                        filteredInputSources.every(src => selectedInputSources.includes(src.id))
+                        filteredInputSources?.length > 0 &&
+                        filteredInputSources?.every(src => selectedInputSources?.includes(src.id))
                       }
                       indeterminate={
-                        filteredInputSources.some(src => selectedInputSources.includes(src.id)) &&
-                        !filteredInputSources.every(src => selectedInputSources.includes(src.id))
+                        filteredInputSources?.some(src => selectedInputSources?.includes(src.id)) &&
+                        !filteredInputSources?.every(src => selectedInputSources?.includes(src.id))
                       }
                       size="small"
                     />
                     <ListItemText primary="Select All" />
                   </MenuItem>
                 )}
-                {filteredInputSources.map((source) => (
+                {filteredInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} size="small" />
+                    <Checkbox checked={selectedInputSources?.indexOf(source.id) > -1} size="small" />
                     <ListItemText primary={source.sourceName} />
                   </MenuItem>
                 ))}
-                {filteredInputSources.length === 0 && (
+                {filteredInputSources?.length === 0 && (
                   <MenuItem disabled>
                     <em>No sources match your search</em>
                   </MenuItem>
@@ -832,11 +843,11 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               <Select
                 key={`append-on-fields-${[...selectedInputSources].sort().join('-') || 'none'}`}
                 multiple
-                value={selectedAppendOnFields.filter(field => appendOnFields.includes(field))}
+                value={selectedAppendOnFields?.filter(field => appendOnFields?.includes(field))}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-append-on-fields')) {
-                    if (selectedAppendOnFields.length === filteredAppendOnFields.length) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-append-on-fields')) {
+                    if (selectedAppendOnFields?.length === filteredAppendOnFields?.length) {
                       setSelectedAppendOnFields([]);
                     } else {
                       setSelectedAppendOnFields(filteredAppendOnFields);
@@ -848,7 +859,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 onClose={() => setAppendOnFieldsSearch('')}
                 input={<OutlinedInput />}
                 renderValue={(selected) => {
-                  if (selected.length === 0) {
+                  if (selected?.length === 0) {
                     return (
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                         Select
@@ -857,7 +868,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   }
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                      {selected.map((value) => (
+                      {selected?.map((value) => (
                         <Tooltip key={value} title={value} arrow>
                           <Chip
                             label={value}
@@ -887,7 +898,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </Box>
                   );
                 }}
-                disabled={appendOnFields.length === 0}
+                disabled={appendOnFields?.length === 0}
                 displayEmpty
                 sx={{
                   '& .MuiOutlinedInput-notchedOutline': {
@@ -933,38 +944,38 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 </MenuItem>
                 <MenuItem disabled value="">
                   <em>
-                    {appendOnFields.length === 0
+                    {appendOnFields?.length === 0
                       ? 'Select input sources first'
                       : 'Select Append On Fields'}
                   </em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredAppendOnFields.length > 0 && (
+                {filteredAppendOnFields?.length > 0 && (
                   <MenuItem
                     value="select-all-append-on-fields"
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
                       checked={
-                        filteredAppendOnFields.length > 0 &&
-                        filteredAppendOnFields.every(field => selectedAppendOnFields.includes(field))
+                        filteredAppendOnFields?.length > 0 &&
+                        filteredAppendOnFields?.every(field => selectedAppendOnFields?.includes(field))
                       }
                       indeterminate={
-                        filteredAppendOnFields.some(field => selectedAppendOnFields.includes(field)) &&
-                        !filteredAppendOnFields.every(field => selectedAppendOnFields.includes(field))
+                        filteredAppendOnFields?.some(field => selectedAppendOnFields?.includes(field)) &&
+                        !filteredAppendOnFields?.every(field => selectedAppendOnFields?.includes(field))
                       }
                       size="small"
                     />
                     <ListItemText primary="Select All" />
                   </MenuItem>
                 )}
-                {filteredAppendOnFields.map((field) => (
+                {filteredAppendOnFields?.map((field) => (
                   <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAppendOnFields.indexOf(field) > -1} size="small" />
+                    <Checkbox checked={selectedAppendOnFields?.indexOf(field) > -1} size="small" />
                     <ListItemText primary={field} />
                   </MenuItem>
                 ))}
-                {filteredAppendOnFields.length === 0 && appendOnFields.length > 0 && (
+                {filteredAppendOnFields?.length === 0 && appendOnFields?.length > 0 && (
                   <MenuItem disabled>
                     <em>No fields match your search</em>
                   </MenuItem>
@@ -1010,15 +1021,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 multiple
                 value={selectedAppendSources}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-append-sources')) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-append-sources')) {
                     // Only select sources that have all match keys (enabled sources)
-                    const enabledSources = filteredAppendSources.filter(s => sourceHasAllMatchKeys(s.id));
-                    if (selectedAppendSources.length === enabledSources.length) {
+                    const enabledSources = filteredAppendSources?.filter(s => sourceHasAllMatchKeys(s.id));
+                    if (selectedAppendSources?.length === enabledSources?.length) {
                       setSelectedAppendSources([]);
                       setSelectedAppendFields([]);
                     } else {
-                      setSelectedAppendSources(enabledSources.map(s => s.id));
+                      setSelectedAppendSources(enabledSources?.map(s => s.id));
                     }
                   } else {
                     setSelectedAppendSources(value);
@@ -1028,7 +1039,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 onClose={() => setAppendSourcesSearch('')}
                 input={<OutlinedInput />}
                 renderValue={(selected) => {
-                  if (selected.length === 0) {
+                  if (selected?.length === 0) {
                     return (
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                         Select
@@ -1037,7 +1048,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   }
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                      {selected.map((value) => (
+                      {selected?.map((value) => (
                         <Tooltip key={value} title={getSourceName(value)} arrow>
                           <Chip
                             label={getSourceName(value)}
@@ -1115,22 +1126,22 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   <em>Select Append Sources</em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredAppendSources.length > 0 && (() => {
+                {filteredAppendSources?.length > 0 && (() => {
                   // Only count enabled sources for Select All
-                  const enabledSources = filteredAppendSources.filter(s => sourceHasAllMatchKeys(s.id));
-                  return enabledSources.length > 0 ? (
+                  const enabledSources = filteredAppendSources?.filter(s => sourceHasAllMatchKeys(s.id));
+                  return enabledSources?.length > 0 ? (
                     <MenuItem
                       value="select-all-append-sources"
                       sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                     >
                       <Checkbox
                         checked={
-                          enabledSources.length > 0 &&
-                          enabledSources.every(src => selectedAppendSources.includes(src.id))
+                          enabledSources?.length > 0 &&
+                          enabledSources?.every(src => selectedAppendSources?.includes(src.id))
                         }
                         indeterminate={
-                          enabledSources.some(src => selectedAppendSources.includes(src.id)) &&
-                          !enabledSources.every(src => selectedAppendSources.includes(src.id))
+                          enabledSources?.some(src => selectedAppendSources?.includes(src.id)) &&
+                          !enabledSources?.every(src => selectedAppendSources?.includes(src.id))
                         }
                         size="small"
                       />
@@ -1138,8 +1149,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </MenuItem>
                   ) : null;
                 })()}
-                {filteredAppendSources.map((source) => {
-                  const isCustomSource = customAppendSources.some(cs => cs.id === source.id);
+                {filteredAppendSources?.map((source) => {
+                  const isCustomSource = customAppendSources?.some(cs => cs.id === source.id);
                   const hasAllMatchKeys = sourceHasAllMatchKeys(source.id);
                   const isDisabled = !hasAllMatchKeys;
                   const sourceFields = getSourceFields(source.id);
@@ -1158,7 +1169,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                       } : {}}
                     >
                       <Checkbox
-                        checked={selectedAppendSources.indexOf(source.id) > -1}
+                        checked={selectedAppendSources?.indexOf(source.id) > -1}
                         size="small"
                         disabled={isDisabled}
                       />
@@ -1175,29 +1186,29 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                       >
                         <Tooltip
                           title={
-                            sourceFields.length > 0 ? (
+                            sourceFields?.length > 0 ? (
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Available Fields ({sourceFields.length}):
+                                  Available Fields ({sourceFields?.length}):
                                 </Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 300, overflowY: 'auto' }}>
-                                  {sourceFields.map((field, idx) => (
+                                  {sourceFields?.map((field, idx) => (
                                     <Chip
                                       key={idx}
                                       label={field}
                                       size="small"
                                       sx={{
-                                        backgroundColor: selectedAppendOnFields.includes(field) ? '#10B98120' : '#E5E7EB',
-                                        color: selectedAppendOnFields.includes(field) ? '#10B981' : '#374151',
-                                        border: selectedAppendOnFields.includes(field) ? '1px solid #10B981' : '1px solid transparent',
+                                        backgroundColor: selectedAppendOnFields?.includes(field) ? '#10B98120' : '#E5E7EB',
+                                        color: selectedAppendOnFields?.includes(field) ? '#10B981' : '#374151',
+                                        border: selectedAppendOnFields?.includes(field) ? '1px solid #10B981' : '1px solid transparent',
                                         fontSize: '0.65rem',
                                         height: '20px',
-                                        fontWeight: selectedAppendOnFields.includes(field) ? 600 : 400,
+                                        fontWeight: selectedAppendOnFields?.includes(field) ? 600 : 400,
                                       }}
                                     />
                                   ))}
                                 </Box>
-                                {selectedAppendOnFields.length > 0 && (
+                                {selectedAppendOnFields?.length > 0 && (
                                   <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', color: '#9CA3AF' }}>
                                     Green = Match keys present
                                   </Typography>
@@ -1239,7 +1250,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </MenuItem>
                   );
                 })}
-                {filteredAppendSources.length === 0 && (
+                {filteredAppendSources?.length === 0 && (
                   <MenuItem disabled>
                     <em>No sources match your search</em>
                   </MenuItem>
@@ -1248,7 +1259,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             </FormControl>
 
             {/* Draggable Priority Order for selected sources */}
-            {selectedAppendSources.length > 0 && (
+            {selectedAppendSources?.length > 0 && (
               <DraggableAppendSources
                 selectedSources={selectedAppendSources}
                 allSources={allAppendSources}
@@ -1296,9 +1307,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 multiple
                 value={selectedAppendFields}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-append-fields')) {
-                    if (selectedAppendFields.length === filteredAppendFields.length) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-append-fields')) {
+                    if (selectedAppendFields?.length === filteredAppendFields?.length) {
                       setSelectedAppendFields([]);
                     } else {
                       setSelectedAppendFields(filteredAppendFields);
@@ -1310,7 +1321,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 onClose={() => setAppendFieldsSearch('')}
                 input={<OutlinedInput />}
                 renderValue={(selected) => {
-                  if (selected.length === 0) {
+                  if (selected?.length === 0) {
                     return (
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                         Select
@@ -1319,7 +1330,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   }
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, py: 0.5, alignItems: 'center' }}>
-                      {selected.map((value) => (
+                      {selected?.map((value) => (
                         <Tooltip key={value} title={value} arrow>
                           <Chip
                             label={value}
@@ -1350,7 +1361,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     </Box>
                   );
                 }}
-                disabled={availableAppendFields.length === 0}
+                disabled={availableAppendFields?.length === 0}
                 displayEmpty
                 sx={{
                   '& .MuiOutlinedInput-notchedOutline': {
@@ -1396,38 +1407,38 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 </MenuItem>
                 <MenuItem disabled value="">
                   <em>
-                    {availableAppendFields.length === 0
+                    {availableAppendFields?.length === 0
                       ? 'Select append sources first'
                       : 'Select Append Fields'}
                   </em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredAppendFields.length > 0 && (
+                {filteredAppendFields?.length > 0 && (
                   <MenuItem
                     value="select-all-append-fields"
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
                       checked={
-                        filteredAppendFields.length > 0 &&
-                        filteredAppendFields.every(field => selectedAppendFields.includes(field))
+                        filteredAppendFields?.length > 0 &&
+                        filteredAppendFields?.every(field => selectedAppendFields?.includes(field))
                       }
                       indeterminate={
-                        filteredAppendFields.some(field => selectedAppendFields.includes(field)) &&
-                        !filteredAppendFields.every(field => selectedAppendFields.includes(field))
+                        filteredAppendFields?.some(field => selectedAppendFields?.includes(field)) &&
+                        !filteredAppendFields?.every(field => selectedAppendFields?.includes(field))
                       }
                       size="small"
                     />
                     <ListItemText primary="Select All" />
                   </MenuItem>
                 )}
-                {filteredAppendFields.map((field) => (
+                {filteredAppendFields?.map((field) => (
                   <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAppendFields.indexOf(field) > -1} size="small" />
+                    <Checkbox checked={selectedAppendFields?.indexOf(field) > -1} size="small" />
                     <ListItemText primary={field} />
                   </MenuItem>
                 ))}
-                {filteredAppendFields.length === 0 && availableAppendFields.length > 0 && (
+                {filteredAppendFields?.length === 0 && availableAppendFields?.length > 0 && (
                   <MenuItem disabled>
                     <em>No fields match your search</em>
                   </MenuItem>
@@ -1486,7 +1497,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       )}
 
       {/* Configurations and Versions List */}
-      {combinedItems.length > 0 && (
+      {combinedItems?.length > 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
@@ -1494,22 +1505,22 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Chip
-                label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
+                label={`${configs?.length} configuration${configs?.length !== 1 ? 's' : ''}`}
                 size="small"
                 color="primary"
                 sx={{ fontWeight: 600 }}
               />
-              {versionedSources.length > 0 && (
+              {versionedSources?.length > 0 && (
                 <Chip
-                  label={`${versionedSources.length} version${versionedSources.length !== 1 ? 's' : ''}`}
+                  label={`${versionedSources?.length} version${versionedSources?.length !== 1 ? 's' : ''}`}
                   size="small"
                   color="success"
                   sx={{ fontWeight: 600 }}
                 />
               )}
-              {selfAppendSources.length > 0 && (
+              {selfAppendSources?.length > 0 && (
                 <Chip
-                  label={`${selfAppendSources.length} self source${selfAppendSources.length !== 1 ? 's' : ''}`}
+                  label={`${selfAppendSources?.length} self source${selfAppendSources?.length !== 1 ? 's' : ''}`}
                   size="small"
                   color="secondary"
                   sx={{ fontWeight: 600 }}
@@ -1539,7 +1550,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {combinedItems.map((item) => {
+                {combinedItems?.map((item) => {
                   const isVersion = item.type === 'version';
                   const isSelf = item.type === 'self';
                   const config = item.type === 'config' ? item.data : null;
@@ -1605,7 +1616,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         </Tooltip>
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          Configuration #{configs.indexOf(config!) + 1}
+                          Configuration #{configs?.indexOf(config!) + 1}
                         </Typography>
                       )}
                     </TableCell>
@@ -1613,15 +1624,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                     {/* Input Sources Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isSelf ? (
-                        selfSource?.selfConfig?.input_source_names && selfSource.selfConfig.input_source_names.length > 0 ? (
+                        selfSource?.selfConfig?.input_source_names && selfSource.selfConfig.input_source_names?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Input Sources ({selfSource.selfConfig.input_source_names.length}):
+                                  Input Sources ({selfSource.selfConfig.input_source_names?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {selfSource.selfConfig.input_source_names.join(', ')}
+                                  {selfSource.selfConfig.input_source_names?.join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1630,7 +1641,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${selfSource.selfConfig.input_source_names.length} source${selfSource.selfConfig.input_source_names.length !== 1 ? 's' : ''}`}
+                                label={`${selfSource.selfConfig.input_source_names?.length} source${selfSource.selfConfig.input_source_names?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#9C27B020',
@@ -1653,7 +1664,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {selfSource.selfConfig.input_source_names.join(', ')}
+                                {selfSource.selfConfig.input_source_names?.join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1663,15 +1674,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           </Typography>
                         )
                       ) : isVersion ? (
-                        version?.baseInputSources && version.baseInputSources.length > 0 ? (
+                        version?.baseInputSources && version.baseInputSources?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Input Sources ({version.baseInputSources.length}):
+                                  Input Sources ({version.baseInputSources?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                  {version.baseInputSources?.map((id: string) => getSourceName(id)).join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1680,7 +1691,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.baseInputSources.length} source${version.baseInputSources.length !== 1 ? 's' : ''}`}
+                                label={`${version.baseInputSources?.length} source${version.baseInputSources?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#29669520',
@@ -1703,7 +1714,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.baseInputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {version.baseInputSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1712,15 +1723,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.inputSources && config.inputSources.length > 0 ? (
+                      ) : config && config.inputSources && config.inputSources?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Input Sources ({config.inputSources.length}):
+                                Input Sources ({config.inputSources?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {config.inputSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1729,7 +1740,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.inputSources.length} source${config.inputSources.length !== 1 ? 's' : ''}`}
+                              label={`${config.inputSources?.length} source${config.inputSources?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#29669520',
@@ -1752,7 +1763,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.inputSources.map((id: string) => getSourceName(id)).join(', ')}
+                              {config.inputSources?.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1770,15 +1781,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           --
                         </Typography>
                       ) : isVersion ? (
-                        version?.operationFields && version.operationFields.length > 0 ? (
+                        version?.operationFields && version.operationFields?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Match Keys ({version.operationFields.length}):
+                                  Match Keys ({version.operationFields?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.operationFields.join(', ')}
+                                  {version.operationFields?.join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1787,7 +1798,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.operationFields.length} field${version.operationFields.length !== 1 ? 's' : ''}`}
+                                label={`${version.operationFields?.length} field${version.operationFields?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#0EA5E920',
@@ -1810,7 +1821,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.operationFields.join(', ')}
+                                {version.operationFields?.join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1819,15 +1830,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.appendOnFields && config.appendOnFields.length > 0 ? (
+                      ) : config && config.appendOnFields && config.appendOnFields?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Match Keys ({config.appendOnFields.length}):
+                                Match Keys ({config.appendOnFields?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.appendOnFields.join(', ')}
+                                {config.appendOnFields?.join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1836,7 +1847,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.appendOnFields.length} field${config.appendOnFields.length !== 1 ? 's' : ''}`}
+                              label={`${config.appendOnFields?.length} field${config.appendOnFields?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#0EA5E920',
@@ -1859,7 +1870,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.appendOnFields.join(', ')}
+                              {config.appendOnFields?.join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1877,15 +1888,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           --
                         </Typography>
                       ) : isVersion ? (
-                        version?.operationSources && version.operationSources.length > 0 ? (
+                        version?.operationSources && version.operationSources?.length > 0 ? (
                           <Tooltip
                             title={
                               <Box sx={{ maxWidth: 400 }}>
                                 <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Append Sources ({version.operationSources.length}):
+                                  Append Sources ({version.operationSources?.length}):
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                  {version.operationSources?.map((id: string) => getSourceName(id)).join(', ')}
                                 </Typography>
                               </Box>
                             }
@@ -1894,7 +1905,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           >
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                               <Chip
-                                label={`${version.operationSources.length} source${version.operationSources.length !== 1 ? 's' : ''}`}
+                                label={`${version.operationSources?.length} source${version.operationSources?.length !== 1 ? 's' : ''}`}
                                 size="small"
                                 sx={{
                                   backgroundColor: '#10B98120',
@@ -1917,7 +1928,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                   minWidth: 0,
                                 }}
                               >
-                                {version.operationSources.map((id: string) => getSourceName(id)).join(', ')}
+                                {version.operationSources?.map((id: string) => getSourceName(id)).join(', ')}
                               </Typography>
                             </Box>
                           </Tooltip>
@@ -1926,15 +1937,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.appendSources && config.appendSources.length > 0 ? (
+                      ) : config && config.appendSources && config.appendSources?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Append Sources ({config.appendSources.length} - Priority Order):
+                                Append Sources ({config.appendSources?.length} - Priority Order):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.appendSources.map((id: string, idx: number) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
+                                {config.appendSources?.map((id: string, idx: number) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -1943,7 +1954,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                             <Chip
-                              label={`${config.appendSources.length} source${config.appendSources.length !== 1 ? 's' : ''}`}
+                              label={`${config.appendSources?.length} source${config.appendSources?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#10B98120',
@@ -1966,7 +1977,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 minWidth: 0,
                               }}
                             >
-                              {config.appendSources.map((id: string) => getSourceName(id)).join(', ')}
+                              {config.appendSources?.map((id: string) => getSourceName(id)).join(', ')}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -1984,10 +1995,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           --
                         </Typography>
                       ) : isVersion ? (
-                        version?.appendFields && version.appendFields.length > 0 ? (
+                        version?.appendFields && version.appendFields?.length > 0 ? (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Chip
-                              label={`${version.appendFields.length} field${version.appendFields.length !== 1 ? 's' : ''}`}
+                              label={`${version.appendFields?.length} field${version.appendFields?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#F59E0B20',
@@ -2008,8 +2019,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 whiteSpace: 'nowrap !important',
                               }}
                             >
-                              {version.appendFields.slice(0, 2).join(', ')}
-                              {version.appendFields.length > 2 ? '...' : ''}
+                              {version.appendFields?.slice(0, 2).join(', ')}
+                              {version.appendFields?.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
                         ) : (
@@ -2017,15 +2028,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                             --
                           </Typography>
                         )
-                      ) : config && config.appendFields && config.appendFields.length > 0 ? (
+                      ) : config && config.appendFields && config.appendFields?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
-                                Fields to Append ({config.appendFields.length}):
+                                Fields to Append ({config.appendFields?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.appendFields.join(', ')}
+                                {config.appendFields?.join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -2034,7 +2045,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Chip
-                              label={`${config.appendFields.length} field${config.appendFields.length !== 1 ? 's' : ''}`}
+                              label={`${config.appendFields?.length} field${config.appendFields?.length !== 1 ? 's' : ''}`}
                               size="small"
                               sx={{
                                 backgroundColor: '#F59E0B20',
@@ -2055,8 +2066,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                                 whiteSpace: 'nowrap !important',
                               }}
                             >
-                              {config.appendFields.slice(0, 2).join(', ')}
-                              {config.appendFields.length > 2 ? '...' : ''}
+                              {config.appendFields?.slice(0, 2).join(', ')}
+                              {config.appendFields?.length > 2 ? '...' : ''}
                             </Typography>
                           </Box>
                         </Tooltip>
@@ -2194,14 +2205,14 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       )}
 
       {/* Custom Append Sources List */}
-      {customAppendSources.length > 0 && (
+      {customAppendSources?.length > 0 && (
         <Box sx={{ mt: 4, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
               Configured Custom Append Sources
             </Typography>
             <Chip
-              label={`${customAppendSources.length} custom source${customAppendSources.length !== 1 ? 's' : ''}`}
+              label={`${customAppendSources?.length} custom source${customAppendSources?.length !== 1 ? 's' : ''}`}
               size="small"
               color="secondary"
               sx={{ fontWeight: 600 }}
@@ -2226,7 +2237,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {customAppendSources.map((customSource) => (
+                {customAppendSources?.map((customSource) => (
                   <TableRow
                     key={customSource.id}
                     hover
@@ -2267,15 +2278,15 @@ const AppendModule: React.FC<AppendModuleProps> = ({
 
                     {/* Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      {customSource.selectedHeaders && customSource.selectedHeaders.length > 0 ? (
+                      {customSource.selectedHeaders && customSource.selectedHeaders?.length > 0 ? (
                         <Tooltip
                           title={
                             <Box sx={{ maxWidth: 400 }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Fields ({customSource.selectedHeaders.length}):
+                                Fields ({customSource.selectedHeaders?.length}):
                               </Typography>
                               <Typography variant="caption" sx={{ display: 'block' }}>
-                                {customSource.selectedHeaders.join(', ')}
+                                {customSource.selectedHeaders?.join(', ')}
                               </Typography>
                             </Box>
                           }
@@ -2283,7 +2294,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                           placement="top"
                         >
                           <Chip
-                            label={`${customSource.selectedHeaders.length} field${customSource.selectedHeaders.length !== 1 ? 's' : ''}`}
+                            label={`${customSource.selectedHeaders?.length} field${customSource.selectedHeaders?.length !== 1 ? 's' : ''}`}
                             size="small"
                             sx={{
                               backgroundColor: '#9C27B020',
@@ -2366,7 +2377,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       <AddColumnDialog
         open={addColumnDialogOpen}
         onClose={() => setAddColumnDialogOpen(false)}
-        selectedInputSources={availableInputSources.filter(src => selectedInputSources.includes(src.id))}
+        selectedInputSources={availableInputSources?.filter(src => selectedInputSources?.includes(src.id))}
         onSave={handleAddColumns}
       />
 
@@ -2383,7 +2394,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         availableSources={(() => {
           // Only include input sources from Input module (regular + versioned)
           // Do NOT include append sources, predefined sources, or custom append sources
-          const sources = availableInputSources.map(src => {
+          const sources = availableInputSources?.map(src => {
             // Get regular headers
             const regularHeaders = src.headers || [];
 
@@ -2391,11 +2402,11 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             const nestedFieldNames: string[] = [];
             if ((src as any).configJson?.added_fields) {
               const addedFields = (src as any).configJson.added_fields;
-              addedFields.forEach((sourceFields: any) => {
+              addedFields?.forEach((sourceFields: any) => {
                 // Only include nested fields for this specific source
                 if (sourceFields.source_name === src.sourceName && sourceFields.fields) {
-                  sourceFields.fields.forEach((field: any) => {
-                    nestedFieldNames.push(field.field_name);
+                  sourceFields.fields?.forEach((field: any) => {
+                    nestedFieldNames?.push(field.field_name);
                   });
                 }
               });
@@ -2501,8 +2512,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   Columns ({viewingSource.headers?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingSource.headers && viewingSource.headers.length > 0 ? (
-                    viewingSource.headers.map((header, index) => (
+                  {viewingSource.headers && viewingSource.headers?.length > 0 ? (
+                    viewingSource.headers?.map((header, index) => (
                       <Chip
                         key={index}
                         label={header}
@@ -2569,8 +2580,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   Input Sources ({viewingVersion.baseInputSources?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources.length > 0 ? (
-                    viewingVersion.baseInputSources.map((sourceId: string) => (
+                  {viewingVersion.baseInputSources && viewingVersion.baseInputSources?.length > 0 ? (
+                    viewingVersion.baseInputSources?.map((sourceId: string) => (
                       <Chip
                         key={sourceId}
                         label={getSourceName(sourceId)}
@@ -2591,8 +2602,8 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   {viewingVersion.sourceModule} Sources ({viewingVersion.operationSources?.length || 0})
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {viewingVersion.operationSources && viewingVersion.operationSources.length > 0 ? (
-                    viewingVersion.operationSources.map((sourceId: string) => (
+                  {viewingVersion.operationSources && viewingVersion.operationSources?.length > 0 ? (
+                    viewingVersion.operationSources?.map((sourceId: string) => (
                       <Chip
                         key={sourceId}
                         label={getSourceName(sourceId)}
@@ -2608,13 +2619,13 @@ const AppendModule: React.FC<AppendModuleProps> = ({
                   )}
                 </Box>
               </Box>
-              {viewingVersion.headers && viewingVersion.headers.length > 0 && (
+              {viewingVersion.headers && viewingVersion.headers?.length > 0 && (
                 <Box>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                    Headers ({viewingVersion.headers.length})
+                    Headers ({viewingVersion.headers?.length})
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxHeight: 200, overflowY: 'auto' }}>
-                    {viewingVersion.headers.map((header: string, index: number) => (
+                    {viewingVersion.headers?.map((header: string, index: number) => (
                       <Chip
                         key={index}
                         label={header}
@@ -2648,9 +2659,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         version={editingVersion}
         availableInputSources={availableInputSources}
         availableAppendSources={[
-          ...PREDEFINED_SOURCES.map(s => ({ id: s.id, name: s.name, fields: s.fields })),
-          ...customAppendSources.map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] })),
-          ...availableInputSources.filter(src => src.isVersioned).map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] }))
+          ...PREDEFINED_SOURCES?.map(s => ({ id: s.id, name: s.name, fields: s.fields })),
+          ...customAppendSources?.map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] })),
+          ...availableInputSources?.filter(src => src.isVersioned).map(s => ({ id: s.id, name: s.sourceName, fields: s.selectedHeaders || s.headers || [] }))
         ]}
         apiSources={apiSources}
         allExistingSources={[...availableInputSources, ...(sharedCustomSources || [])]}

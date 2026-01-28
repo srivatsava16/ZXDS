@@ -51,24 +51,24 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
 
   const isActive = (path: string) => {
     // Exact match
-    if (location.pathname === path) return true;
+    if (location?.pathname === path) return true;
 
     // Data Requests: highlight for /dataPullRequests/new and /request/:clientType
     if (path === '/dataPullReports') {
-      return location.pathname === '/dataPullRequests/new' ||
-             location.pathname.startsWith('/request/');
+      return location?.pathname === '/dataPullRequests/new' ||
+             location?.pathname?.startsWith('/request/');
     }
 
     // User Management: highlight for all user management routes
     if (path === '/userManagement') {
-      return location.pathname === '/createUser/new' ||
-             location.pathname === '/userManagement' ||
-             location.pathname === '/roles' ||
-             location.pathname.startsWith('/roles/') ||
-             location.pathname === '/businessUnits' ||
-             location.pathname.startsWith('/businessUnits/') ||
-             location.pathname === '/divisions' ||
-             location.pathname.startsWith('/divisions/');
+      return location?.pathname === '/createUser/new' ||
+             location?.pathname === '/userManagement' ||
+             location?.pathname === '/roles' ||
+             location?.pathname?.startsWith('/roles/') ||
+             location?.pathname === '/businessUnits' ||
+             location?.pathname?.startsWith('/businessUnits/') ||
+             location?.pathname === '/divisions' ||
+             location?.pathname?.startsWith('/divisions/');
     }
 
     return false;
@@ -291,7 +291,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
               {/* Users */}
               <ListItem disablePadding sx={{ mb: 0.3 }}>
                 <ListItemButton
-                  selected={location.pathname === '/userManagement'}
+                  selected={location?.pathname === '/userManagement'}
                   onClick={() => handleNavigation('/userManagement')}
                   sx={{
                     borderRadius: 2,
@@ -314,7 +314,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
                     primary="Users"
                     primaryTypographyProps={{
                       fontSize: '0.85rem',
-                      fontWeight: location.pathname === '/userManagement' ? 600 : 400,
+                      fontWeight: location?.pathname === '/userManagement' ? 600 : 400,
                     }}
                   />
                 </ListItemButton>
@@ -323,7 +323,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
               {/* Roles */}
               <ListItem disablePadding sx={{ mb: 0.3 }}>
                 <ListItemButton
-                  selected={location.pathname === '/roles' || location.pathname.startsWith('/roles/')}
+                  selected={location?.pathname === '/roles' || location?.pathname?.startsWith('/roles/')}
                   onClick={() => handleNavigation('/roles')}
                   sx={{
                     borderRadius: 2,
@@ -346,7 +346,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
                     primary="Roles"
                     primaryTypographyProps={{
                       fontSize: '0.85rem',
-                      fontWeight: location.pathname === '/roles' || location.pathname.startsWith('/roles/') ? 600 : 400,
+                      fontWeight: location?.pathname === '/roles' || location?.pathname?.startsWith('/roles/') ? 600 : 400,
                     }}
                   />
                 </ListItemButton>
@@ -355,7 +355,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
               {/* Business Units */}
               <ListItem disablePadding sx={{ mb: 0.3 }}>
                 <ListItemButton
-                  selected={location.pathname === '/businessUnits' || location.pathname.startsWith('/businessUnits/')}
+                  selected={location?.pathname === '/businessUnits' || location?.pathname?.startsWith('/businessUnits/')}
                   onClick={() => handleNavigation('/businessUnits')}
                   sx={{
                     borderRadius: 2,
@@ -378,7 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
                     primary="Business Units"
                     primaryTypographyProps={{
                       fontSize: '0.85rem',
-                      fontWeight: location.pathname === '/businessUnits' || location.pathname.startsWith('/businessUnits/') ? 600 : 400,
+                      fontWeight: location?.pathname === '/businessUnits' || location?.pathname?.startsWith('/businessUnits/') ? 600 : 400,
                     }}
                   />
                 </ListItemButton>
@@ -387,7 +387,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
               {/* Divisions */}
               <ListItem disablePadding sx={{ mb: 0.3 }}>
                 <ListItemButton
-                  selected={location.pathname === '/divisions' || location.pathname.startsWith('/divisions/')}
+                  selected={location?.pathname === '/divisions' || location?.pathname?.startsWith('/divisions/')}
                   onClick={() => handleNavigation('/divisions')}
                   sx={{
                     borderRadius: 2,
@@ -410,7 +410,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open }) => {
                     primary="Divisions"
                     primaryTypographyProps={{
                       fontSize: '0.85rem',
-                      fontWeight: location.pathname === '/divisions' || location.pathname.startsWith('/divisions/') ? 600 : 400,
+                      fontWeight: location?.pathname === '/divisions' || location?.pathname?.startsWith('/divisions/') ? 600 : 400,
                     }}
                   />
                 </ListItemButton>

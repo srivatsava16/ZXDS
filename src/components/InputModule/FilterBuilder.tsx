@@ -102,13 +102,19 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
   useEffect(() => {
     if (initialValue && onFilterChange) {
       onFilterChange(initialValue);
+    } else if (initialConfig && onFilterChange && !initialValue) {
+      // If we have initialConfig but no initialValue, generate SQL from config
+      const generatedQuery = buildQuery(initialConfig);
+      if (generatedQuery) {
+        onFilterChange(generatedQuery);
+      }
     }
-  }, [initialValue]); // Removed onFilterChange from dependencies to prevent infinite loop
+  }, [initialValue, initialConfig]); // Removed onFilterChange from dependencies to prevent infinite loop
 
   const buildQuery = (groups: FilterGroup[]): string => {
     // Check if we have any actual conditions
-    const hasActiveConditions = groups.some(group => 
-      group.conditions.some(cond => cond.field && cond.operator && (cond.value || cond.operator.includes('NULL')))
+    const hasActiveConditions = groups?.some(group => 
+      group.conditions?.some(cond => cond.field && cond.operator && (cond.value || cond.operator?.includes('NULL')))
     );
     
     // If no active conditions but we have an existing filter, return the existing filter
@@ -116,9 +122,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
       return existingFilter;
     }
     
-    if (groups.length === 0 || !hasActiveConditions) return '';
+    if (groups?.length === 0 || !hasActiveConditions) return '';
 
-    const groupQueries = groups.map((group, index) => {
+    const groupQueries = groups?.map((group, index) => {
       const conditionQueries = group.conditions
         .filter((cond) => cond.field && cond.operator)
         .map((cond) => {
@@ -134,22 +140,22 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
           return `(${cond.field} ${cond.operator} '${cond.value}')`;
         });
 
-      if (conditionQueries.length === 0) return { query: '', operator: group.groupOperator || 'OR' };
-      const query = conditionQueries.length === 1
+      if (conditionQueries?.length === 0) return { query: '', operator: group.groupOperator || 'OR' };
+      const query = conditionQueries?.length === 1
         ? conditionQueries[0]
-        : `(${conditionQueries.join(` ${group.logicalOperator} `)})`;
+        : `(${conditionQueries?.join(` ${group.logicalOperator} `)})`;
 
       return { query, operator: group.groupOperator || 'OR' };
     });
 
-    const validQueries = groupQueries.filter((q) => q.query !== '');
-    if (validQueries.length === 0) return '';
-    if (validQueries.length === 1) return validQueries[0].query;
+    const validQueries = groupQueries?.filter((q) => q.query !== '');
+    if (validQueries?.length === 0) return '';
+    if (validQueries?.length === 1) return validQueries[0].query;
 
     // Build query with progressive nested parentheses
     let result = validQueries[0].query;
     
-    for (let i = 1; i < validQueries.length; i++) {
+    for (let i = 1; i < validQueries?.length; i++) {
       const currentOperator = validQueries[i - 1].operator;
       result = `(${result} ${currentOperator} ${validQueries[i].query})`;
     }
@@ -159,14 +165,14 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
 
   const handleAddCondition = (groupId: string) => {
     setGroups((prevGroups) => {
-      const newGroups = prevGroups.map((group) =>
+      const newGroups = prevGroups?.map((group) =>
         group.id === groupId
           ? {
               ...group,
               conditions: [
                 ...group.conditions,
                 {
-                  id: `${Date.now()}-${group.conditions.length}`,
+                  id: `${Date.now()}-${group.conditions?.length}`,
                   field: '',
                   dataType: 'STRING',
                   operator: '=',
@@ -191,11 +197,11 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
 
   const handleRemoveCondition = (groupId: string, conditionId: string) => {
     setGroups((prevGroups) => {
-      const newGroups = prevGroups.map((group) =>
+      const newGroups = prevGroups?.map((group) =>
         group.id === groupId
           ? {
               ...group,
-              conditions: group.conditions.filter((cond) => cond.id !== conditionId),
+              conditions: group.conditions?.filter((cond) => cond.id !== conditionId),
             }
           : group
       );
@@ -245,9 +251,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
   };
 
   const handleRemoveGroup = (groupId: string) => {
-    if (groups.length > 1) {
+    if (groups?.length > 1) {
       setGroups((prevGroups) => {
-        const newGroups = prevGroups.filter((group) => group.id !== groupId);
+        const newGroups = prevGroups?.filter((group) => group.id !== groupId);
 
         const query = buildQuery(newGroups);
         if (onFilterChange) {
@@ -269,11 +275,11 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
     value: string
   ) => {
     setGroups((prevGroups) => {
-      const newGroups = prevGroups.map((group) =>
+      const newGroups = prevGroups?.map((group) =>
         group.id === groupId
           ? {
               ...group,
-              conditions: group.conditions.map((cond) =>
+              conditions: group.conditions?.map((cond) =>
                 cond.id === conditionId ? { ...cond, [field]: value } : cond
               ),
             }
@@ -294,7 +300,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
 
   const handleLogicalOperatorChange = (groupId: string, operator: 'AND' | 'OR') => {
     setGroups((prevGroups) => {
-      const newGroups = prevGroups.map((group) =>
+      const newGroups = prevGroups?.map((group) =>
         group.id === groupId ? { ...group, logicalOperator: operator } : group
       );
 
@@ -312,7 +318,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
 
   const handleGroupOperatorChange = (groupId: string, operator: 'AND' | 'OR') => {
     setGroups((prevGroups) => {
-      const newGroups = prevGroups.map((group) =>
+      const newGroups = prevGroups?.map((group) =>
         group.id === groupId ? { ...group, groupOperator: operator } : group
       );
 
@@ -349,7 +355,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
         </Button>
       </Box>
 
-      {groups.map((group, groupIndex) => (
+      {groups?.map((group, groupIndex) => (
         <Box key={group.id}>
           <Paper
             sx={{
@@ -365,7 +371,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
               <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
                 Group {groupIndex + 1}
               </Typography>
-              {groups.length > 1 && (
+              {groups?.length > 1 && (
                 <IconButton
                   size="small"
                   onClick={() => handleRemoveGroup(group.id)}
@@ -376,7 +382,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
               )}
             </Box>
 
-            {group.conditions.map((condition, condIndex) => (
+            {group.conditions?.map((condition, condIndex) => (
               <Box key={condition.id}>
                 <Box
                   sx={{
@@ -418,7 +424,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
                         displayEmpty
                         sx={{ backgroundColor: 'white' }}
                       >
-                        {DATA_TYPES.map((type) => (
+                        {DATA_TYPES?.map((type) => (
                           <MenuItem key={type.value} value={type.value}>
                             {type.label}
                           </MenuItem>
@@ -436,7 +442,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
                       }
                       sx={{ backgroundColor: 'white' }}
                     >
-                      {OPERATORS.map((op) => (
+                      {OPERATORS?.map((op) => (
                         <MenuItem key={op.value} value={op.value}>
                           {op.label}
                         </MenuItem>
@@ -483,7 +489,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
                   )}
 
                   {/* Logical Operator (AND/OR) */}
-                  {condIndex < group.conditions.length - 1 && (
+                  {condIndex < group.conditions?.length - 1 && (
                     <Select
                       size="small"
                       value={group.logicalOperator}
@@ -501,9 +507,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
                   <IconButton
                     size="small"
                     onClick={() => handleRemoveCondition(group.id, condition.id)}
-                    disabled={group.conditions.length === 1}
+                    disabled={group.conditions?.length === 1}
                     sx={{
-                      color: group.conditions.length === 1 ? 'action.disabled' : 'error.main',
+                      color: group.conditions?.length === 1 ? 'action.disabled' : 'error.main',
                     }}
                   >
                     <Close fontSize="small" />
@@ -524,7 +530,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
           </Paper>
 
           {/* Group Operator Selector - Show between groups */}
-          {groupIndex < groups.length - 1 && (
+          {groupIndex < groups?.length - 1 && (
             <Box
               sx={{
                 display: 'flex',

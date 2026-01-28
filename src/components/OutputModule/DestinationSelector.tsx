@@ -109,7 +109,7 @@ const DestinationSelector: React.FC<DestinationSelectorProps> = ({
 
   // Get destination ID from name
   const getDestinationId = (name: string): number | undefined => {
-    const destination = currentDestinations.find((d: any) => d.name === name);
+    const destination = currentDestinations?.find((d: any) => d.name === name);
     return destination?.id;
   };
 
@@ -135,7 +135,7 @@ const DestinationSelector: React.FC<DestinationSelectorProps> = ({
     setSelectedDestination(destName);
 
     // Find the destination to get its default path
-    const destination = currentDestinations.find(d => d.name === destName);
+    const destination = currentDestinations?.find(d => d.name === destName);
     let defaultPath = '';
 
     if (destination) {
@@ -218,7 +218,7 @@ const DestinationSelector: React.FC<DestinationSelectorProps> = ({
           <MenuItem value="" disabled>
             <em>Select a destination...</em>
           </MenuItem>
-          {currentDestinations.map((dest) => (
+          {currentDestinations?.map((dest) => (
             <MenuItem key={dest.id} value={dest.name}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <Typography>{dest.name}</Typography>
@@ -311,7 +311,7 @@ const DestinationSelector: React.FC<DestinationSelectorProps> = ({
                   },
                 }}
               >
-                {OUTPUT_FORMATS.map((fmt) => (
+                {OUTPUT_FORMATS?.map((fmt) => (
                   <MenuItem key={fmt.value} value={fmt.value}>
                     {fmt.label}
                   </MenuItem>
@@ -335,7 +335,7 @@ const DestinationSelector: React.FC<DestinationSelectorProps> = ({
                   },
                 }}
               >
-                {COMPRESSION_OPTIONS.map((comp) => (
+                {COMPRESSION_OPTIONS?.map((comp) => (
                   <MenuItem key={comp.value} value={comp.value}>
                     {comp.label}
                   </MenuItem>

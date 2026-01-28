@@ -95,7 +95,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
   }, [open, mode, editingDestination]);
 
   const handleSave = () => {
-    if (!destinationName.trim()) {
+    if (!destinationName?.trim()) {
       alert('Please enter a destination name');
       return;
     }

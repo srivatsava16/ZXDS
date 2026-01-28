@@ -8,7 +8,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
 
   // Sync configs when initialConfigs changes (for edit mode data loading)
   useEffect(() => {
-    if (initialConfigs && initialConfigs.length > 0) {
+    if (initialConfigs && initialConfigs?.length > 0) {
       setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
@@ -24,31 +24,31 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
   const [matchType, setMatchType] = useState<'full' | 'any'>('full');
 
   const handleAddOrUpdateConfig = useCallback((fieldMappings?: any[], availableMatchSources?: any[], apiSources?: any) => {
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source');
       return;
     }
-    if (selectedMatchOnFields.length === 0) {
+    if (selectedMatchOnFields?.length === 0) {
       alert('Please select at least one Match On field');
       return;
     }
-    if (selectedMatchSources.length === 0) {
+    if (selectedMatchSources?.length === 0) {
       alert('Please select at least one Match Source');
       return;
     }
 
     // Validation: Check if Add Fields are compatible with Match Keys (Match On Fields)
     // The match sources must have the fields that can be used as match keys
-    if (expand && selectedAddFields.length > 0 && availableMatchSources && selectedMatchSources.length > 0) {
+    if (expand && selectedAddFields?.length > 0 && availableMatchSources && selectedMatchSources?.length > 0) {
       const matchSourcesWithoutMatchKeys: string[] = [];
 
-      selectedMatchSources.forEach(sourceId => {
+      selectedMatchSources?.forEach(sourceId => {
         // Find the source
-        let source = availableMatchSources.find((s: any) => s.id === sourceId);
+        let source = availableMatchSources?.find((s: any) => s.id === sourceId);
 
         // If not found in available sources, check if it's a preconfigured source from API
         if (!source && apiSources?.dbSource?.preconfiguredTables?.match) {
-          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.match.find(
+          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.match?.find(
             (table: any) => `match_${table?.tableId}` === sourceId
           );
           if (preconfiguredSource) {
@@ -61,14 +61,14 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
         }
 
         if (source) {
-          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h.toLowerCase());
-          const missingFields = selectedMatchOnFields.filter(
-            field => !sourceHeaders.includes(field.toLowerCase())
+          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h?.toLowerCase());
+          const missingFields = selectedMatchOnFields?.filter(
+            field => !sourceHeaders?.includes(field?.toLowerCase())
           );
 
-          if (missingFields.length > 0) {
-            matchSourcesWithoutMatchKeys.push(
-              `${source.sourceName || sourceId} (missing: ${missingFields.join(', ')})`
+          if (missingFields?.length > 0) {
+            matchSourcesWithoutMatchKeys?.push(
+              `${source.sourceName || sourceId} (missing: ${missingFields?.join(', ')})`
             );
           }
         }
@@ -79,7 +79,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
 
     if (editingConfigId) {
       // Update existing config
-      setConfigs(configs.map(config =>
+      setConfigs(configs?.map(config =>
         config.id === editingConfigId
           ? {
               ...config,
@@ -89,7 +89,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
               expand: expand,
               matchType: matchType,
               addFields: expand ? selectedAddFields : undefined,
-              fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
+              fieldMappings: fieldMappings && fieldMappings?.length > 0 ? fieldMappings : undefined,
             }
           : config
       ));
@@ -104,7 +104,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
         expand: expand,
         matchType: matchType,
         addFields: expand ? selectedAddFields : undefined,
-        fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
+        fieldMappings: fieldMappings && fieldMappings?.length > 0 ? fieldMappings : undefined,
         createdAt: Date.now(), // Add timestamp for creation order
       };
       setConfigs([...configs, newConfig]);
@@ -150,7 +150,7 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
 
   const handleDeleteConfig = useCallback((id: string) => {
     if (window.confirm('Are you sure you want to delete this match configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
+      setConfigs(configs?.filter(c => c.id !== id));
       if (editingConfigId === id) {
         handleCancelEdit();
       }

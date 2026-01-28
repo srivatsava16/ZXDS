@@ -154,7 +154,7 @@ const DivisionCreationPage: React.FC = () => {
                 <MenuItem value="">
                   <em>Select Business Unit</em>
                 </MenuItem>
-                {businessUnits.map((bu) => (
+                {businessUnits?.map((bu) => (
                   <MenuItem key={bu} value={bu}>
                     {bu}
                   </MenuItem>

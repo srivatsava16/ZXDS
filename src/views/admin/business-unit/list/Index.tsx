@@ -214,7 +214,7 @@ const BusinessUnitManagementPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {businessUnits.map((bu) => (
+            {businessUnits?.map((bu) => (
               <TableRow
                 key={bu.id}
                 hover

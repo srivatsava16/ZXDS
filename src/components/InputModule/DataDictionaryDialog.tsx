@@ -58,41 +58,41 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
   const [tableSearchQueries, setTableSearchQueries] = useState<Record<string, string>>({});
 
   // Single table mode: filter fields based on search query
-  const filteredFields = fields.filter((field) =>
-    field.fieldName.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
-    field.description.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
-    field.availableValues.toLowerCase().includes(globalSearchQuery.toLowerCase())
+  const filteredFields = fields?.filter((field) =>
+    field.fieldName?.toLowerCase().includes(globalSearchQuery?.toLowerCase()) ||
+    field.description?.toLowerCase().includes(globalSearchQuery?.toLowerCase()) ||
+    field.availableValues?.toLowerCase().includes(globalSearchQuery?.toLowerCase())
   );
 
   // All tables mode: filter tables and fields based on global search
-  const filteredAllTables = showAllTables ? allTables.map(table => {
+  const filteredAllTables = showAllTables ? allTables?.map(table => {
     const tableSearch = tableSearchQueries[table.name] || '';
     const searchTerm = tableSearch || globalSearchQuery;
 
-    const filteredTableFields = table.fields.filter((field) =>
-      field.fieldName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      field.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      field.availableValues.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredTableFields = table.fields?.filter((field) =>
+      field.fieldName?.toLowerCase().includes(searchTerm?.toLowerCase()) ||
+      field.description?.toLowerCase().includes(searchTerm?.toLowerCase()) ||
+      field.availableValues?.toLowerCase().includes(searchTerm?.toLowerCase())
     );
 
     return {
       ...table,
       fields: filteredTableFields,
-      matchesSearch: filteredTableFields.length > 0 ||
-                     table.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
-                     table.description.toLowerCase().includes(globalSearchQuery.toLowerCase())
+      matchesSearch: filteredTableFields?.length > 0 ||
+                     table.name?.toLowerCase().includes(globalSearchQuery?.toLowerCase()) ||
+                     table.description?.toLowerCase().includes(globalSearchQuery?.toLowerCase())
     };
   }).filter(table => table.matchesSearch) : [];
 
   // Export data dictionary as CSV
   const handleExport = () => {
     const headers = ['Table Name', 'Field Name', 'Description', 'Available Values'];
-    let csvContent = [headers.join(',')];
+    let csvContent = [headers?.join(',')];
 
     if (showAllTables) {
-      allTables.forEach(table => {
-        table.fields.forEach(field => {
-          csvContent.push([
+      allTables?.forEach(table => {
+        table.fields?.forEach(field => {
+          csvContent?.push([
             `"${table.name}"`,
             `"${field.fieldName}"`,
             `"${field.description}"`,
@@ -101,8 +101,8 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
         });
       });
     } else {
-      fields.forEach(field => {
-        csvContent.push([
+      fields?.forEach(field => {
+        csvContent?.push([
           `"${tableName}"`,
           `"${field.fieldName}"`,
           `"${field.description}"`,
@@ -111,7 +111,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
       });
     }
 
-    const blob = new Blob([csvContent.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent?.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -137,16 +137,16 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
 
   const getTotalFieldCount = () => {
     if (showAllTables) {
-      return allTables.reduce((sum, table) => sum + table.fields.length, 0);
+      return allTables?.reduce((sum, table) => sum + table.fields?.length, 0);
     }
-    return fields.length;
+    return fields?.length;
   };
 
   const getFilteredFieldCount = () => {
     if (showAllTables) {
-      return filteredAllTables.reduce((sum, table) => sum + table.fields.length, 0);
+      return filteredAllTables?.reduce((sum, table) => sum + table.fields?.length, 0);
     }
-    return filteredFields.length;
+    return filteredFields?.length;
   };
 
   return (
@@ -235,8 +235,8 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
         {/* Results Count */}
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
           {showAllTables
-            ? `Showing ${getFilteredFieldCount()} of ${getTotalFieldCount()} fields across ${filteredAllTables.length} of ${allTables.length} tables`
-            : `Showing ${filteredFields.length} of ${fields.length} fields`
+            ? `Showing ${getFilteredFieldCount()} of ${getTotalFieldCount()} fields across ${filteredAllTables?.length} of ${allTables?.length} tables`
+            : `Showing ${filteredFields?.length} of ${fields?.length} fields`
           }
         </Typography>
 
@@ -244,14 +244,14 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
         {showAllTables ? (
           // All Tables Mode: Accordion View
           <Box>
-            {filteredAllTables.length === 0 ? (
+            {filteredAllTables?.length === 0 ? (
               <Paper sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="body2" color="text.secondary">
                   No tables or fields found matching "{globalSearchQuery}"
                 </Typography>
               </Paper>
             ) : (
-              filteredAllTables.map((table, index) => (
+              filteredAllTables?.map((table, index) => (
                 <Accordion
                   key={table.name}
                   defaultExpanded={false}
@@ -284,7 +284,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
                         </Typography>
                       </Box>
                       <Chip
-                        label={`${table.fields.length} fields`}
+                        label={`${table.fields?.length} fields`}
                         size="small"
                         sx={{
                           backgroundColor: '#29669520',
@@ -341,7 +341,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {table.fields.length === 0 ? (
+                          {table.fields?.length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
@@ -350,7 +350,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
                               </TableCell>
                             </TableRow>
                           ) : (
-                            table.fields.map((field, fieldIndex) => (
+                            table.fields?.map((field, fieldIndex) => (
                               <TableRow key={fieldIndex} hover>
                                 <TableCell sx={{ py: 1 }}>
                                   <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.75rem' }}>
@@ -404,7 +404,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredFields.length === 0 ? (
+                {filteredFields?.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
                       <Typography variant="body2" color="text.secondary">
@@ -413,7 +413,7 @@ const DataDictionaryDialog: React.FC<DataDictionaryDialogProps> = ({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredFields.map((field, index) => (
+                  filteredFields?.map((field, index) => (
                     <TableRow key={index} hover>
                       <TableCell sx={{ py: 1.5 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.85rem' }}>

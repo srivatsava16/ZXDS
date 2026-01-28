@@ -39,8 +39,8 @@ export const useModuleReordering = (
       return;
     }
 
-    const oldIndex = modules.findIndex((m) => m?.id === active.id);
-    const newIndex = modules.findIndex((m) => m?.id === over.id);
+    const oldIndex = modules?.findIndex((m) => m?.id === active.id);
+    const newIndex = modules?.findIndex((m) => m?.id === over.id);
 
     // Only allow dragging of modules marked as draggable
     if (

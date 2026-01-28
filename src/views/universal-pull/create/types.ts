@@ -37,7 +37,7 @@ export const transformStatsConfigToAPI = (
   // Map input sources to the required format with source_name and columns
   const input_sources = config.inputSources
     .map((sourceId) => {
-      const source = allAvailableSources.find(s => s.id === sourceId);
+      const source = allAvailableSources?.find(s => s.id === sourceId);
       if (!source) {
         return null;
       }
@@ -53,7 +53,7 @@ export const transformStatsConfigToAPI = (
     .filter((item): item is { source_name: string; columns: string[] } => item !== null);
 
   // Transform countsOn array to generate_counts_config with per-field distinct
-  const counts = config.countsOn.map(countField => ({
+  const counts = config.countsOn?.map(countField => ({
     field: countField.field,
     is_distinct: countField.isDistinct
   }));
@@ -80,7 +80,7 @@ export const transformAllStatsToAPI = (
   allAvailableSources: InputSource[]
 ): StatsAPIFormat[] => {
 
-  const result = configurations.map((config, index) => {
+  const result = configurations?.map((config, index) => {
     const transformed = transformStatsConfigToAPI(config, allAvailableSources);
     return transformed;
   });

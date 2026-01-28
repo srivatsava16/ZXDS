@@ -8,7 +8,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
 
   // Sync configs when initialConfigs changes (for edit mode data loading)
   useEffect(() => {
-    if (initialConfigs && initialConfigs.length > 0) {
+    if (initialConfigs && initialConfigs?.length > 0) {
       setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
@@ -22,35 +22,35 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
   const handleAddOrUpdateConfig = useCallback((availableAppendSources?: any[], apiSources?: any) => {
     console.log('🔍 [DEBUG - useAppendConfig Hook] Step 7: handleAddOrUpdateConfig called (field mappings are module-level)');
 
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source');
       return;
     }
-    if (selectedAppendOnFields.length === 0) {
+    if (selectedAppendOnFields?.length === 0) {
       alert('Please select at least one Append On field');
       return;
     }
-    if (selectedAppendSources.length === 0) {
+    if (selectedAppendSources?.length === 0) {
       alert('Please select at least one Append Source');
       return;
     }
-    if (selectedAppendFields.length === 0) {
+    if (selectedAppendFields?.length === 0) {
       alert('Please select at least one Append Field');
       return;
     }
 
     // Validation: Check if Fields to Append are compatible with Match Keys (Append On Fields)
     // The append sources must have the fields that can be used as match keys
-    if (availableAppendSources && selectedAppendSources.length > 0) {
+    if (availableAppendSources && selectedAppendSources?.length > 0) {
       const appendSourcesWithoutMatchKeys: string[] = [];
 
-      selectedAppendSources.forEach(sourceId => {
+      selectedAppendSources?.forEach(sourceId => {
         // Find the source
-        let source = availableAppendSources.find((s: any) => s.id === sourceId);
+        let source = availableAppendSources?.find((s: any) => s.id === sourceId);
 
         // If not found in available sources, check if it's a preconfigured source from API
         if (!source && apiSources?.dbSource?.preconfiguredTables?.append) {
-          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.append.find(
+          const preconfiguredSource = apiSources.dbSource.preconfiguredTables.append?.find(
             (table: any) => `append_${table?.tableId}` === sourceId
           );
           if (preconfiguredSource) {
@@ -63,14 +63,14 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
         }
 
         if (source) {
-          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h.toLowerCase());
-          const missingFields = selectedAppendOnFields.filter(
-            field => !sourceHeaders.includes(field.toLowerCase())
+          const sourceHeaders = (source.selectedHeaders || source.headers || []).map((h: string) => h?.toLowerCase());
+          const missingFields = selectedAppendOnFields?.filter(
+            field => !sourceHeaders?.includes(field?.toLowerCase())
           );
 
-          if (missingFields.length > 0) {
-            appendSourcesWithoutMatchKeys.push(
-              `${source.sourceName || sourceId} (missing: ${missingFields.join(', ')})`
+          if (missingFields?.length > 0) {
+            appendSourcesWithoutMatchKeys?.push(
+              `${source.sourceName || sourceId} (missing: ${missingFields?.join(', ')})`
             );
           }
         }
@@ -92,7 +92,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
 
       console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8: Updating config, updatedConfig =', updatedConfig);
 
-      const updatedConfigsArray = configs.map(config =>
+      const updatedConfigsArray = configs?.map(config =>
         config.id === editingConfigId ? updatedConfig : config
       );
       console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', updatedConfigsArray);
@@ -117,7 +117,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
 
       const newConfigsArray = [...configs, newConfig];
       console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', newConfigsArray);
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8c: Total configs in new array =', newConfigsArray.length);
+      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8c: Total configs in new array =', newConfigsArray?.length);
 
       setConfigs(newConfigsArray);
     }
@@ -154,7 +154,7 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
 
   const handleDeleteConfig = useCallback((id: string) => {
     if (window.confirm('Are you sure you want to delete this append configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
+      setConfigs(configs?.filter(c => c.id !== id));
       if (editingConfigId === id) {
         handleCancelEdit();
       }

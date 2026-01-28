@@ -95,9 +95,9 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
     const newColumns: NewColumn[] = [];
 
     if (selectedAddress) {
-      PREDEFINED_FIELDS.address.forEach(field => {
-        if (!columns.find(col => col?.name === field?.name)) {
-          newColumns.push({
+      PREDEFINED_FIELDS?.address?.forEach(field => {
+        if (!columns?.find(col => col?.name === field?.name)) {
+          newColumns?.push({
             id: `${Date.now()}-${field?.name}`,
             name: field?.name,
             dataType: field?.dataType,
@@ -107,9 +107,9 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
     }
 
     if (selectedEmail) {
-      PREDEFINED_FIELDS.email.forEach(field => {
-        if (!columns.find(col => col?.name === field?.name)) {
-          newColumns.push({
+      PREDEFINED_FIELDS?.email?.forEach(field => {
+        if (!columns?.find(col => col?.name === field?.name)) {
+          newColumns?.push({
             id: `${Date.now()}-${field?.name}`,
             name: field?.name,
             dataType: field?.dataType,
@@ -119,9 +119,9 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
     }
 
     if (selectedProfileId) {
-      PREDEFINED_FIELDS.profileId.forEach(field => {
-        if (!columns.find(col => col?.name === field?.name)) {
-          newColumns.push({
+      PREDEFINED_FIELDS?.profileId?.forEach(field => {
+        if (!columns?.find(col => col?.name === field?.name)) {
+          newColumns?.push({
             id: `${Date.now()}-${field?.name}`,
             name: field?.name,
             dataType: field?.dataType,
@@ -131,9 +131,9 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
     }
 
     if (selectedMD5) {
-      PREDEFINED_FIELDS.md5.forEach(field => {
-        if (!columns.find(col => col?.name === field?.name)) {
-          newColumns.push({
+      PREDEFINED_FIELDS?.md5?.forEach(field => {
+        if (!columns?.find(col => col?.name === field?.name)) {
+          newColumns?.push({
             id: `${Date.now()}-${field?.name}`,
             name: field?.name,
             dataType: field?.dataType,
@@ -142,20 +142,20 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
       });
     }
 
-    if (newColumns.length > 0) {
+    if (newColumns?.length > 0) {
       setColumns(prev => [...prev, ...newColumns]);
     }
   }, [selectedAddress, selectedEmail, selectedProfileId, selectedMD5]);
 
   const handleAddColumn = () => {
-    if (!columnName.trim()) {
+    if (!columnName?.trim()) {
       alert('Please enter a field name');
       return;
     }
 
     const newColumn: NewColumn = {
       id: Date.now().toString(),
-      name: columnName.trim(),
+      name: columnName?.trim(),
       dataType: columnDataType,
     };
 
@@ -165,7 +165,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
   };
 
   const handleDeleteColumn = (id: string) => {
-    setColumns(columns.filter(col => col?.id !== id));
+    setColumns(columns?.filter(col => col?.id !== id));
   };
 
   const handleSave = () => {
@@ -233,13 +233,13 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
             Selected Input Sources
           </Typography>
-          {selectedInputSources.length === 0 ? (
+          {selectedInputSources?.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem', fontStyle: 'italic' }}>
               No input sources selected
             </Typography>
           ) : (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {selectedInputSources.map((source) => (
+              {selectedInputSources?.map((source) => (
                 <Chip
                   key={source?.id}
                   label={source?.sourceName}
@@ -286,7 +286,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       Address
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                      {PREDEFINED_FIELDS.address.length} fields
+                      {PREDEFINED_FIELDS?.address?.length} fields
                     </Typography>
                   </Box>
                 }
@@ -306,7 +306,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       Email
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                      {PREDEFINED_FIELDS.email.length} fields
+                      {PREDEFINED_FIELDS?.email?.length} fields
                     </Typography>
                   </Box>
                 }
@@ -326,7 +326,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       ProfileId
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                      {PREDEFINED_FIELDS.profileId.length} fields
+                      {PREDEFINED_FIELDS?.profileId?.length} fields
                     </Typography>
                   </Box>
                 }
@@ -346,7 +346,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                       MD5
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                      {PREDEFINED_FIELDS.md5.length} fields
+                      {PREDEFINED_FIELDS?.md5?.length} fields
                     </Typography>
                   </Box>
                 }
@@ -379,7 +379,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
                 onChange={(e) => setColumnDataType(e.target.value)}
                 label="Data Type"
               >
-                {DATA_TYPES.map((type) => (
+                {DATA_TYPES?.map((type) => (
                   <MenuItem key={type} value={type}>
                     {type}
                   </MenuItem>
@@ -404,14 +404,14 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
         </Box>
 
         {/* Added Columns List */}
-        {columns.length > 0 && (
+        {columns?.length > 0 && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
                 Added Fields
               </Typography>
               <Chip
-                label={`${columns.length} field${columns.length !== 1 ? 's' : ''}`}
+                label={`${columns?.length} field${columns?.length !== 1 ? 's' : ''}`}
                 size="small"
                 color="success"
                 sx={{ fontWeight: 600 }}
@@ -426,13 +426,13 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
               }}
             >
               <List disablePadding>
-                {columns.map((column, index) => (
+                {columns?.map((column, index) => (
                   <ListItem
                     key={column?.id}
                     sx={{
                       py: 1,
                       px: 2,
-                      borderBottom: index < columns.length - 1 ? '1px solid' : 'none',
+                      borderBottom: index < columns?.length - 1 ? '1px solid' : 'none',
                       borderColor: 'divider',
                       '&:hover': {
                         backgroundColor: 'rgba(0, 0, 0, 0.02)',
@@ -499,7 +499,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
         <Button
           variant="contained"
           onClick={handleSave}
-          disabled={columns.length === 0}
+          disabled={columns?.length === 0}
           sx={{
             px: 3,
             py: 0.75,
@@ -508,7 +508,7 @@ const AddColumnDialog: React.FC<AddColumnDialogProps> = ({
             boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
           }}
         >
-          Save Fields ({columns.length})
+          Save Fields ({columns?.length})
         </Button>
       </DialogActions>
     </Dialog>

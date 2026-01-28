@@ -133,12 +133,21 @@ export async function getRequestInputs(): Promise<RequestInputsResponse> {
 
 // Note: getRequestStats and RequestStatsResponse have been moved to ReportsService.ts
 
-export async function getTop10Records(payload: Top10RecordsRequest): Promise<Top10RecordsResponse> {
+export async function getTop10Records(payload: Top10RecordsRequest | FormData): Promise<Top10RecordsResponse> {
   try {
-    const response = await ApiService.fetchData<Top10RecordsResponse>({
+    // Check if payload is FormData (for file uploads)
+    const isFormData = payload instanceof FormData;
+
+    const response = await ApiService.fetchData<Top10RecordsResponse, any>({
       url: '/requesttop10records.php',
       method: 'post',
-      data: payload,
+      data: payload as any,
+      // Set appropriate headers for multipart/form-data
+      ...(isFormData && {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }),
     });
     return ApiService.transform<Top10RecordsResponse>(response);
   } catch (error) {
@@ -275,7 +284,7 @@ export interface SubmitRequestResponse {
 export async function submitRequest(payload: SubmitRequestPayload): Promise<SubmitRequestResponse> {
   try {
     const response = await ApiService.fetchData<SubmitRequestResponse>({
-      url: '/submitRequest.php',
+      url: '/submitReques.php',
       method: 'post',
       data: payload
     });
@@ -286,6 +295,24 @@ export async function submitRequest(payload: SubmitRequestPayload): Promise<Subm
     return {
       success: false,
       message: error?.response?.data?.message || error?.message || 'Failed to submit request. Please check your connection and try again.',
+    };
+  }
+}
+
+export async function updateRequest(payload: SubmitRequestPayload): Promise<SubmitRequestResponse> {
+  try {
+    const response = await ApiService.fetchData<SubmitRequestResponse>({
+      url: '/updateRequest.php',
+      method: 'post',
+      data: payload
+    });
+    return ApiService.transform<SubmitRequestResponse>(response);
+  } catch (error: any) {
+    // Return error response - do NOT redirect on API errors
+    console.error('Error updating request:', error);
+    return {
+      success: false,
+      message: error?.response?.data?.message || error?.message || 'Failed to update request. Please check your connection and try again.',
     };
   }
 }

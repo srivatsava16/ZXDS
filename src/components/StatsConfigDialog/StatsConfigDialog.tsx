@@ -244,14 +244,14 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
       loadingData?: boolean;
     }> = [];
 
-    preconfiguredStats.forEach((sourceConfig: any) => {
+    preconfiguredStats?.forEach((sourceConfig: any) => {
       // Safety check: ensure configs array exists
       if (!sourceConfig?.configs || !Array.isArray(sourceConfig.configs)) {
         console.warn('[StatsConfigDialog] sourceConfig.configs is missing or not an array:', sourceConfig);
         return;
       }
 
-      sourceConfig.configs.forEach((config: any) => {
+      sourceConfig.configs?.forEach((config: any) => {
         // Map status: W/R/'' -> processing, C -> completed, E -> failed
         let status: 'processing' | 'completed' | 'failed' = 'processing';
         if (config?.status === 'C') {
@@ -262,10 +262,10 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         // W, R, or empty string default to processing
 
         // Parse fields and breakdown_by (comma-separated strings)
-        const countsOn = config?.fields ? config.fields.split(',').map((f: string) => f.trim()) : [];
-        const breakdownBy = config?.breakdown_by ? config.breakdown_by.split(',').map((f: string) => f.trim()) : [];
+        const countsOn = config?.fields ? config.fields?.split(',').map((f: string) => f?.trim()) : [];
+        const breakdownBy = config?.breakdown_by ? config.breakdown_by?.split(',').map((f: string) => f?.trim()) : [];
 
-        transformedStats.push({
+        transformedStats?.push({
           id: `preconfigured_${config?.configId}`,
           inputSource: sourceConfig?.source_tables,
           countsOn,
@@ -552,26 +552,26 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
   // Export to CSV
   const handleExportCSV = () => {
-    if (!statsResults || statsResults.length === 0) return;
+    if (!statsResults || statsResults?.length === 0) return;
 
     // Get headers from first row
     const headers = Object.keys(statsResults?.[0] || {});
 
     // Create CSV content
-    let csvContent = headers.join(',') + '\n';
+    let csvContent = headers?.join(',') + '\n';
 
-    statsResults.forEach((row: any) => {
-      const values = headers.map(header => {
+    statsResults?.forEach((row: any) => {
+      const values = headers?.map(header => {
         const value = row[header];
         // Escape values that contain commas or quotes
         if (value === null || value === undefined) return '';
         const stringValue = String(value);
-        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-          return `"${stringValue.replace(/"/g, '""')}"`;
+        if (stringValue?.includes(',') || stringValue?.includes('"') || stringValue?.includes('\n')) {
+          return `"${stringValue?.replace(/"/g, '""')}"`;
         }
         return stringValue;
       });
-      csvContent += values.join(',') + '\n';
+      csvContent += values?.join(',') + '\n';
     });
 
     // Create and trigger download
@@ -588,21 +588,21 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
   // Export to Excel (using HTML table method for simplicity)
   const handleExportExcel = () => {
-    if (!statsResults || statsResults.length === 0) return;
+    if (!statsResults || statsResults?.length === 0) return;
 
     // Get headers from first row
     const headers = Object.keys(statsResults?.[0] || {});
 
     // Create HTML table
     let tableHTML = '<table><thead><tr>';
-    headers.forEach(header => {
+    headers?.forEach(header => {
       tableHTML += `<th>${header}</th>`;
     });
     tableHTML += '</tr></thead><tbody>';
 
-    statsResults.forEach((row: any) => {
+    statsResults?.forEach((row: any) => {
       tableHTML += '<tr>';
-      headers.forEach(header => {
+      headers?.forEach(header => {
         const value = row[header];
         tableHTML += `<td>${value !== null && value !== undefined ? value : ''}</td>`;
       });
@@ -709,7 +709,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     <div>Debug: requestData exists: {requestData ? 'Yes' : 'No'}</div>
                     <div>statsConfigurations: {requestData.statsConfigurations ? 'Exists' : 'Null/Undefined'}</div>
                     <div>statsConfigurations length: {requestData.statsConfigurations?.length || 0}</div>
-                    {requestData.statsConfigurations && requestData.statsConfigurations.length > 0 && (
+                    {requestData.statsConfigurations && requestData.statsConfigurations?.length > 0 && (
                       <div>First source_table: {requestData.statsConfigurations[0]?.source_tables}</div>
                     )}
                   </Box>
@@ -842,7 +842,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       )}
                     </Box>
 
-                    {!statsResults || statsResults.length === 0 ? (
+                    {!statsResults || statsResults?.length === 0 ? (
                       <Alert severity="info" sx={{ backgroundColor: '#E3F2FD', color: '#1565C0' }}>
                         No data available for the selected combination. The stats generation was successful but returned no records.
                       </Alert>
@@ -942,17 +942,17 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       multiple
                       value={selectedDynamicCountsOn}
                       onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                        const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                         setSelectedDynamicCountsOn(value);
                         // Remove distinct fields that are no longer in counts on
-                        setSelectedDynamicDistinctFields(prev => prev.filter(f => value.includes(f)));
+                        setSelectedDynamicDistinctFields(prev => prev?.filter(f => value?.includes(f)));
                       }}
                       label="Select Fields"
                       sx={{ backgroundColor: 'white' }}
                       disabled={!selectedDynamicInputSource}
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
+                          {selected?.map((value) => (
                             <Chip
                               key={value}
                               label={value}
@@ -972,9 +972,9 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       <MenuItem value="" disabled>
                         <em>Select Fields</em>
                       </MenuItem>
-                      {availableDynamicFields.map((field: string) => (
+                      {availableDynamicFields?.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={selectedDynamicCountsOn.indexOf(field) > -1} size="small" />
+                          <Checkbox checked={selectedDynamicCountsOn?.indexOf(field) > -1} size="small" />
                           <ListItemText primary={field} />
                         </MenuItem>
                       ))}
@@ -994,7 +994,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       multiple
                       value={selectedDynamicBreakdownBy}
                       onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                        const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                         setSelectedDynamicBreakdownBy(value);
                       }}
                       label="Select Fields"
@@ -1002,7 +1002,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       disabled={!selectedDynamicInputSource}
                       renderValue={(selected) => (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
+                          {selected?.map((value) => (
                             <Chip
                               key={value}
                               label={value}
@@ -1022,9 +1022,9 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                       <MenuItem value="" disabled>
                         <em>Select Fields</em>
                       </MenuItem>
-                      {availableDynamicFields.map((field: string) => (
+                      {availableDynamicFields?.map((field: string) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={selectedDynamicBreakdownBy.indexOf(field) > -1} size="small" />
+                          <Checkbox checked={selectedDynamicBreakdownBy?.indexOf(field) > -1} size="small" />
                           <ListItemText primary={field} />
                         </MenuItem>
                       ))}
@@ -1048,7 +1048,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     multiple
                     value={selectedDynamicDistinctFields}
                     onChange={(e) => {
-                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                      const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                       setSelectedDynamicDistinctFields(value);
                     }}
                     label="Select Distinct Fields"
@@ -1056,7 +1056,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     disabled={selectedDynamicCountsOn?.length === 0}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
+                        {selected?.map((value) => (
                           <Chip
                             key={value}
                             label={value}
@@ -1076,9 +1076,9 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                     <MenuItem value="" disabled>
                       <em>{selectedDynamicCountsOn?.length === 0 ? 'Please select Generate Counts On fields first' : 'Select fields'}</em>
                     </MenuItem>
-                    {selectedDynamicCountsOn.map((field) => (
+                    {selectedDynamicCountsOn?.map((field) => (
                       <MenuItem key={field} value={field}>
-                        <Checkbox checked={selectedDynamicDistinctFields.indexOf(field) > -1} size="small" />
+                        <Checkbox checked={selectedDynamicDistinctFields?.indexOf(field) > -1} size="small" />
                         <ListItemText primary={field} />
                       </MenuItem>
                     ))}

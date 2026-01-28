@@ -227,7 +227,7 @@ const DivisionManagementPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {divisions.map((division) => (
+            {divisions?.map((division) => (
               <TableRow
                 key={division.id}
                 hover

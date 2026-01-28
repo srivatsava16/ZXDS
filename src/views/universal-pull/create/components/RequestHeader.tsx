@@ -80,7 +80,7 @@ const RequestHeader: React.FC<RequestHeaderProps> = ({
             variant="contained"
             startIcon={<Save />}
             onClick={onSave}
-            disabled={saveLoading || !requestName.trim()}
+            disabled={saveLoading || !requestName?.trim()}
             sx={{ minWidth: 120 }}
           >
             {saveLoading ? 'Saving...' : 'Save & Submit'}

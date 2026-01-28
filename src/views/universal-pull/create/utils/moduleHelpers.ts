@@ -4,10 +4,10 @@ import type { VersionedSource } from '../types';
  * Get module type from module ID
  */
 export const getModuleType = (moduleId: string): 'Match' | 'Append' | 'Suppress' | 'Input' => {
-  if (moduleId === 'panel1' || moduleId.startsWith('panel1_')) return 'Input';
-  if (moduleId === 'panel2' || moduleId.startsWith('panel2_')) return 'Append';
-  if (moduleId === 'panel3' || moduleId.startsWith('panel3_')) return 'Suppress';
-  if (moduleId === 'panel4' || moduleId.startsWith('panel4_')) return 'Match';
+  if (moduleId === 'panel1' || moduleId?.startsWith('panel1_')) return 'Input';
+  if (moduleId === 'panel2' || moduleId?.startsWith('panel2_')) return 'Append';
+  if (moduleId === 'panel3' || moduleId?.startsWith('panel3_')) return 'Suppress';
+  if (moduleId === 'panel4' || moduleId?.startsWith('panel4_')) return 'Match';
   return 'Append'; // fallback
 };
 
@@ -16,9 +16,9 @@ export const getModuleType = (moduleId: string): 'Match' | 'Append' | 'Suppress'
  */
 export const getModuleTypeName = (moduleId: string): string => {
   if (moduleId === 'panel1') return 'Input';
-  if (moduleId === 'panel2' || moduleId.startsWith('panel2_')) return 'Append';
-  if (moduleId === 'panel3' || moduleId.startsWith('panel3_')) return 'Suppress';
-  if (moduleId === 'panel4' || moduleId.startsWith('panel4_')) return 'Match';
+  if (moduleId === 'panel2' || moduleId?.startsWith('panel2_')) return 'Append';
+  if (moduleId === 'panel3' || moduleId?.startsWith('panel3_')) return 'Suppress';
+  if (moduleId === 'panel4' || moduleId?.startsWith('panel4_')) return 'Match';
   if (moduleId === 'panel5') return 'Stats';
   if (moduleId === 'panel6') return 'Output';
   if (moduleId === 'panel7') return 'Schedule';
@@ -48,11 +48,11 @@ export const validateModuleMove = (
 
   // Get versions created by the source module
   const sourceModuleType = getModuleType(sourceModule.id);
-  const sourceModuleVersions = versionedSources.filter(version =>
+  const sourceModuleVersions = versionedSources?.filter(version =>
     version.sourceModule === sourceModuleType && version.createdByModuleId === sourceModule.id
   );
 
-  if (sourceModuleVersions.length === 0) {
+  if (sourceModuleVersions?.length === 0) {
     return { canMove: true };
   }
 
@@ -60,7 +60,7 @@ export const validateModuleMove = (
   const dependencies: { sourceVersion: string; usingVersion: string; usingModule: string }[] = [];
 
   // Check modules that would come after the source module in the new order
-  for (let i = toIndex + 1; i < modules.length; i++) {
+  for (let i = toIndex + 1; i < modules?.length; i++) {
     const moduleToCheck = modules[i];
 
     // Skip input module as it doesn't use versions from other modules
@@ -68,7 +68,7 @@ export const validateModuleMove = (
 
     // Get versions created by this module
     const moduleType = getModuleType(moduleToCheck.id);
-    const moduleVersions = versionedSources.filter(v =>
+    const moduleVersions = versionedSources?.filter(v =>
       v.sourceModule === moduleType && v.createdByModuleId === moduleToCheck.id
     );
 
@@ -76,8 +76,8 @@ export const validateModuleMove = (
     for (const moduleVersion of moduleVersions) {
       for (const sourceVersion of sourceModuleVersions) {
         // Check if the module version uses the source version as input
-        if (moduleVersion.baseInputSources.includes(sourceVersion.id)) {
-          dependencies.push({
+        if (moduleVersion.baseInputSources?.includes(sourceVersion.id)) {
+          dependencies?.push({
             sourceVersion: sourceVersion.versionLabel,
             usingVersion: moduleVersion.versionLabel,
             usingModule: getModuleTypeName(moduleToCheck.id)
@@ -87,17 +87,17 @@ export const validateModuleMove = (
     }
   }
 
-  if (dependencies.length > 0) {
+  if (dependencies?.length > 0) {
     const sourceModuleName = getModuleTypeName(sourceModule.id);
 
-    if (dependencies.length === 1) {
+    if (dependencies?.length === 1) {
       const dep = dependencies[0];
       return {
         canMove: false,
         error: `Cannot move ${sourceModuleName} module to this position.\n\nThe version "${dep.sourceVersion}" was created in the ${sourceModuleName} module and is being used by the version "${dep.usingVersion}" in the ${dep.usingModule} module.\n\nVersions must be created before they can be used by other modules.`
       };
     } else {
-      const dependencyList = dependencies.map(dep =>
+      const dependencyList = dependencies?.map(dep =>
         `• "${dep.sourceVersion}" → used by "${dep.usingVersion}" in ${dep.usingModule} module`
       ).join('\n');
 
@@ -142,15 +142,15 @@ export const validateCustomSourceDependencies = (
   }
 
   // Get custom sources created by the source module
-  const customSourcesFromModule = sharedCustomSources.filter(
+  const customSourcesFromModule = sharedCustomSources?.filter(
     source => source.createdByModuleId === sourceModule.id
   );
 
-  if (customSourcesFromModule.length === 0) {
+  if (customSourcesFromModule?.length === 0) {
     return { canMove: true };
   }
 
-  const customSourceIds = customSourcesFromModule.map(s => s.id);
+  const customSourceIds = customSourcesFromModule?.map(s => s.id);
 
   // Track all dependencies found
   const dependencies: { sourceName: string; usingModule: string }[] = [];
@@ -177,10 +177,10 @@ export const validateCustomSourceDependencies = (
       const sourcesUsed = config.appendSources || config.matchSources || config.suppressSources || [];
 
       for (const sourceId of sourcesUsed) {
-        if (customSourceIds.includes(sourceId)) {
-          const customSource = customSourcesFromModule.find(s => s.id === sourceId);
-          if (customSource && !dependencies.find(d => d.sourceName === customSource.sourceName)) {
-            dependencies.push({
+        if (customSourceIds?.includes(sourceId)) {
+          const customSource = customSourcesFromModule?.find(s => s.id === sourceId);
+          if (customSource && !dependencies?.find(d => d.sourceName === customSource.sourceName)) {
+            dependencies?.push({
               sourceName: customSource.sourceName,
               usingModule: moduleName
             });
@@ -190,17 +190,17 @@ export const validateCustomSourceDependencies = (
     }
   }
 
-  if (dependencies.length > 0) {
+  if (dependencies?.length > 0) {
     const sourceModuleName = getModuleTypeName(sourceModule.id);
 
-    if (dependencies.length === 1) {
+    if (dependencies?.length === 1) {
       const dep = dependencies[0];
       return {
         canMove: false,
         error: `Cannot move ${sourceModuleName} module to this position.\n\nThe custom source "${dep.sourceName}" was created in the ${sourceModuleName} module and is being used in the ${dep.usingModule} module.\n\nCustom sources must be created before they can be used by other modules.`
       };
     } else {
-      const dependencyList = dependencies.map(dep =>
+      const dependencyList = dependencies?.map(dep =>
         `• "${dep.sourceName}" → used in ${dep.usingModule} module`
       ).join('\n');
 

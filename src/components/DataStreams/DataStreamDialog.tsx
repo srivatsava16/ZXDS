@@ -94,18 +94,18 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
   }, [editingStream, open]);
 
   const handleSave = () => {
-    if (!name.trim()) {
+    if (!name?.trim()) {
       alert('Please enter a stream name');
       return;
     }
 
     if (sourceType === 'SFTP' || sourceType === 'NFS') {
-      if (!defaultPath.trim()) {
+      if (!defaultPath?.trim()) {
         alert(`Please complete all ${sourceType} fields`);
         return;
       }
     } else if (sourceType === 'AWS S3') {
-      if (!accessKey.trim() || !secretKey.trim() || !defaultBucket.trim()) {
+      if (!accessKey?.trim() || !secretKey?.trim() || !defaultBucket?.trim()) {
         alert('Please complete all AWS S3 fields');
         return;
       }

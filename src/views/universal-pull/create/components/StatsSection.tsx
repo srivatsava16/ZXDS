@@ -15,7 +15,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({
   onEditConfig,
   onDeleteConfig,
 }) => {
-  if (statsConfigurations.length === 0) {
+  if (statsConfigurations?.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -32,7 +32,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          Statistics Configurations ({statsConfigurations.length})
+          Statistics Configurations ({statsConfigurations?.length})
         </Typography>
         <Button variant="outlined" startIcon={<Add />} onClick={onAddConfig} size="small">
           Add Configuration
@@ -40,9 +40,9 @@ const StatsSection: React.FC<StatsSectionProps> = ({
       </Box>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {statsConfigurations.map((config) => (
+        {statsConfigurations?.map((config) => (
           <Box
-            key={config.id}
+            key={config?.id}
             sx={{
               p: 2,
               border: '1px solid',
@@ -61,7 +61,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     Input Sources:
                   </Typography>
-                  {config.inputSources.map((source) => (
+                  {config?.inputSources?.map((source) => (
                     <Chip key={source} label={source} size="small" />
                   ))}
                 </Box>
@@ -69,22 +69,22 @@ const StatsSection: React.FC<StatsSectionProps> = ({
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     Count On:
                   </Typography>
-                  {config.countsOn.map((countOn) => (
+                  {config?.countsOn?.map((countOn) => (
                     <Chip
-                      key={countOn.field}
-                      label={`${countOn.field}${countOn.isDistinct ? ' (D)' : ''}`}
+                      key={countOn?.field}
+                      label={`${countOn?.field}${countOn?.isDistinct ? ' (D)' : ''}`}
                       size="small"
-                      color={countOn.isDistinct ? 'success' : 'primary'}
+                      color={countOn?.isDistinct ? 'success' : 'primary'}
                       variant="outlined"
                     />
                   ))}
                 </Box>
-                {config.breakdownBy.length > 0 && (
+                {config?.breakdownBy?.length > 0 && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       Breakdown By:
                     </Typography>
-                    {config.breakdownBy.map((field) => (
+                    {config?.breakdownBy?.map((field) => (
                       <Chip key={field} label={field} size="small" color="secondary" variant="outlined" />
                     ))}
                   </Box>
@@ -94,7 +94,7 @@ const StatsSection: React.FC<StatsSectionProps> = ({
                 <IconButton size="small" onClick={() => onEditConfig(config)} color="primary">
                   <Edit fontSize="small" />
                 </IconButton>
-                <IconButton size="small" onClick={() => onDeleteConfig(config.id)} color="error">
+                <IconButton size="small" onClick={() => onDeleteConfig(config?.id)} color="error">
                   <Delete fontSize="small" />
                 </IconButton>
               </Box>

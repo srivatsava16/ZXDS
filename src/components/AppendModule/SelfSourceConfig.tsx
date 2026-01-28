@@ -87,17 +87,17 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
   const allFields = useMemo(() => {
     console.log('[SelfSourceConfig] Calculating allFields');
     console.log('  inputSourceNames:', inputSourceNames);
-    console.log('  availableInputSources count:', availableInputSources.length);
+    console.log('  availableInputSources count:', availableInputSources?.length);
     console.log('  appendConfigs count:', appendConfigs?.length || 0);
 
     const fieldsSet = new Set<string>();
-    const selectedSources = availableInputSources.filter(src =>
-      inputSourceNames.includes(src.sourceName)
+    const selectedSources = availableInputSources?.filter(src =>
+      inputSourceNames?.includes(src.sourceName)
     );
 
-    console.log('  selectedSources count:', selectedSources.length);
+    console.log('  selectedSources count:', selectedSources?.length);
 
-    selectedSources.forEach(src => {
+    selectedSources?.forEach(src => {
       // Always use the full headers array to show ALL available fields
       // Don't use selectedHeaders here - we want all fields to be available in filters
       const headersToUse = src.headers;
@@ -110,14 +110,14 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       });
 
       if (headersToUse && Array.isArray(headersToUse)) {
-        headersToUse.forEach(field => fieldsSet.add(field));
+        headersToUse?.forEach(field => fieldsSet.add(field));
       }
 
       // IMPORTANT: Add appended fields from configurations
       // Check if any append config targets this source
-      if (appendConfigs && appendConfigs.length > 0) {
-        console.log(`  Checking ${appendConfigs.length} append configs for "${src.sourceName}"`);
-        appendConfigs.forEach((config, idx) => {
+      if (appendConfigs && appendConfigs?.length > 0) {
+        console.log(`  Checking ${appendConfigs?.length} append configs for "${src.sourceName}"`);
+        appendConfigs?.forEach((config, idx) => {
           console.log(`    Config ${idx + 1}:`, {
             id: config.id,
             inputSources: config.inputSources,
@@ -127,8 +127,8 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           });
 
           // Check if this config targets the current source (by ID or by name)
-          const matchesById = config.inputSources && config.inputSources.includes(src.id);
-          const matchesByName = config.inputSources && config.inputSources.includes(src.sourceName);
+          const matchesById = config.inputSources && config.inputSources?.includes(src.id);
+          const matchesByName = config.inputSources && config.inputSources?.includes(src.sourceName);
 
           if (matchesById || matchesByName) {
             console.log(`  ✓ Found append config for "${src.sourceName}":`, {
@@ -136,8 +136,8 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             });
             // Add the appended fields from this config
             if (config.appendFields && Array.isArray(config.appendFields)) {
-              config.appendFields.forEach((field: string) => fieldsSet.add(field));
-              console.log(`    Added ${config.appendFields.length} appended fields:`, config.appendFields);
+              config.appendFields?.forEach((field: string) => fieldsSet.add(field));
+              console.log(`    Added ${config.appendFields?.length} appended fields:`, config.appendFields);
             }
           } else {
             console.log(`  ✗ Config does not target "${src.sourceName}"`);
@@ -153,13 +153,13 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
 
   // Filtered lists
-  const filteredInputSources = availableInputSources.filter(source =>
-    source.sourceName.toLowerCase().includes(inputSourcesSearch.toLowerCase())
+  const filteredInputSources = availableInputSources?.filter(source =>
+    source.sourceName?.toLowerCase().includes(inputSourcesSearch?.toLowerCase())
   );
 
   // Log available sources for debugging
   useEffect(() => {
-    console.log('[SelfSourceConfig] Available Input Sources:', availableInputSources.map(src => ({
+    console.log('[SelfSourceConfig] Available Input Sources:', availableInputSources?.map(src => ({
       id: src.id,
       sourceName: src.sourceName,
       sourceType: src.sourceType,
@@ -169,8 +169,8 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
     })));
   }, [availableInputSources]);
 
-  const filteredTieringOnFields = allFields.filter(field =>
-    field.toLowerCase().includes(tieringOnSearch.toLowerCase())
+  const filteredTieringOnFields = allFields?.filter(field =>
+    field?.toLowerCase().includes(tieringOnSearch?.toLowerCase())
   );
 
   // Initialize state from data prop (for edit mode)
@@ -192,12 +192,12 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         setGeneratedDatatype(data.selfConfig.generated_datatype);
       }
 
-      if (data.selfConfig.assignment_sets && data.selfConfig.assignment_sets.length > 0) {
+      if (data.selfConfig.assignment_sets && data.selfConfig.assignment_sets?.length > 0) {
         setAssignmentSets(data.selfConfig.assignment_sets);
       }
 
       if (data.selfConfig.tiering_on) {
-        const tieringFields = data.selfConfig.tiering_on.split(',').map(f => f.trim()).filter(f => f);
+        const tieringFields = data.selfConfig.tiering_on?.split(',').map(f => f?.trim()).filter(f => f);
         setTieringOnFields(tieringFields);
       }
     }
@@ -226,7 +226,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
     }
 
     // Auto-generate source name when both conditions are met
-    if (generatedColumn && inputSourceNames.length > 0) {
+    if (generatedColumn && inputSourceNames?.length > 0) {
       const autoSourceName = `Self_${generatedColumn}`;
       setSourceName(autoSourceName);
     }
@@ -245,7 +245,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       generated_column: generatedColumn,
       generated_datatype: generatedDatatype,
       assignment_sets: assignmentSets,
-      tiering_on: tieringOnFields.join(','),
+      tiering_on: tieringOnFields?.join(','),
     };
 
     const updatedData = {
@@ -272,8 +272,8 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   // Handle removing assignment set
   const handleRemoveAssignmentSet = (index: number) => {
-    if (assignmentSets.length > 1) {
-      setAssignmentSets(assignmentSets.filter((_, i) => i !== index));
+    if (assignmentSets?.length > 1) {
+      setAssignmentSets(assignmentSets?.filter((_, i) => i !== index));
     }
   };
 
@@ -297,12 +297,12 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             multiple
             value={inputSourceNames}
             onChange={(e) => {
-              const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-              if (value.includes('select-all')) {
-                if (inputSourceNames.length === filteredInputSources.length) {
+              const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+              if (value?.includes('select-all')) {
+                if (inputSourceNames?.length === filteredInputSources?.length) {
                   setInputSourceNames([]);
                 } else {
-                  setInputSourceNames(filteredInputSources.map(s => s.sourceName));
+                  setInputSourceNames(filteredInputSources?.map(s => s.sourceName));
                 }
               } else {
                 setInputSourceNames(value);
@@ -312,7 +312,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             input={<OutlinedInput />}
             renderValue={(selected) => (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                {selected.map((value) => (
+                {selected?.map((value) => (
                   <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
                 ))}
               </Box>
@@ -349,15 +349,15 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             </MenuItem>
             <MenuItem value="select-all" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
               <Checkbox
-                checked={filteredInputSources.length > 0 && inputSourceNames.length === filteredInputSources.length}
-                indeterminate={inputSourceNames.length > 0 && inputSourceNames.length < filteredInputSources.length}
+                checked={filteredInputSources?.length > 0 && inputSourceNames?.length === filteredInputSources?.length}
+                indeterminate={inputSourceNames?.length > 0 && inputSourceNames?.length < filteredInputSources?.length}
                 size="small"
               />
               <ListItemText primary="Select All" />
             </MenuItem>
-            {filteredInputSources.map((source) => (
+            {filteredInputSources?.map((source) => (
               <MenuItem key={source.id} value={source.sourceName}>
-                <Checkbox checked={inputSourceNames.indexOf(source.sourceName) > -1} size="small" />
+                <Checkbox checked={inputSourceNames?.indexOf(source.sourceName) > -1} size="small" />
                 <ListItemText primary={source.sourceName} />
               </MenuItem>
             ))}
@@ -390,7 +390,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
               label="Data Type"
               required
             >
-              {DATA_TYPES.map((type) => (
+              {DATA_TYPES?.map((type) => (
                 <MenuItem key={type.value} value={type.value}>
                   {type.label}
                 </MenuItem>
@@ -425,7 +425,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           </Button>
         </Box>
 
-        {assignmentSets.map((set, index) => (
+        {assignmentSets?.map((set, index) => (
           <Paper
             key={index}
             sx={{
@@ -443,7 +443,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#2D3748', fontSize: '0.95rem' }}>
                 Condition #{index + 1}
               </Typography>
-              {assignmentSets.length > 1 && (
+              {assignmentSets?.length > 1 && (
                 <IconButton
                   size="small"
                   onClick={() => handleRemoveAssignmentSet(index)}
@@ -473,7 +473,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             </Box>
 
             {/* Filter SQL - Show only if fields are available */}
-            {allFields.length > 0 && (
+            {allFields?.length > 0 && (
               <Box>
                 <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: 'block', color: '#2D3748' }}>
                   Filter Condition (SQL)
@@ -494,7 +494,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           </Paper>
         ))}
 
-        {allFields.length === 0 && inputSourceNames.length > 0 && (
+        {allFields?.length === 0 && inputSourceNames?.length > 0 && (
           <Typography variant="caption" sx={{ color: 'warning.main', fontStyle: 'italic', display: 'block', mt: 1 }}>
             ⚠️ Selected input sources have no headers. Please ensure input sources are properly configured.
           </Typography>
@@ -510,7 +510,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         </Typography>
 
         {/* Debug info for troubleshooting */}
-        {inputSourceNames.length > 0 && allFields.length === 0 && (
+        {inputSourceNames?.length > 0 && allFields?.length === 0 && (
           <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#FEF3C7', borderRadius: 1, border: '1px solid #F59E0B' }}>
             <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 0.5 }}>
               ⚠️ No fields available from selected input sources
@@ -526,26 +526,26 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             multiple
             value={tieringOnFields}
             onChange={(e) => {
-              const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+              const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
               setTieringOnFields(value);
             }}
             onClose={() => setTieringOnSearch('')}
             input={<OutlinedInput />}
             renderValue={(selected) => (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                {selected.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: allFields.length === 0 ? 'error.main' : 'text.secondary', fontSize: '0.875rem' }}>
-                    {allFields.length === 0 ? 'No fields available - check input sources' : 'Select tiering fields...'}
+                {selected?.length === 0 ? (
+                  <Typography variant="body2" sx={{ color: allFields?.length === 0 ? 'error.main' : 'text.secondary', fontSize: '0.875rem' }}>
+                    {allFields?.length === 0 ? 'No fields available - check input sources' : 'Select tiering fields...'}
                   </Typography>
                 ) : (
-                  selected.map((value) => (
+                  selected?.map((value) => (
                     <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
                   ))
                 )}
               </Box>
             )}
             displayEmpty
-            disabled={allFields.length === 0}
+            disabled={allFields?.length === 0}
             MenuProps={{
               PaperProps: {
                 sx: {
@@ -559,21 +559,21 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
               disableAutoFocusItem: true
             }}
           >
-            {allFields.length === 0 ? (
+            {allFields?.length === 0 ? (
               <MenuItem disabled>
-                <em>{inputSourceNames.length === 0 ? 'Select input sources first' : 'No fields available'}</em>
+                <em>{inputSourceNames?.length === 0 ? 'Select input sources first' : 'No fields available'}</em>
               </MenuItem>
             ) : [
               <MenuItem key="header" disabled>
-                <em>Select tiering fields ({allFields.length} available)</em>
+                <em>Select tiering fields ({allFields?.length} available)</em>
               </MenuItem>,
-              ...allFields.map((field) => (
+              ...allFields?.map((field) => (
                 <MenuItem
                   key={field}
                   value={field}
                 >
                   <Checkbox
-                    checked={tieringOnFields.indexOf(field) > -1}
+                    checked={tieringOnFields?.indexOf(field) > -1}
                     size="small"
                     sx={{ mr: 1 }}
                   />
@@ -584,13 +584,13 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           </Select>
         </FormControl>
 
-        {allFields.length > 0 ? (
+        {allFields?.length > 0 ? (
           <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', mt: 0.5, display: 'block' }}>
             Select fields that are used in the filter conditions above. You can select multiple fields.
           </Typography>
         ) : (
           <Typography variant="caption" sx={{ color: 'warning.main', fontSize: '0.75rem', mt: 0.5, display: 'block', fontStyle: 'italic' }}>
-            {inputSourceNames.length === 0
+            {inputSourceNames?.length === 0
               ? 'Please select input sources first to see available fields'
               : 'No fields available from selected input sources - they may not be configured properly'}
           </Typography>

@@ -21,7 +21,7 @@ export const useAsync = <T>() => {
       setState({ data: result, loading: false, error: null })
       return result
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+      const errorMessage = error instanceof Error ? error?.message : 'An error occurred'
       setState({ data: null, loading: false, error: errorMessage })
       throw error
     }

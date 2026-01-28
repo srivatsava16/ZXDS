@@ -13,15 +13,15 @@ const BaseService = axios.create({
 BaseService.interceptors.request.use(
     config => {
         // Get auth token from Redux store
-        const state = store.getState();
-        const accessToken = state.auth.token;
+        const state = store?.getState();
+        const accessToken = state?.auth?.token;
 
         if (accessToken) {
             config.headers[REQUEST_HEADER_AUTH_KEY] = `${TOKEN_TYPE}${accessToken}`;
         }
 
         // Add any additional headers
-        config.params = { ...config.params };
+        config.params = { ...config?.params };
 
         return config;
     },
@@ -36,7 +36,7 @@ BaseService.interceptors.response.use(
         const { response } = error;
         
         // Handle unauthorized responses
-        if (response && unauthorizedCode.includes(error?.response?.status)) {
+        if (response && unauthorizedCode?.includes(error?.response?.status)) {
             // You can dispatch a logout action here if needed
         }
 

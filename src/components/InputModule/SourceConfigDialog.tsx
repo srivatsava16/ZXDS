@@ -114,7 +114,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
 
   // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : existingSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : existingSources;
 
     return validateUniqueSourceName({
       sourceName: name,
@@ -128,7 +128,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   // Helper function to get file format from filename
   const getFileFormat = (fileName: string | undefined): string => {
     if (!fileName) return 'CSV';
-    const extension = fileName.split('.').pop()?.toUpperCase();
+    const extension = fileName?.split('.').pop()?.toUpperCase();
     return extension || 'CSV';
   };
 
@@ -150,7 +150,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
 
     // Parse selectedColumns string back to array
     const selectedColumnsFromAPI = apiSource.selectedColumns
-      ? apiSource.selectedColumns.split(',').map((col: string) => col.trim()).filter((col: string) => col.length > 0)
+      ? apiSource.selectedColumns?.split(',').map((col: string) => col?.trim()).filter((col: string) => col?.length > 0)
       : apiSource.columns || [];
 
       
@@ -181,7 +181,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     const selectedHeaders = source.selectedHeaders || source.headers || [];
 
     // Determine columnSelectionType: "A" if all headers selected, "S" if subset
-    const columnSelectionType = selectedHeaders.length === headers.length ? 'A' : 'S';
+    const columnSelectionType = selectedHeaders?.length === headers?.length ? 'A' : 'S';
 
     // Determine inputType: "P" for preconfigured (has fileSourceId), "M" for manual
     const inputType = source.fileSourceId ? 'I' : 'M';
@@ -198,7 +198,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       isHeader: source.hasHeader ? 1 : 0,
       columnSelectionType: columnSelectionType,
       columns: headers,
-      selectedColumns: selectedHeaders.join(','), // Send as-is (custom names if custom headers exist, original names otherwise)
+      selectedColumns: selectedHeaders?.join(','), // Send as-is (custom names if custom headers exist, original names otherwise)
       inputType: inputType,
       filters: source.filterQuery || '',
       //extras
@@ -222,7 +222,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
 
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
         setValidationError('Please fetch top 10 records to extract headers before adding this input source.');
         return;
       }
@@ -230,8 +230,8 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
 
     // Validation: For Database type sources, headers must be extracted
     if (sourceType === 'Database') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
-        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
+        setValidationError('Please click "Get Sample Recods" to fetch and verify the database source before saving.');
         return;
       }
     }
@@ -399,7 +399,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
             sourceNameError={sourceNameError}
-            allExistingSources={allExistingSources.length > 0 ? allExistingSources : existingSources}
+            allExistingSources={allExistingSources?.length > 0 ? allExistingSources : existingSources}
           />
         )}
       </DialogContent>

@@ -54,15 +54,15 @@ const UniversalPullRequestViewPage: React.FC = () => {
 
         const response = await getEditRequest(Number(requestId));
 
-        if (response.success && response.data) {
+        if (response?.success && response?.data) {
           // Map API response to RequestDetails interface
           setRequestDetails({
             id: requestId,
-            name: response.data.name || response.data.requestName || `Request #${requestId}`,
-            status: response.data.status || 'pending',
-            createdAt: response.data.createdAt || response.data.created_at || new Date().toISOString(),
-            updatedAt: response.data.updatedAt || response.data.updated_at || new Date().toISOString(),
-            description: response.data.description || 'No description available',
+            name: response?.data?.name || response?.data?.requestName || `Request #${requestId}`,
+            status: response?.data?.status || 'pending',
+            createdAt: response?.data?.createdAt || response?.data?.created_at || new Date()?.toISOString(),
+            updatedAt: response?.data?.updatedAt || response?.data?.updated_at || new Date()?.toISOString(),
+            description: response?.data?.description || 'No description available',
           });
         } else {
           setError(response.message || 'Failed to fetch request details');
@@ -86,7 +86,7 @@ const UniversalPullRequestViewPage: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case 'completed':
         return 'success';
       case 'processing':
@@ -172,7 +172,7 @@ const UniversalPullRequestViewPage: React.FC = () => {
                       Status
                     </Typography>
                     <Chip
-                      label={requestDetails.status.toUpperCase()}
+                      label={requestDetails.status?.toUpperCase()}
                       color={getStatusColor(requestDetails.status) as any}
                       size="small"
                       sx={{ mt: 0.5 }}

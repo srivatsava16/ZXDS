@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getRequestInputs, type RequestInputsResponse } from '../../../../services/api';
 
 /**
@@ -8,92 +8,26 @@ import { getRequestInputs, type RequestInputsResponse } from '../../../../servic
 export const useDataLoading = () => {
   const [apiSources, setApiSources] = useState<RequestInputsResponse | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    // Prevent duplicate API calls (especially in React StrictMode)
+    if (hasLoadedRef.current) {
+      return;
+    }
+
     const loadApiSources = async () => {
       try {
+        hasLoadedRef.current = true;
         setSourcesLoading(true);
+        console.log('=== Calling requestinputs.php API ===');
         const response = await getRequestInputs();
+        console.log('=== requestinputs.php API Response ===', response);
         setApiSources(response);
       } catch (error) {
+        console.error('=== requestinputs.php API Error ===', error);
         // Fallback to default sources if API call fails
-        setApiSources({
-          fileSource: {
-            sftpSources: [
-              { id: 1, name: 'BO3 SFTP' },
-              { id: 2, name: 'ZXDS SFTP' },
-              { id: 3, name: 'DC SFTP' }
-            ],
-            nfsSources: [
-              { id: 4, name: 'NFS Server 1' },
-              { id: 5, name: 'NFS Server 2' },
-              { id: 6, name: 'NFS Server 3' }
-            ],
-            awsSources: [
-              { id: 7, name: 'ZXDS AWS' },
-              { id: 8, name: 'DC AWS' }
-            ]
-          },
-          dbSource: {
-            preconfiguredTables: {
-              input: [
-                {
-                  tableName: 'permission',
-                  tableId: 1,
-                  description: 'Permission based data',
-                  columns: [
-                    { name: 'EMAIL', type: 'STRING' },
-                    { name: 'PROFILE_ID', type: 'STRING' }
-                  ]
-                },
-                {
-                  tableName: 'nonPermission',
-                  tableId: 2,
-                  description: 'Non-permission based data',
-                  columns: [
-                    { name: 'EMAIL', type: 'STRING' },
-                    { name: 'PROFILE_ID', type: 'STRING' }
-                  ]
-                }
-              ],
-              suppress: [
-                {
-                  tableName: 'DNS_SUPPRESSION_LIST',
-                  tableId: 1,
-                  description: 'DNS suppression list',
-                  columns: [
-                    { name: 'EMAIL_MD5', type: 'STRING' },
-                    { name: 'SUPPRESSION_DATE', type: 'DATE' }
-                  ]
-                }
-              ],
-              match: [
-                {
-                  tableName: 'CUSTOMER_MASTER_MATCH',
-                  tableId: 1,
-                  description: 'Master customer database',
-                  columns: [
-                    { name: 'CUSTOMER_ID', type: 'INTEGER' },
-                    { name: 'EMAIL_MD5', type: 'STRING' }
-                  ]
-                }
-              ],
-              output: ['SFTP Export', 'Email Export', 'S3 Export'],
-              append: [
-                {
-                  tableName: 'PROFILE',
-                  tableId: 1,
-                  description: 'Profile details for all channels',
-                  columns: [
-                    { name: 'PROFILE_ID', type: 'INTEGER' },
-                    { name: 'EMAIL_ADDRESS_MD5', type: 'STRING' }
-                  ]
-                }
-              ]
-            },
-            dataDictionary: {}
-          }
-        });
+        setApiSources(null);
       } finally {
         setSourcesLoading(false);
       }

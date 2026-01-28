@@ -53,7 +53,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
   const [editingName, setEditingName] = useState('');
 
   // Filter versions for the specific module type
-  const moduleVersions = versionedSources.filter(vs => vs.sourceModule === moduleType);
+  const moduleVersions = versionedSources?.filter(vs => vs?.sourceModule === moduleType);
 
   const handleStartEdit = (version: VersionedSource) => {
     setEditingVersionId(version?.id);
@@ -101,7 +101,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
             {moduleType} Module Versions
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            All created versions from {moduleType.toLowerCase()} operations
+            All created versions from {moduleType?.toLowerCase()} operations
           </Typography>
         </Box>
         <IconButton
@@ -114,7 +114,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 3 }}>
-        {moduleVersions.length === 0 ? (
+        {moduleVersions?.length === 0 ? (
           <Box
             sx={{
               display: 'flex',
@@ -129,7 +129,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
               No Versions Created Yet
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Create versions by selecting input sources and {moduleType.toLowerCase()} sources, then clicking the version icon.
+              Create versions by selecting input sources and {moduleType?.toLowerCase()} sources, then clicking the version icon.
             </Typography>
           </Box>
         ) : (
@@ -202,7 +202,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {moduleVersions.map((version, index) => (
+                {moduleVersions?.map((version, index) => (
                   <TableRow
                     key={version?.id}
                     sx={{
@@ -219,7 +219,7 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
                         <TextField
                           size="small"
                           value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
+                          onChange={(e) => setEditingName(e?.target?.value)}
                           sx={{
                             minWidth: '200px',
                             '& .MuiOutlinedInput-root': {
@@ -228,9 +228,9 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
                           }}
                           autoFocus
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e?.key === 'Enter') {
                               handleSaveEdit();
-                            } else if (e.key === 'Escape') {
+                            } else if (e?.key === 'Escape') {
                               handleCancelEdit();
                             }
                           }}
@@ -250,24 +250,24 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
                           onClick={() => handleStartEdit(version)}
                           title="Click to edit version name"
                         >
-                          {version.versionLabel}
+                          {version?.versionLabel}
                         </Typography>
                       )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                        {version.baseInputSources.map(sourceId => getSourceNameById(sourceId)).join(', ')}
+                        {version?.baseInputSources?.map(sourceId => getSourceNameById?.(sourceId))?.join(', ')}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                        {version.operationSources.map(sourceId => getSourceNameById(sourceId)).join(', ')}
+                        {version?.operationSources?.map(sourceId => getSourceNameById?.(sourceId))?.join(', ')}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                        {version.operationFields && version.operationFields.length > 0 
-                          ? version.operationFields.join(', ')
+                        {version?.operationFields && version?.operationFields?.length > 0
+                          ? version?.operationFields?.join(', ')
                           : 'N/A'
                         }
                       </Typography>
@@ -329,12 +329,12 @@ const VersionsModal: React.FC<VersionsModalProps> = ({
           </TableContainer>
         )}
 
-        {moduleVersions.length > 0 && (
+        {moduleVersions?.length > 0 && (
           <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(41, 102, 149, 0.05)', borderRadius: 1 }}>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-              <strong>Total Versions:</strong> {moduleVersions.length} | 
-              <strong> Generated by:</strong> {moduleVersions.length > 0 ? 
-                `${moduleVersions[0].baseInputSources.length} input source(s) × ${moduleVersions[0].operationSources.length} ${moduleType.toLowerCase()} source(s)` : 
+              <strong>Total Versions:</strong> {moduleVersions?.length} |
+              <strong> Generated by:</strong> {moduleVersions?.length > 0 ?
+                `${moduleVersions?.[0]?.baseInputSources?.length} input source(s) × ${moduleVersions?.[0]?.operationSources?.length} ${moduleType?.toLowerCase()} source(s)` :
                 'N/A'
               }
             </Typography>

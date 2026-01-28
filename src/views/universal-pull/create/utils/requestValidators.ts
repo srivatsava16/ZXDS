@@ -10,21 +10,21 @@ export interface ValidationError {
  * Validate request name
  */
 export const validateRequestName = (requestName: string): string | null => {
-  if (!requestName || !requestName.trim()) {
+  if (!requestName || !requestName?.trim()) {
     return 'Request name is required';
   }
 
-  if (requestName.length < 3) {
+  if (requestName?.length < 3) {
     return 'Request name must be at least 3 characters';
   }
 
-  if (requestName.length > 100) {
+  if (requestName?.length > 100) {
     return 'Request name must be less than 100 characters';
   }
 
   // Check for invalid characters
   const invalidChars = /[<>:"/\\|?*]/;
-  if (invalidChars.test(requestName)) {
+  if (invalidChars?.test(requestName)) {
     return 'Request name contains invalid characters';
   }
 
@@ -37,32 +37,32 @@ export const validateRequestName = (requestName: string): string | null => {
 export const validateInputSources = (inputSources: InputSource[]): ValidationError[] => {
   const errors: ValidationError[] = [];
 
-  if (!inputSources || inputSources.length === 0) {
-    errors.push({
+  if (!inputSources || inputSources?.length === 0) {
+    errors?.push({
       field: 'inputSources',
       message: 'At least one input source is required',
     });
   }
 
-  inputSources.forEach((source, index) => {
-    if (!source.sourceName) {
-      errors.push({
+  inputSources?.forEach((source, index) => {
+    if (!source?.sourceName) {
+      errors?.push({
         field: `inputSources[${index}].sourceName`,
         message: `Input source ${index + 1} must have a name`,
       });
     }
 
-    if (source.sourceType === 'File' && !source.filePath) {
-      errors.push({
+    if (source?.sourceType === 'File' && !source?.filePath) {
+      errors?.push({
         field: `inputSources[${index}].filePath`,
-        message: `Input source "${source.sourceName}" must have a file path`,
+        message: `Input source "${source?.sourceName}" must have a file path`,
       });
     }
 
-    if (source.sourceType === 'Database' && (!source.database || !source.table)) {
-      errors.push({
+    if (source?.sourceType === 'Database' && (!source?.database || !source?.table)) {
+      errors?.push({
         field: `inputSources[${index}].database`,
-        message: `Input source "${source.sourceName}" must have database and table`,
+        message: `Input source "${source?.sourceName}" must have database and table`,
       });
     }
   });
@@ -78,16 +78,16 @@ export const validateStatsConfigurations = (
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
 
-  statsConfigurations.forEach((config, index) => {
-    if (!config.inputSources || config.inputSources.length === 0) {
-      errors.push({
+  statsConfigurations?.forEach((config, index) => {
+    if (!config?.inputSources || config?.inputSources?.length === 0) {
+      errors?.push({
         field: `stats[${index}].inputSources`,
         message: `Stats configuration ${index + 1} must have at least one input source`,
       });
     }
 
-    if (!config.countsOn || config.countsOn.length === 0) {
-      errors.push({
+    if (!config?.countsOn || config?.countsOn?.length === 0) {
+      errors?.push({
         field: `stats[${index}].countsOn`,
         message: `Stats configuration ${index + 1} must have at least one count field`,
       });
@@ -105,31 +105,31 @@ export const validateOutputConfigurations = (
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
 
-  if (outputConfigurations.length === 0) {
-    errors.push({
+  if (outputConfigurations?.length === 0) {
+    errors?.push({
       field: 'outputConfigurations',
       message: 'At least one output configuration is required',
     });
     return errors;
   }
 
-  outputConfigurations.forEach((config, index) => {
-    if (!config.inputSources || config.inputSources.length === 0) {
-      errors.push({
+  outputConfigurations?.forEach((config, index) => {
+    if (!config?.inputSources || config?.inputSources?.length === 0) {
+      errors?.push({
         field: `output[${index}].inputSources`,
         message: `Output configuration ${index + 1} must have at least one input source`,
       });
     }
 
-    if (!config.outputFields || config.outputFields.length === 0) {
-      errors.push({
+    if (!config?.outputFields || config?.outputFields?.length === 0) {
+      errors?.push({
         field: `output[${index}].outputFields`,
         message: `Output configuration ${index + 1} must have at least one output field`,
       });
     }
 
-    if (!config.destinations || config.destinations.length === 0) {
-      errors.push({
+    if (!config?.destinations || config?.destinations?.length === 0) {
+      errors?.push({
         field: `output[${index}].destinations`,
         message: `Output configuration ${index + 1} must have at least one destination`,
       });
@@ -153,28 +153,28 @@ export const validateScheduleConfiguration = (
 
   if (scheduleType === 'recurring') {
     if (!recurrenceUnit) {
-      errors.push({
+      errors?.push({
         field: 'recurrenceUnit',
         message: 'Recurrence unit is required for scheduled requests',
       });
     }
 
     if (!recurrenceInterval || recurrenceInterval < 1) {
-      errors.push({
+      errors?.push({
         field: 'recurrenceInterval',
         message: 'Recurrence interval must be at least 1',
       });
     }
 
     if (!startDate) {
-      errors.push({
+      errors?.push({
         field: 'startDate',
         message: 'Start date is required for scheduled requests',
       });
     }
 
     if (endDate && new Date(endDate) < new Date(startDate)) {
-      errors.push({
+      errors?.push({
         field: 'endDate',
         message: 'End date must be after start date',
       });
@@ -203,20 +203,20 @@ export const validateRequest = (
   // Validate request name
   const nameError = validateRequestName(requestName);
   if (nameError) {
-    errors.push({ field: 'requestName', message: nameError });
+    errors?.push({ field: 'requestName', message: nameError });
   }
 
   // Validate input sources
-  errors.push(...validateInputSources(inputSources));
+  errors?.push(...validateInputSources(inputSources));
 
   // Validate stats
-  errors.push(...validateStatsConfigurations(statsConfigurations));
+  errors?.push(...validateStatsConfigurations(statsConfigurations));
 
   // Validate output
-  errors.push(...validateOutputConfigurations(outputConfigurations));
+  errors?.push(...validateOutputConfigurations(outputConfigurations));
 
   // Validate schedule
-  errors.push(...validateScheduleConfiguration(
+  errors?.push(...validateScheduleConfiguration(
     scheduleType,
     recurrenceUnit,
     recurrenceInterval,

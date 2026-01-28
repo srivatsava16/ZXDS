@@ -33,7 +33,7 @@ const SortableAccordionItem: React.FC<SortableAccordionItemProps> = ({
   return (
     <div ref={setNodeRef} style={style}>
       <Accordion
-        expanded={expanded.includes(module.id)}
+        expanded={expanded?.includes(module.id)}
         onChange={onChange(module.id)}
         sx={{
           mb: 2,

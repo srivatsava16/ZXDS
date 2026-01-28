@@ -70,16 +70,16 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   const getAvailableColumnsWithTables = (): Array<{ value: string; label: string; tableName: string }> => {
     const columnsWithTables: Array<{ value: string; label: string; tableName: string }> = [];
 
-    selectedSources.forEach(sourceId => {
-      const source = availableSources.find(s => s.id === sourceId);
+    selectedSources?.forEach(sourceId => {
+      const source = availableSources?.find(s => s.id === sourceId);
       if (!source) return;
 
       // Use actual headers from the source
-      const fields: string[] = source.headers && source.headers.length > 0 ? source.headers : [];
+      const fields: string[] = source.headers && source.headers?.length > 0 ? source.headers : [];
 
-      fields.forEach(field => {
+      fields?.forEach(field => {
         const uniqueValue = `${sourceId}::${field}`;
-        columnsWithTables.push({
+        columnsWithTables?.push({
           value: uniqueValue,
           label: `${field} → ${source.name}`,
           tableName: source.name,
@@ -93,24 +93,24 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   const availableColumns = getAvailableColumnsWithTables();
 
   // Filter columns based on search query
-  const filteredColumns = availableColumns.filter(column =>
-    column.label.toLowerCase().includes(columnSearchQuery.toLowerCase()) ||
-    column.tableName.toLowerCase().includes(columnSearchQuery.toLowerCase())
+  const filteredColumns = availableColumns?.filter(column =>
+    column.label?.toLowerCase().includes(columnSearchQuery?.toLowerCase()) ||
+    column.tableName?.toLowerCase().includes(columnSearchQuery?.toLowerCase())
   );
 
   const handleAddMapping = () => {
     console.log('🔍 [DEBUG - FieldMappingDialog] Step 3: Add/Update mapping clicked');
     console.log('🔍 [DEBUG - FieldMappingDialog] Step 3a: Current mappings state BEFORE add =', mappings);
 
-    if (!fieldName.trim()) {
+    if (!fieldName?.trim()) {
       alert('Please enter a field name');
       return;
     }
-    if (selectedSources.length === 0) {
+    if (selectedSources?.length === 0) {
       alert('Please select at least one source');
       return;
     }
-    if (selectedColumns.length === 0) {
+    if (selectedColumns?.length === 0) {
       alert('Please select at least one column');
       return;
     }
@@ -130,7 +130,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
 
     if (editingId) {
       // Update existing mapping
-      const updatedMappings = mappings.map(m =>
+      const updatedMappings = mappings?.map(m =>
         m.id === editingId
           ? { ...m, fieldName, selectedSources, selectedColumns }
           : m
@@ -167,7 +167,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
 
   const handleDeleteMapping = (id: string) => {
     if (window.confirm('Are you sure you want to delete this mapping?')) {
-      setMappings(mappings.filter(m => m.id !== id));
+      setMappings(mappings?.filter(m => m.id !== id));
       if (editingId === id) {
         setEditingId(null);
         setFieldName('');
@@ -202,7 +202,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    return availableSources.find(s => s.id === id)?.name || id;
+    return availableSources?.find(s => s.id === id)?.name || id;
   };
 
   return (
@@ -288,13 +288,13 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                 multiple
                 value={selectedSources}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-mapping-sources')) {
-                    if (selectedSources.length === availableSources.length) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-mapping-sources')) {
+                    if (selectedSources?.length === availableSources?.length) {
                       setSelectedSources([]);
                       setSelectedColumns([]);
                     } else {
-                      setSelectedSources(availableSources.map(s => s.id));
+                      setSelectedSources(availableSources?.map(s => s.id));
                     }
                   } else {
                     setSelectedSources(value);
@@ -304,7 +304,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -331,15 +331,15 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                   sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                 >
                   <Checkbox
-                    checked={selectedSources.length === availableSources.length && availableSources.length > 0}
-                    indeterminate={selectedSources.length > 0 && selectedSources.length < availableSources.length}
+                    checked={selectedSources?.length === availableSources?.length && availableSources?.length > 0}
+                    indeterminate={selectedSources?.length > 0 && selectedSources?.length < availableSources?.length}
                     size="small"
                   />
                   <ListItemText primary="Select All" />
                 </MenuItem>
-                {availableSources.map((source) => (
+                {availableSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedSources.indexOf(source.id) > -1} size="small" />
+                    <Checkbox checked={selectedSources?.indexOf(source.id) > -1} size="small" />
                     <ListItemText
                       primary={source.name}
                     />
@@ -359,12 +359,12 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                 multiple
                 value={selectedColumns}
                 onChange={(e) => {
-                  const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                  if (value.includes('select-all-mapping-columns')) {
-                    if (selectedColumns.length === filteredColumns.length) {
+                  const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                  if (value?.includes('select-all-mapping-columns')) {
+                    if (selectedColumns?.length === filteredColumns?.length) {
                       setSelectedColumns([]);
                     } else {
-                      setSelectedColumns(filteredColumns.map(c => c.value));
+                      setSelectedColumns(filteredColumns?.map(c => c.value));
                     }
                   } else {
                     setSelectedColumns(value);
@@ -374,8 +374,8 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => {
-                      const column = availableColumns.find(col => col.value === value);
+                    {selected?.map((value) => {
+                      const column = availableColumns?.find(col => col.value === value);
                       return (
                         <Chip
                           key={value}
@@ -388,7 +388,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                     })}
                   </Box>
                 )}
-                disabled={selectedSources.length === 0}
+                disabled={selectedSources?.length === 0}
                 displayEmpty
                 sx={{
                   backgroundColor: 'white',
@@ -439,38 +439,38 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                 </MenuItem>
 
                 <MenuItem disabled value="">
-                  <em>{selectedSources.length === 0 ? 'Select sources first' : 'Select columns...'}</em>
+                  <em>{selectedSources?.length === 0 ? 'Select sources first' : 'Select columns...'}</em>
                 </MenuItem>
                 {/* Select All Option */}
-                {filteredColumns.length > 0 && (
+                {filteredColumns?.length > 0 && (
                   <MenuItem
                     value="select-all-mapping-columns"
                     sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}
                   >
                     <Checkbox
                       checked={
-                        filteredColumns.length > 0 &&
-                        filteredColumns.every(col => selectedColumns.includes(col.value))
+                        filteredColumns?.length > 0 &&
+                        filteredColumns?.every(col => selectedColumns?.includes(col.value))
                       }
                       indeterminate={
-                        filteredColumns.some(col => selectedColumns.includes(col.value)) &&
-                        !filteredColumns.every(col => selectedColumns.includes(col.value))
+                        filteredColumns?.some(col => selectedColumns?.includes(col.value)) &&
+                        !filteredColumns?.every(col => selectedColumns?.includes(col.value))
                       }
                       size="small"
                     />
                     <ListItemText primary="Select All" />
                   </MenuItem>
                 )}
-                {filteredColumns.map((column) => (
+                {filteredColumns?.map((column) => (
                   <MenuItem key={column.value} value={column.value}>
-                    <Checkbox checked={selectedColumns.indexOf(column.value) > -1} size="small" />
+                    <Checkbox checked={selectedColumns?.indexOf(column.value) > -1} size="small" />
                     <ListItemText
                       primary={column.label}
                       primaryTypographyProps={{ fontSize: '0.85rem' }}
                     />
                   </MenuItem>
                 ))}
-                {filteredColumns.length === 0 && selectedSources.length > 0 && (
+                {filteredColumns?.length === 0 && selectedSources?.length > 0 && (
                   <MenuItem disabled>
                     <em>No columns match your search</em>
                   </MenuItem>
@@ -514,14 +514,14 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
         </Paper>
 
         {/* Mappings Table */}
-        {mappings.length > 0 && (
+        {mappings?.length > 0 && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748' }}>
                 Configured Mappings
               </Typography>
               <Chip
-                label={`${mappings.length} mapping${mappings.length !== 1 ? 's' : ''}`}
+                label={`${mappings?.length} mapping${mappings?.length !== 1 ? 's' : ''}`}
                 size="small"
                 color="primary"
                 sx={{ fontWeight: 600, fontSize: '0.7rem' }}
@@ -554,7 +554,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {mappings.map((mapping) => (
+                  {mappings?.map((mapping) => (
                     <TableRow
                       key={mapping.id}
                       hover
@@ -569,7 +569,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                       </TableCell>
                       <TableCell sx={{ py: 1 }}>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {mapping.selectedSources.map(sourceId => (
+                          {mapping.selectedSources?.map(sourceId => (
                             <Chip
                               key={sourceId}
                               label={getSourceName(sourceId)}
@@ -586,11 +586,11 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                       </TableCell>
                       <TableCell sx={{ py: 1 }}>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {mapping.selectedColumns.slice(0, 3).map(columnValue => {
+                          {mapping.selectedColumns?.slice(0, 3).map(columnValue => {
                             // Extract field name from the value (format: sourceId::fieldName)
-                            const fieldName = columnValue.includes('::') ? columnValue.split('::')[1] : columnValue;
+                            const fieldName = columnValue?.includes('::') ? columnValue?.split('::')[1] : columnValue;
                             // Try to find the label from available columns
-                            const column = availableColumns.find(col => col.value === columnValue);
+                            const column = availableColumns?.find(col => col.value === columnValue);
                             return (
                               <Chip
                                 key={columnValue}
@@ -605,9 +605,9 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                               />
                             );
                           })}
-                          {mapping.selectedColumns.length > 3 && (
+                          {mapping.selectedColumns?.length > 3 && (
                             <Chip
-                              label={`+${mapping.selectedColumns.length - 3}`}
+                              label={`+${mapping.selectedColumns?.length - 3}`}
                               size="small"
                               sx={{
                                 height: 18,
@@ -657,7 +657,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
           </Box>
         )}
 
-        {mappings.length === 0 && (
+        {mappings?.length === 0 && (
           <Paper
             sx={{
               p: 3,

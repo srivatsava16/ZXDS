@@ -57,9 +57,9 @@ const AppendConfigHeader: React.FC<AppendConfigHeaderProps> = ({
           }}
         >
           Field Mapping
-          {fieldMappings.length > 0 && (
+          {fieldMappings?.length > 0 && (
             <Chip
-              label={fieldMappings.length}
+              label={fieldMappings?.length}
               size="small"
               sx={{
                 ml: 1,
@@ -92,9 +92,9 @@ const AppendConfigHeader: React.FC<AppendConfigHeaderProps> = ({
           }}
         >
           Add Column
-          {addedCustomColumns.length > 0 && (
+          {addedCustomColumns?.length > 0 && (
             <Chip
-              label={addedCustomColumns.length}
+              label={addedCustomColumns?.length}
               size="small"
               sx={{
                 ml: 1,

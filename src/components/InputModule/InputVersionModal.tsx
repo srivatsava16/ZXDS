@@ -200,7 +200,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   const [error, setError] = useState('');
 
   // Filter out the currently editing version from available sources
-  const filteredAvailableSources = availableSources.filter(source => {
+  const filteredAvailableSources = availableSources?.filter(source => {
     // If we're editing a version, exclude it from the dropdown
     if (editingVersion && editingVersion.id) {
       return source.id !== editingVersion.id;
@@ -220,7 +220,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
     // API format: selectedColumns (comma-separated string) or columns (array)
     if (source?.selectedColumns && typeof source?.selectedColumns === 'string') {
-      return source.selectedColumns.split(',').map((h: string) => h.trim()).filter((h: string) => h.length > 0);
+      return source.selectedColumns?.split(',').map((h: string) => h?.trim()).filter((h: string) => h?.length > 0);
     }
     if (source?.columns && Array.isArray(source?.columns)) {
       return source.columns;
@@ -270,8 +270,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         const inputSources = configJson.input_sources || [];
 
         // Map input sources to IDs
-        const sourceIds = inputSources.map((src: any) => {
-          const found = availableSources.find(s => s.sourceName === src.source_name);
+        const sourceIds = inputSources?.map((src: any) => {
+          const found = availableSources?.find(s => s.sourceName === src.source_name);
           return found?.id || src.source_name;
         });
         setSelectedSources(sourceIds);
@@ -313,20 +313,20 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
         // Transform field_mappings back to UI format if they exist
         const fieldMappings = configJson.field_mappings || [];
-        const transformedMappings = fieldMappings.map((fm: any, idx: number) => {
-          const sourceMappings = fm.source_mappings.split('|');
-          const selectedColumns = sourceMappings.map((mapping: string) => {
-            const [sourceName, columnName] = mapping.split('.');
-            const source = availableSources.find(s => s.sourceName === sourceName);
+        const transformedMappings = fieldMappings?.map((fm: any, idx: number) => {
+          const sourceMappings = fm.source_mappings?.split('|');
+          const selectedColumns = sourceMappings?.map((mapping: string) => {
+            const [sourceName, columnName] = mapping?.split('.');
+            const source = availableSources?.find(s => s.sourceName === sourceName);
             return `${source?.id || sourceName}::${columnName}`;
           });
 
           return {
             id: `mapping_${idx}`,
             fieldName: fm.field_name,
-            selectedSources: [...new Set(sourceMappings.map((mapping: string) => {
-              const sourceName = mapping.split('.')[0];
-              const source = availableSources.find(s => s.sourceName === sourceName);
+            selectedSources: [...new Set(sourceMappings?.map((mapping: string) => {
+              const sourceName = mapping?.split('.')[0];
+              const source = availableSources?.find(s => s.sourceName === sourceName);
               return source?.id || sourceName;
             }))],
             selectedColumns
@@ -337,14 +337,14 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         // Transform added_fields back to nested fields
         const addedFields = configJson.added_fields || [];
         const transformedNestedFields: NestedField[] = [];
-        addedFields.forEach((af: any, sourceIdx: number) => {
-          const source = availableSources.find(s => s.sourceName === af.source_name);
-          af.fields.forEach((field: any, fieldIdx: number) => {
-            transformedNestedFields.push({
+        addedFields?.forEach((af: any, sourceIdx: number) => {
+          const source = availableSources?.find(s => s.sourceName === af.source_name);
+          af.fields?.forEach((field: any, fieldIdx: number) => {
+            transformedNestedFields?.push({
               id: `nested_${sourceIdx}_${fieldIdx}`,
               sourceId: source?.id || af.source_name,
               fieldName: field.field_name,
-              dataType: field.data_type.toLowerCase() === 'integer' ? 'int' : field.data_type.toLowerCase(),
+              dataType: field.data_type?.toLowerCase() === 'integer' ? 'int' : field.data_type?.toLowerCase(),
               defaultValue: String(field.default_value)
             });
           });
@@ -391,13 +391,13 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
   // Auto-generate version name when sources are selected (only for new versions, not editing)
   useEffect(() => {
-    if (!editingVersion && selectedSources.length > 0) {
-      const sources = availableSources.filter(s => selectedSources.includes(s.id));
-      const sourceNames = sources.map(source => source.sourceName);
+    if (!editingVersion && selectedSources?.length > 0) {
+      const sources = availableSources?.filter(s => selectedSources?.includes(s.id));
+      const sourceNames = sources?.map(source => source.sourceName);
 
       // Generate version name: Source1_Source2_version
-      const generatedName = sourceNames.length > 0
-        ? `${sourceNames.join('_')}_version`
+      const generatedName = sourceNames?.length > 0
+        ? `${sourceNames?.join('_')}_version`
         : '';
 
       setVersionName(generatedName);
@@ -406,20 +406,20 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
   // Update available headers when sources change or nested fields are added
   useEffect(() => {
-    if (selectedSources.length > 0) {
-      const sources = availableSources.filter(s => selectedSources.includes(s.id));
+    if (selectedSources?.length > 0) {
+      const sources = availableSources?.filter(s => selectedSources?.includes(s.id));
       const headersSet = new Set<string>();
 
-      if (sources.length === 1) {
+      if (sources?.length === 1) {
         // If only one source is selected, show all headers from that source
         const singleSource = sources[0];
         const sourceHeaders = getSourceHeaders(singleSource);
 
-        sourceHeaders.forEach(header => {
+        sourceHeaders?.forEach(header => {
           // Check if this header is part of a field mapping
-          const mapping = fieldMappings.find(m =>
-            m.selectedColumns.some(col => {
-              const [mappedSourceId, mappedColumn] = col.split('::');
+          const mapping = fieldMappings?.find(m =>
+            m.selectedColumns?.some(col => {
+              const [mappedSourceId, mappedColumn] = col?.split('::');
               return mappedSourceId === singleSource.id && mappedColumn === header;
             })
           );
@@ -436,41 +436,41 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         nestedFields
           .filter(nf => nf.sourceId === singleSource.id)
           .forEach(nf => headersSet.add(nf.fieldName));
-      } else if (sources.length > 1) {
+      } else if (sources?.length > 1) {
         // If multiple sources are selected, show only common headers (intersection)
         // IMPORTANT: Apply field mappings FIRST, then check for common headers
 
         // Step 1: Build effective header maps for each source (after applying field mappings)
-        const allSourceHeaderMaps = sources.map(source => {
+        const allSourceHeaderMaps = sources?.map(source => {
           const sourceHeaders = getSourceHeaders(source);
           const headerMap = new Map<string, string>(); // lowercase -> effective name
 
           // Add actual headers to the map
-          sourceHeaders.forEach(header => {
-            headerMap.set(header.toLowerCase(), header);
+          sourceHeaders?.forEach(header => {
+            headerMap.set(header?.toLowerCase(), header);
           });
 
           // Add nested fields for this source
           nestedFields
             .filter(nf => nf.sourceId === source.id)
             .forEach(nf => {
-              headerMap.set(nf.fieldName.toLowerCase(), nf.fieldName);
+              headerMap.set(nf.fieldName?.toLowerCase(), nf.fieldName);
             });
 
           // Step 2: Apply field mappings to transform header names for this source
           // For each mapping, check if this source has the mapped column
-          fieldMappings.forEach(mapping => {
-            mapping.selectedColumns.forEach(col => {
-              const [sourceId, columnName] = col.split('::');
+          fieldMappings?.forEach(mapping => {
+            mapping.selectedColumns?.forEach(col => {
+              const [sourceId, columnName] = col?.split('::');
               // If this mapping targets this source
               if (sourceId === source.id && columnName) {
                 // Replace the original column name with the mapped field name
-                const columnLower = columnName.toLowerCase();
+                const columnLower = columnName?.toLowerCase();
                 if (headerMap.has(columnLower)) {
                   // Remove the original column name
                   headerMap.delete(columnLower);
                   // Add the mapped field name instead
-                  headerMap.set(mapping.fieldName.toLowerCase(), mapping.fieldName);
+                  headerMap.set(mapping.fieldName?.toLowerCase(), mapping.fieldName);
                   console.log(`[InputVersionModal] Applied mapping for source "${source.sourceName}": "${columnName}" → "${mapping.fieldName}"`);
                 }
               }
@@ -485,9 +485,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         const firstSourceHeaders: string[] = Array.from(allSourceHeaderMaps[0].values());
 
         // Only include headers that exist in ALL sources (case-insensitive comparison)
-        firstSourceHeaders.forEach((header: string) => {
-          const headerLower = header.toLowerCase();
-          const existsInAllSources = allSourceHeaderMaps.every(headerMap =>
+        firstSourceHeaders?.forEach((header: string) => {
+          const headerLower = header?.toLowerCase();
+          const existsInAllSources = allSourceHeaderMaps?.every(headerMap =>
             headerMap.has(headerLower)
           );
 
@@ -501,7 +501,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       const headers = Array.from(headersSet).sort();
 
       // Log for debugging
-      console.log('Version Modal - Selected Sources:', selectedSources.length);
+      console.log('Version Modal - Selected Sources:', selectedSources?.length);
       console.log('Version Modal - Field Mappings:', fieldMappings);
       console.log('Version Modal - Common Headers (including nested and mappings):', headers);
 
@@ -516,10 +516,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       } else {
         // Edit mode: Only update if current selection is invalid
         // Keep headers that are still available, remove headers that are no longer available
-        const validSelectedHeaders = selectedHeaders.filter(h => headers.includes(h));
-        if (validSelectedHeaders.length !== selectedHeaders.length) {
+        const validSelectedHeaders = selectedHeaders?.filter(h => headers?.includes(h));
+        if (validSelectedHeaders?.length !== selectedHeaders?.length) {
           setSelectedHeaders(validSelectedHeaders);
-          setOrderedHeaders(orderedHeaders.filter(h => validSelectedHeaders.includes(h)));
+          setOrderedHeaders(orderedHeaders?.filter(h => validSelectedHeaders?.includes(h)));
         }
       }
     } else {
@@ -544,8 +544,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     setSelectedHeaders(value as string[]);
     
     // Update ordered headers to only include selected ones
-    const newOrderedHeaders = orderedHeaders.filter((h: string) => (value as string[]).includes(h));
-    const newHeaders = (value as string[]).filter((h: string) => !newOrderedHeaders.includes(h));
+    const newOrderedHeaders = orderedHeaders?.filter((h: string) => (value as string[]).includes(h));
+    const newHeaders = (value as string[]).filter((h: string) => !newOrderedHeaders?.includes(h));
     setOrderedHeaders([...newOrderedHeaders, ...newHeaders]);
   };
 
@@ -554,8 +554,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
     if (active.id !== over?.id) {
       setOrderedHeaders((items) => {
-        const oldIndex = items.indexOf(active.id);
-        const newIndex = items.indexOf(over.id);
+        const oldIndex = items?.indexOf(active.id);
+        const newIndex = items?.indexOf(over.id);
         return arrayMove(items, oldIndex, newIndex);
       });
     }
@@ -564,7 +564,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   const getAvailableColumns = () => {
     const columns: Array<{ value: string; label: string }> = [];
 
-    if (mappingSelectedSources.length === 0) {
+    if (mappingSelectedSources?.length === 0) {
       return columns;
     }
 
@@ -572,43 +572,43 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     console.log('🔍 Field Mapping - getAvailableColumns Debug:');
     console.log('  mappingSelectedSources:', mappingSelectedSources);
     console.log('  nestedFields:', nestedFields);
-    console.log('  nestedFields filtered by sourceId:', mappingSelectedSources.map(sid => ({
+    console.log('  nestedFields filtered by sourceId:', mappingSelectedSources?.map(sid => ({
       sourceId: sid,
-      matchingNestedFields: nestedFields.filter(nf => nf.sourceId === sid)
+      matchingNestedFields: nestedFields?.filter(nf => nf.sourceId === sid)
     })));
 
-    if (mappingSelectedSources.length === 1) {
+    if (mappingSelectedSources?.length === 1) {
       // If only one source selected, show all columns from that source (including nested fields)
       const sourceId = mappingSelectedSources[0];
-      const source = availableSources.find(s => s.id === sourceId);
+      const source = availableSources?.find(s => s.id === sourceId);
       if (source) {
         const sourceHeaders = getSourceHeaders(source);
         // Add regular headers
-        sourceHeaders.forEach(header => {
-          columns.push({
+        sourceHeaders?.forEach(header => {
+          columns?.push({
             value: `${sourceId}::${header}`,
             label: `${source.sourceName} → ${header}`
           });
         });
         // Add nested fields for this source
-        const matchingNestedFields = nestedFields.filter(nf => nf.sourceId === sourceId);
+        const matchingNestedFields = nestedFields?.filter(nf => nf.sourceId === sourceId);
         console.log('  Source:', source.sourceName, '(ID:', sourceId, ')');
-        console.log('  Regular headers count:', sourceHeaders.length);
+        console.log('  Regular headers count:', sourceHeaders?.length);
         console.log('  Matching nested fields:', matchingNestedFields);
 
-        matchingNestedFields.forEach(nf => {
-          columns.push({
+        matchingNestedFields?.forEach(nf => {
+          columns?.push({
             value: `${sourceId}::${nf.fieldName}`,
             label: `${source.sourceName} → ${nf.fieldName} (nested)`
           });
         });
 
-        console.log('  Total columns (after nested):', columns.length);
+        console.log('  Total columns (after nested):', columns?.length);
       }
     } else {
       // If multiple sources selected, show ALL columns from ALL sources (union - including nested fields)
-      const sourcesData = mappingSelectedSources.map(sourceId => {
-        const source = availableSources.find(s => s.id === sourceId);
+      const sourcesData = mappingSelectedSources?.map(sourceId => {
+        const source = availableSources?.find(s => s.id === sourceId);
         const regularHeaders = source ? getSourceHeaders(source) : [];
         // Include nested fields for this source
         const nestedFieldNames = nestedFields
@@ -622,9 +622,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       });
 
       // Add ALL columns from ALL sources
-      sourcesData.forEach(src => {
-        src.headers.forEach(header => {
-          columns.push({
+      sourcesData?.forEach(src => {
+        src.headers?.forEach(header => {
+          columns?.push({
             value: `${src.id}::${header}`,
             label: `${src.name} → ${header}`
           });
@@ -632,27 +632,27 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       });
     }
 
-    return columns.filter(col =>
-      col.label.toLowerCase().includes(columnSearchQuery.toLowerCase()) ||
-      col.value.toLowerCase().includes(columnSearchQuery.toLowerCase())
+    return columns?.filter(col =>
+      col.label?.toLowerCase().includes(columnSearchQuery?.toLowerCase()) ||
+      col.value?.toLowerCase().includes(columnSearchQuery?.toLowerCase())
     );
   };
 
   const getSourceName = (sourceId: string): string => {
-    const source = availableSources.find(s => s.id === sourceId);
+    const source = availableSources?.find(s => s.id === sourceId);
     return source?.sourceName || sourceId;
   };
 
   const handleAddMapping = () => {
-    if (!mappingFieldName.trim()) {
+    if (!mappingFieldName?.trim()) {
       alert('Please enter a field name');
       return;
     }
-    if (mappingSelectedSources.length === 0) {
+    if (mappingSelectedSources?.length === 0) {
       alert('Please select at least one source');
       return;
     }
-    if (mappingSelectedColumns.length === 0) {
+    if (mappingSelectedColumns?.length === 0) {
       alert('Please select at least one column');
       return;
     }
@@ -672,7 +672,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
     if (editingMappingId) {
       // Update existing mapping
-      setFieldMappings(fieldMappings.map(m =>
+      setFieldMappings(fieldMappings?.map(m =>
         m.id === editingMappingId
           ? { ...m, fieldName: mappingFieldName, selectedSources: mappingSelectedSources, selectedColumns: mappingSelectedColumns }
           : m
@@ -705,7 +705,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
   const handleDeleteMapping = (id: string) => {
     if (window.confirm('Are you sure you want to delete this mapping?')) {
-      setFieldMappings(fieldMappings.filter(m => m.id !== id));
+      setFieldMappings(fieldMappings?.filter(m => m.id !== id));
     }
   };
 
@@ -715,17 +715,17 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       alert('Please select an input source');
       return;
     }
-    if (!nestedFieldName.trim()) {
+    if (!nestedFieldName?.trim()) {
       alert('Please enter a field name');
       return;
     }
-    if (!nestedFieldDefaultValue.trim()) {
+    if (!nestedFieldDefaultValue?.trim()) {
       alert('Please enter a default value');
       return;
     }
 
     // Validate for duplicate nested field names (case-insensitive) within the same source
-    const nestedFieldsForSource = nestedFields.filter(nf => nf.sourceId === nestedFieldSourceId);
+    const nestedFieldsForSource = nestedFields?.filter(nf => nf.sourceId === nestedFieldSourceId);
     const validationError = validateMappingFieldName(
       nestedFieldName,
       nestedFieldsForSource,
@@ -740,7 +740,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
     if (editingNestedFieldId) {
       // Update existing nested field
-      setNestedFields(nestedFields.map(nf =>
+      setNestedFields(nestedFields?.map(nf =>
         nf.id === editingNestedFieldId
           ? { ...nf, sourceId: nestedFieldSourceId, fieldName: nestedFieldName, dataType: nestedFieldDataType, defaultValue: nestedFieldDefaultValue }
           : nf
@@ -775,19 +775,19 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
   const handleDeleteNestedField = (id: string) => {
     if (window.confirm('Are you sure you want to delete this nested field?')) {
-      setNestedFields(nestedFields.filter(nf => nf.id !== id));
+      setNestedFields(nestedFields?.filter(nf => nf.id !== id));
     }
   };
 
   const handleSave = () => {
-    if (!versionName.trim()) {
+    if (!versionName?.trim()) {
       setError('Please enter a version name');
       return;
     }
 
     // Use centralized validation to check against API reserved names and existing sources
     const validationError = validateUniqueSourceName({
-      sourceName: versionName.trim(),
+      sourceName: versionName?.trim(),
       allExistingSources: availableSources as any,
       editingSourceId: editingVersion?.id,
       moduleName: 'Input Version',
@@ -799,26 +799,26 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return;
     }
 
-    console.log('✅ Version name is unique:', versionName.trim());
+    console.log('✅ Version name is unique:', versionName?.trim());
 
-    if (selectedSources.length < 1) {
+    if (selectedSources?.length < 1) {
       setError('Please select at least 1 input source');
       return;
     }
 
     // Allow saving with no headers if field mappings are defined
-    if (selectedHeaders.length === 0 && fieldMappings.length === 0) {
+    if (selectedHeaders?.length === 0 && fieldMappings?.length === 0) {
       setError('Please select at least one header or define field mappings');
       return;
     }
 
     // Prepare the ordered selected headers (needed for input_sources, merge keys, and priority order)
-    const orderedSelectedHeaders = orderedHeaders.filter(h => selectedHeaders.includes(h));
+    const orderedSelectedHeaders = orderedHeaders?.filter(h => selectedHeaders?.includes(h));
 
     // Transform selected sources into input_sources format
     // IMPORTANT: We need to send ONLY the user's selected headers, not all available headers
-    const input_sources = selectedSources.map(srcId => {
-      const src = availableSources.find(s => s.id === srcId);
+    const input_sources = selectedSources?.map(srcId => {
+      const src = availableSources?.find(s => s.id === srcId);
 
       return {
         source_name: src?.sourceName || srcId,
@@ -827,12 +827,12 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     });
 
     // Transform nested fields into added_fields format (grouped by source)
-    const added_fields = nestedFields.length > 0
-      ? selectedSources.map(srcId => {
-          const src = availableSources.find(s => s.id === srcId);
-          const fieldsForSource = nestedFields.filter(nf => nf.sourceId === srcId);
+    const added_fields = nestedFields?.length > 0
+      ? selectedSources?.map(srcId => {
+          const src = availableSources?.find(s => s.id === srcId);
+          const fieldsForSource = nestedFields?.filter(nf => nf.sourceId === srcId);
 
-          if (fieldsForSource.length === 0) {
+          if (fieldsForSource?.length === 0) {
             return null;
           }
 
@@ -847,9 +847,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
           return {
             source_name: src?.sourceName || srcId,
-            fields: fieldsForSource.map(field => ({
+            fields: fieldsForSource?.map(field => ({
               field_name: field.fieldName,
-              data_type: dataTypeMap[field.dataType] || field.dataType.toUpperCase(),
+              data_type: dataTypeMap[field.dataType] || field.dataType?.toUpperCase(),
               default_value: field.dataType === 'int' ? parseInt(field.defaultValue, 10) : field.defaultValue
             }))
           };
@@ -865,18 +865,18 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     };
 
     // Transform field mappings to the new format with pipe-separated source mappings
-    const field_mappings = fieldMappings.map(mapping => {
+    const field_mappings = fieldMappings?.map(mapping => {
       // Convert selectedColumns format from "sourceId::columnName" to "SourceName.columnName"
-      const sourceMappings = mapping.selectedColumns.map(colValue => {
-        const [sourceId, columnName] = colValue.split('::');
-        const source = availableSources.find(s => s.id === sourceId);
+      const sourceMappings = mapping.selectedColumns?.map(colValue => {
+        const [sourceId, columnName] = colValue?.split('::');
+        const source = availableSources?.find(s => s.id === sourceId);
         const sourceName = source?.sourceName || sourceId;
         return `${sourceName}.${columnName}`;
       });
 
       return {
         field_name: mapping.fieldName,
-        source_mappings: sourceMappings.join('|')
+        source_mappings: sourceMappings?.join('|')
       };
     });
 
@@ -910,8 +910,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     console.log('===============================================');
     console.log('Version Name:', versionName);
     console.log('Selected Sources:', selectedSources);
-    console.log('Selected Sources Details:', selectedSources.map(srcId => {
-      const src = availableSources.find(s => s.id === srcId);
+    console.log('Selected Sources Details:', selectedSources?.map(srcId => {
+      const src = availableSources?.find(s => s.id === srcId);
       return {
         id: srcId,
         name: src?.sourceName,
@@ -922,11 +922,11 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
     console.log('');
     console.log('Available Headers (before mapping):', availableHeaders);
     console.log('Selected Headers:', selectedHeaders);
-    console.log('Ordered Headers:', orderedHeaders.filter(h => selectedHeaders.includes(h)));
+    console.log('Ordered Headers:', orderedHeaders?.filter(h => selectedHeaders?.includes(h)));
     console.log('');
-    console.log('Field Mappings (UI format):', fieldMappings.length > 0 ? fieldMappings : 'None');
-    if (fieldMappings.length > 0) {
-      fieldMappings.forEach((mapping, idx) => {
+    console.log('Field Mappings (UI format):', fieldMappings?.length > 0 ? fieldMappings : 'None');
+    if (fieldMappings?.length > 0) {
+      fieldMappings?.forEach((mapping, idx) => {
         console.log(`  Mapping ${idx + 1}:`, {
           fieldName: mapping.fieldName,
           selectedSources: mapping.selectedSources,
@@ -935,16 +935,16 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       });
     }
     console.log('');
-    console.log('Field Mappings (API format):', field_mappings.length > 0 ? field_mappings : 'None');
-    if (field_mappings.length > 0) {
-      field_mappings.forEach((mapping, idx) => {
+    console.log('Field Mappings (API format):', field_mappings?.length > 0 ? field_mappings : 'None');
+    if (field_mappings?.length > 0) {
+      field_mappings?.forEach((mapping, idx) => {
         console.log(`  Mapping ${idx + 1}:`, mapping);
       });
     }
     console.log('');
-    console.log('Nested Fields:', nestedFields.length > 0 ? nestedFields : 'None');
-    if (nestedFields.length > 0) {
-      nestedFields.forEach((field, idx) => {
+    console.log('Nested Fields:', nestedFields?.length > 0 ? nestedFields : 'None');
+    if (nestedFields?.length > 0) {
+      nestedFields?.forEach((field, idx) => {
         console.log(`  Nested Field ${idx + 1}:`, {
           sourceId: field.sourceId,
           fieldName: field.fieldName,
@@ -1036,7 +1036,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {(selected as string[]).map((value) => {
-                        const source = filteredAvailableSources.find(s => s.id === value);
+                        const source = filteredAvailableSources?.find(s => s.id === value);
                         return (
                           <Chip
                             key={value}
@@ -1056,14 +1056,14 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                     },
                   }}
                 >
-                  {filteredAvailableSources.map((source) => {
+                  {filteredAvailableSources?.map((source) => {
                     const headers = getSourceHeaders(source);
                     return (
                       <MenuItem key={source.id} value={source.id}>
-                        <Checkbox checked={selectedSources.indexOf(source.id) > -1} />
+                        <Checkbox checked={selectedSources?.indexOf(source.id) > -1} />
                         <ListItemText
                           primary={source.sourceName}
-                          secondary={`${source.sourceType} - ${headers.length} columns`}
+                          secondary={`${source.sourceType} - ${headers?.length} columns`}
                         />
                       </MenuItem>
                     );
@@ -1074,7 +1074,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           </Box>
 
           {/* Nested Fields Configuration Accordion */}
-          <Accordion disabled={selectedSources.length === 0}>
+          <Accordion disabled={selectedSources?.length === 0}>
             <AccordionSummary
               expandIcon={<ExpandMore />}
               aria-controls="nested-fields-content"
@@ -1082,9 +1082,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                 New Fields Configuration
-                {nestedFields.length > 0 && (
+                {nestedFields?.length > 0 && (
                   <Chip
-                    label={nestedFields.length}
+                    label={nestedFields?.length}
                     size="small"
                     sx={{
                       ml: 1,
@@ -1135,7 +1135,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                           <MenuItem value="" disabled>
                             <em>Select input source...</em>
                           </MenuItem>
-                          {availableSources.filter(s => selectedSources.includes(s.id)).map((source) => (
+                          {availableSources?.filter(s => selectedSources?.includes(s.id)).map((source) => (
                             <MenuItem key={source.id} value={source.id}>
                               {source.sourceName}
                             </MenuItem>
@@ -1214,7 +1214,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   <Button
                     variant="contained"
                     onClick={handleAddNestedField}
-                    disabled={!nestedFieldSourceId || !nestedFieldName.trim() || !nestedFieldDefaultValue.trim()}
+                    disabled={!nestedFieldSourceId || !nestedFieldName?.trim() || !nestedFieldDefaultValue?.trim()}
                     startIcon={editingNestedFieldId ? <Save /> : <Add />}
                     size="small"
                     sx={{
@@ -1230,10 +1230,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                 </Paper>
 
                 {/* Current Nested Fields */}
-                {nestedFields.length > 0 && (
+                {nestedFields?.length > 0 && (
                   <Paper sx={{ p: 2, backgroundColor: '#F9FAFB', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748' }}>
-                      Current New Fields ({nestedFields.length})
+                      Current New Fields ({nestedFields?.length})
                     </Typography>
 
                     <Box sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
@@ -1248,7 +1248,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {nestedFields.map((field) => (
+                          {nestedFields?.map((field) => (
                             <TableRow key={field.id} sx={{ '&:hover': { backgroundColor: '#F8FAFB' } }}>
                               <TableCell sx={{ py: 1 }}>
                                 <Chip
@@ -1314,7 +1314,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           </Accordion>
 
           {/* Field Mapping Accordion */}
-          <Accordion disabled={selectedSources.length === 0}>
+          <Accordion disabled={selectedSources?.length === 0}>
             <AccordionSummary
               expandIcon={<ExpandMore />}
               aria-controls="field-mapping-content"
@@ -1322,9 +1322,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                 Field Mapping Configuration
-                {fieldMappings.length > 0 && (
+                {fieldMappings?.length > 0 && (
                   <Chip
-                    label={fieldMappings.length}
+                    label={fieldMappings?.length}
                     size="small"
                     sx={{
                       ml: 1,
@@ -1392,7 +1392,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                           input={<OutlinedInput />}
                           renderValue={(selected) => (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.map((value) => (
+                              {selected?.map((value) => (
                                 <Chip
                                   key={value}
                                   label={getSourceName(value)}
@@ -1409,14 +1409,14 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                             },
                           }}
                         >
-                          {availableSources.filter(s => selectedSources.includes(s.id)).map((source) => {
+                          {availableSources?.filter(s => selectedSources?.includes(s.id)).map((source) => {
                             const headers = getSourceHeaders(source);
                             return (
                               <MenuItem key={source.id} value={source.id}>
-                                <Checkbox checked={mappingSelectedSources.indexOf(source.id) > -1} />
+                                <Checkbox checked={mappingSelectedSources?.indexOf(source.id) > -1} />
                                 <ListItemText
                                   primary={source.sourceName}
-                                  secondary={`${source.sourceType} - ${headers.length} columns`}
+                                  secondary={`${source.sourceType} - ${headers?.length} columns`}
                                 />
                               </MenuItem>
                             );
@@ -1427,7 +1427,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   </Box>
 
                   {/* Columns Selection */}
-                  {mappingSelectedSources.length > 0 && (
+                  {mappingSelectedSources?.length > 0 && (
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
                         Select Columns <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -1443,9 +1443,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                           input={<OutlinedInput />}
                           renderValue={(selected) => (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.slice(0, 3).map((value) => {
-                                const fieldName = value.includes('::') ? value.split('::')[1] : value;
-                                const column = availableColumns.find(col => col.value === value);
+                              {selected?.slice(0, 3).map((value) => {
+                                const fieldName = value?.includes('::') ? value?.split('::')[1] : value;
+                                const column = availableColumns?.find(col => col.value === value);
                                 return (
                                   <Chip
                                     key={value}
@@ -1455,9 +1455,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                                   />
                                 );
                               })}
-                              {selected.length > 3 && (
+                              {selected?.length > 3 && (
                                 <Chip
-                                  label={`+${selected.length - 3}`}
+                                  label={`+${selected?.length - 3}`}
                                   size="small"
                                   sx={{
                                     height: 20,
@@ -1476,9 +1476,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                             },
                           }}
                         >
-                          {availableColumns.map((column) => (
+                          {availableColumns?.map((column) => (
                             <MenuItem key={column.value} value={column.value}>
-                              <Checkbox checked={mappingSelectedColumns.indexOf(column.value) > -1} />
+                              <Checkbox checked={mappingSelectedColumns?.indexOf(column.value) > -1} />
                               <ListItemText primary={column.label} />
                             </MenuItem>
                           ))}
@@ -1491,7 +1491,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   <Button
                     variant="contained"
                     onClick={handleAddMapping}
-                    disabled={!mappingFieldName.trim() || mappingSelectedSources.length === 0 || mappingSelectedColumns.length === 0}
+                    disabled={!mappingFieldName?.trim() || mappingSelectedSources?.length === 0 || mappingSelectedColumns?.length === 0}
                     startIcon={editingMappingId ? <Save /> : <Add />}
                     size="small"
                     sx={{
@@ -1507,10 +1507,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                 </Paper>
 
                 {/* Current Mappings */}
-                {fieldMappings.length > 0 && (
+                {fieldMappings?.length > 0 && (
                   <Paper sx={{ p: 2, backgroundColor: '#F9FAFB', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748' }}>
-                      Current Mappings ({fieldMappings.length})
+                      Current Mappings ({fieldMappings?.length})
                     </Typography>
                     
                     <Box sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
@@ -1524,7 +1524,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {fieldMappings.map((mapping) => (
+                          {fieldMappings?.map((mapping) => (
                             <TableRow key={mapping.id} sx={{ '&:hover': { backgroundColor: '#F8FAFB' } }}>
                               <TableCell sx={{ py: 1 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -1533,7 +1533,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                               </TableCell>
                               <TableCell sx={{ py: 1 }}>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  {mapping.selectedSources.map(sourceId => (
+                                  {mapping.selectedSources?.map(sourceId => (
                                     <Chip
                                       key={sourceId}
                                       label={getSourceName(sourceId)}
@@ -1550,9 +1550,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                               </TableCell>
                               <TableCell sx={{ py: 1 }}>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  {mapping.selectedColumns.slice(0, 3).map(columnValue => {
-                                    const fieldName = columnValue.includes('::') ? columnValue.split('::')[1] : columnValue;
-                                    const column = availableColumns.find(col => col.value === columnValue);
+                                  {mapping.selectedColumns?.slice(0, 3).map(columnValue => {
+                                    const fieldName = columnValue?.includes('::') ? columnValue?.split('::')[1] : columnValue;
+                                    const column = availableColumns?.find(col => col.value === columnValue);
                                     return (
                                       <Chip
                                         key={columnValue}
@@ -1567,9 +1567,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                                       />
                                     );
                                   })}
-                                  {mapping.selectedColumns.length > 3 && (
+                                  {mapping.selectedColumns?.length > 3 && (
                                     <Chip
-                                      label={`+${mapping.selectedColumns.length - 3}`}
+                                      label={`+${mapping.selectedColumns?.length - 3}`}
                                       size="small"
                                       sx={{
                                         height: 18,
@@ -1611,23 +1611,23 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           </Accordion>
 
           {/* Headers Selection */}
-          {availableHeaders.length > 0 && (
-            <Box key={`headers-box-${selectedSources.join('-')}-${availableHeaders.length}`}>
+          {availableHeaders?.length > 0 && (
+            <Box key={`headers-box-${selectedSources?.join('-')}-${availableHeaders?.length}`}>
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
                 Select Headers
               </Typography>
-              {selectedSources.length > 1 && (
+              {selectedSources?.length > 1 && (
                 <Alert
-                  key={`alert-${selectedSources.length}-${availableHeaders.length}`}
+                  key={`alert-${selectedSources?.length}-${availableHeaders?.length}`}
                   severity="info"
                   sx={{ mb: 1, py: 0, fontSize: '0.75rem' }}
                 >
-                  Showing {availableHeaders.length} common field{availableHeaders.length !== 1 ? 's' : ''} found across all {selectedSources.length} selected sources
+                  Showing {availableHeaders?.length} common field{availableHeaders?.length !== 1 ? 's' : ''} found across all {selectedSources?.length} selected sources
                 </Alert>
               )}
               <FormControl fullWidth size="small">
                 <Select
-                  key={`select-headers-${selectedSources.join('-')}-${availableHeaders.length}`}
+                  key={`select-headers-${selectedSources?.join('-')}-${availableHeaders?.length}`}
                   multiple
                   value={selectedHeaders}
                   onChange={handleHeadersChange}
@@ -1652,9 +1652,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                     },
                   }}
                 >
-                  {availableHeaders.map((header) => (
+                  {availableHeaders?.map((header) => (
                     <MenuItem key={header} value={header}>
-                      <Checkbox checked={selectedHeaders.indexOf(header) > -1} />
+                      <Checkbox checked={selectedHeaders?.indexOf(header) > -1} />
                       <ListItemText primary={header} />
                     </MenuItem>
                   ))}
@@ -1664,7 +1664,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           )}
 
           {/* Fields Reordering */}
-          {orderedHeaders.filter(h => selectedHeaders.includes(h)).length > 0 && (
+          {orderedHeaders?.filter(h => selectedHeaders?.includes(h)).length > 0 && (
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
                 Field Order (Drag to reorder)
@@ -1676,12 +1676,12 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext 
-                    items={orderedHeaders.filter(h => selectedHeaders.includes(h))}
+                    items={orderedHeaders?.filter(h => selectedHeaders?.includes(h))}
                     strategy={verticalListSortingStrategy}
                   >
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {orderedHeaders
-                        .filter(h => selectedHeaders.includes(h))
+                        .filter(h => selectedHeaders?.includes(h))
                         .map((header) => (
                           <SortableHeaderItem
                             key={header}
@@ -1740,8 +1740,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
               fullWidth
               size="small"
               placeholder="Enter name for this version"
-              error={!!error && error.includes('already exists')}
-              helperText={error && error.includes('already exists') ? error : ''}
+              error={!!error && error?.includes('already exists')}
+              helperText={error && error?.includes('already exists') ? error : ''}
               sx={{
                 '& .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'rgba(0, 0, 0, 0.15)',
@@ -1768,9 +1768,9 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           onClick={handleSave}
           startIcon={<Save />}
           disabled={
-            !versionName.trim() ||
-            selectedSources.length < 1 ||
-            (selectedHeaders.length === 0 && fieldMappings.length === 0)
+            !versionName?.trim() ||
+            selectedSources?.length < 1 ||
+            (selectedHeaders?.length === 0 && fieldMappings?.length === 0)
           }
           sx={{ textTransform: 'none', boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)' }}
         >

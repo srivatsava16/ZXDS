@@ -71,7 +71,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
 
   // Validation function for source name (uses centralized validation)
   const validateSourceName = (name: string): string => {
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : availableInputSources;
 
     return validateUniqueSourceName({
       sourceName: name,
@@ -110,7 +110,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
 
     // Validation: For File type sources, headers must be extracted
     if (sourceType === 'File') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
         setValidationError('Please fetch top 10 records to extract headers before adding this append source.');
         return;
       }
@@ -118,15 +118,15 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
 
     // Validation: For Database type sources, headers must be extracted
     if (sourceType === 'Database') {
-      if (!sourceData.headers || sourceData.headers.length === 0) {
-        setValidationError('Please click "Get Top 10 Records" to fetch and verify the database source before saving.');
+      if (!sourceData.headers || sourceData.headers?.length === 0) {
+        setValidationError('Please click "Get Sample Recods" to fetch and verify the database source before saving.');
         return;
       }
     }
 
     // Validation: For Self type sources, ensure required fields
     if (sourceType === 'Self') {
-      if (!sourceData.selfConfig?.input_source_names || sourceData.selfConfig.input_source_names.length === 0) {
+      if (!sourceData.selfConfig?.input_source_names || sourceData.selfConfig.input_source_names?.length === 0) {
         setValidationError('Please select at least one input source.');
         return;
       }
@@ -134,7 +134,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
         setValidationError('Please provide a generated column name.');
         return;
       }
-      if (!sourceData.selfConfig?.assignment_sets || sourceData.selfConfig.assignment_sets.length === 0) {
+      if (!sourceData.selfConfig?.assignment_sets || sourceData.selfConfig.assignment_sets?.length === 0) {
         setValidationError('Please add at least one assignment condition.');
         return;
       }
@@ -294,12 +294,12 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
             onChange={setSourceData}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
-            allExistingSources={allExistingSources.length > 0 ? allExistingSources : availableInputSources}
+            allExistingSources={allExistingSources?.length > 0 ? allExistingSources : availableInputSources}
           />
         ) : (
           <>
             {console.log('[AppendSourceDialog] Rendering SelfSourceConfig with availableInputSources:',
-              availableInputSources.map(src => ({
+              availableInputSources?.map(src => ({
                 id: src.id,
                 sourceName: src.sourceName,
                 isVersioned: src.isVersioned,

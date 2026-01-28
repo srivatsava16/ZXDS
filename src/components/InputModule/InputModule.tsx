@@ -42,7 +42,7 @@ export interface InputSource {
   selectedHeaders?: string[]; // User-selected subset of headers (for processing)
   dataTypes?: Record<string, string>;
   previewData?: any[];
-  contentPreview?: string; // Raw delimited content from Get Top 10 Records (for file sources)
+  contentPreview?: string; // Raw delimited content from Get Sample Recods (for file sources)
   filterQuery?: string; // Store the generated filter query
   filterJson?: any; // Store the filter configuration (groups, conditions, etc.)
   isVersioned?: boolean; // Indicates if this source was created through versioning
@@ -267,7 +267,7 @@ const InputModule: React.FC<InputModuleProps> = ({
           >
             Add Input Source
           </Button>
-          {sources.length >= 1 && (
+          {sources?.length >= 1 && (
             <Tooltip title="Create Version" arrow>
               <IconButton
                 size="small"
@@ -311,7 +311,7 @@ const InputModule: React.FC<InputModuleProps> = ({
       )}
 
       {/* Sources List Table */}
-      {sources.length > 0 && (
+      {sources?.length > 0 && (
         <TableContainer
           component={Paper}
           sx={{
@@ -344,7 +344,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                   displayHeaders = source.selectedHeaders;
                 } else if ((source as any)?.selectedColumns && typeof (source as any)?.selectedColumns === 'string') {
                   // API format with selectedColumns (comma-separated string)
-                  displayHeaders = (source as any).selectedColumns.split(',').map((h: string) => h.trim()).filter((h: string) => h.length > 0);
+                  displayHeaders = (source as any).selectedColumns?.split(',').map((h: string) => h?.trim()).filter((h: string) => h?.length > 0);
                 } else if (source?.headers && Array.isArray(source?.headers)) {
                   // UI format with headers (fallback)
                   displayHeaders = source.headers;
@@ -353,8 +353,8 @@ const InputModule: React.FC<InputModuleProps> = ({
                   displayHeaders = (source as any).columns;
                 }
 
-                const headerText = displayHeaders.join(', ') || '--';
-                const headerCount = displayHeaders.length || 0;
+                const headerText = displayHeaders?.join(', ') || '--';
+                const headerCount = displayHeaders?.length || 0;
                 return (
                   <TableRow
                     key={source.id}
@@ -459,7 +459,7 @@ const InputModule: React.FC<InputModuleProps> = ({
                                 whiteSpace: 'nowrap',
                               }}
                             >
-                              {displayHeaders.slice(0, 3).join(', ')}
+                              {displayHeaders?.slice(0, 3).join(', ')}
                               {headerCount > 3 ? '...' : ''}
                             </Typography>
                           </Box>
@@ -533,7 +533,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         apiSources={apiSources}
         onSave={handleVersionSave}
         editingVersion={editingVersion}
-        currentVersionCount={sources.filter(s => s.isVersioned).length}
+        currentVersionCount={sources?.filter(s => s.isVersioned).length}
       />
     </Box>
   );

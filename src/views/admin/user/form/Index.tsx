@@ -219,7 +219,7 @@ const UserCreationPage: React.FC = () => {
                 <MenuItem value="">
                   <em>Select Business Unit</em>
                 </MenuItem>
-                {businessUnits.map((bu) => (
+                {businessUnits?.map((bu) => (
                   <MenuItem key={bu} value={bu}>
                     {bu}
                   </MenuItem>
@@ -258,7 +258,7 @@ const UserCreationPage: React.FC = () => {
                 <MenuItem value="">
                   <em>Select Division</em>
                 </MenuItem>
-                {divisions.map((division) => (
+                {divisions?.map((division) => (
                   <MenuItem key={division} value={division}>
                     {division}
                   </MenuItem>
@@ -297,7 +297,7 @@ const UserCreationPage: React.FC = () => {
                 <MenuItem value="">
                   <em>Select Role</em>
                 </MenuItem>
-                {roles.map((role) => (
+                {roles?.map((role) => (
                   <MenuItem key={role} value={role}>
                     {role}
                   </MenuItem>

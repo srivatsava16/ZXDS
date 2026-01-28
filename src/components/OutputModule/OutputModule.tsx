@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -89,14 +89,17 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   // Load initial configurations if provided (for edit mode)
   useEffect(() => {
-    if (initialConfigs && initialConfigs.length > 0) {
+    console.log('=== OutputModule: Loading initial configs ===', initialConfigs);
+    if (initialConfigs && initialConfigs?.length > 0) {
       setConfigs(initialConfigs);
     }
   }, [initialConfigs]);
 
   // Notify parent component whenever configurations change
   useEffect(() => {
+    console.log('=== OutputModule: Configs changed ===', configs);
     if (onConfigurationsChange) {
+      console.log('=== OutputModule: Calling onConfigurationsChange ===');
       onConfigurationsChange(configs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,19 +107,47 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   // Memoize transformed data to prevent infinite loops
   const transformedData = useMemo(() => {
-    return transformOutputConfigurationsToAPI(
+    console.log('=== OutputModule: Transforming data ===');
+    console.log('configs:', configs);
+    console.log('availableInputSources:', availableInputSources);
+    console.log('customDestinations:', customDestinations);
+    console.log('fieldMappings:', fieldMappings);
+
+    const result = transformOutputConfigurationsToAPI(
       configs,
       availableInputSources,
       customDestinations,
       fieldMappings,  // Pass module-level field mappings
       apiSources  // Pass API sources for destination details
     );
+
+    console.log('=== OutputModule: Transform result ===', result);
+    return result;
   }, [configs, availableInputSources, customDestinations, fieldMappings, apiSources]);
 
-  // Notify parent component of transformed data changes
+  // Track previous transformed data to prevent infinite loops
+  const prevTransformedDataRef = useRef<string>('');
+
+  // Notify parent component of transformed data changes (with deep equality check)
   useEffect(() => {
+    console.log('=== OutputModule: transformedData changed effect ===');
     if (onTransformedDataChange) {
-      onTransformedDataChange(transformedData);
+      // Use JSON.stringify to compare deep equality
+      const currentDataString = JSON.stringify(transformedData);
+
+      console.log('=== OutputModule: Comparing transformed data ===');
+      console.log('Current:', currentDataString);
+      console.log('Previous:', prevTransformedDataRef.current);
+      console.log('Are they equal?', currentDataString === prevTransformedDataRef.current);
+
+      // Only call callback if data actually changed
+      if (currentDataString !== prevTransformedDataRef.current) {
+        console.log('=== OutputModule: Calling onTransformedDataChange ===');
+        prevTransformedDataRef.current = currentDataString;
+        onTransformedDataChange(transformedData);
+      } else {
+        console.log('=== OutputModule: Skipping onTransformedDataChange (data unchanged) ===');
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transformedData]);
@@ -142,20 +173,31 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   const getSourceFieldsWithAppends = useMemo(() => {
     return (source: InputSource): string[] => {
       // Start with original headers
-      const originalHeaders = source.selectedHeaders || source.headers || [];
-      const allFields = new Set<string>(originalHeaders);
+      const originalHeaders = source?.selectedHeaders || source?.headers || [];
+      const allFields = new Set<string>();
+
+      // Add original headers, filtering out null/undefined values
+      originalHeaders?.forEach((header: string) => {
+        if (header && typeof header === 'string') {
+          allFields.add(header);
+        }
+      });
 
       // Find all append configurations where this source is an input source
-      appendConfigurations.forEach(config => {
+      appendConfigurations?.forEach(config => {
         // Check if this source is one of the input sources for this append config
-        const isInputSource = config.inputSources.some(inputSourceId => {
-          const inputSource = availableInputSources.find(s => s.id === inputSourceId);
-          return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
+        const isInputSource = config?.inputSources?.some(inputSourceId => {
+          const inputSource = availableInputSources?.find(s => s?.id === inputSourceId);
+          return inputSource?.sourceName === source?.sourceName || inputSource?.id === source?.id;
         });
 
         // If this source is used in the append config, add the appended fields
-        if (isInputSource && config.appendFields) {
-          config.appendFields.forEach(field => allFields.add(field));
+        if (isInputSource && config?.appendFields) {
+          config.appendFields?.forEach(field => {
+            if (field && typeof field === 'string') {
+              allFields.add(field);
+            }
+          });
         }
       });
 
@@ -166,22 +208,36 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   // Memoize available output fields to prevent infinite re-renders
   // IMPORTANT: Show only COMMON fields (intersection) when multiple sources are selected
   const availableOutputFields = useMemo(() => {
-    if (selectedInputSources.length === 0) {
+    console.log('=== OutputModule: Computing availableOutputFields ===');
+    console.log('selectedInputSources:', selectedInputSources);
+
+    if (selectedInputSources?.length === 0) {
+      console.log('=== OutputModule: No input sources selected ===');
       return [];
     }
 
-    if (selectedInputSources.length === 1) {
+    if (selectedInputSources?.length === 1) {
+      console.log('=== OutputModule: Single source selected ===');
       // Single source: show all its fields (with mappings applied, including appended fields)
       const fieldsMap = new Map<string, string>();
       const sourceId = selectedInputSources[0];
-      const source = availableInputSources.find(src => src.id === sourceId);
+      console.log('Source ID:', sourceId);
+      const source = availableInputSources?.find(src => src.id === sourceId);
+      console.log('Found source:', source);
 
       if (source) {
         const allFields = getSourceFieldsWithAppends(source); // Include appended fields
-        allFields.forEach(field => {
-          const mapping = fieldMappings.find(m => {
-            return m.selectedColumns.some(col => {
-              const [colSourceId, colFieldName] = col.split('::');
+        console.log('All fields (including appends):', allFields);
+
+        if (!allFields || allFields.length === 0) {
+          console.warn('=== OutputModule: Source has no fields ===');
+          return [];
+        }
+
+        allFields?.forEach(field => {
+          const mapping = fieldMappings?.find(m => {
+            return m.selectedColumns?.some(col => {
+              const [colSourceId, colFieldName] = col?.split('::');
               return colSourceId === sourceId && colFieldName === field;
             });
           });
@@ -192,60 +248,86 @@ const OutputModule: React.FC<OutputModuleProps> = ({
             fieldsMap.set(field, field);
           }
         });
+      } else {
+        console.error('=== OutputModule: Source not found for ID:', sourceId);
+        return [];
       }
 
-      return Array.from(new Set(fieldsMap.values()));
+      const result = Array.from(new Set(fieldsMap.values()));
+
+      // Filter out any null/undefined values
+      const safeResult = result.filter((field): field is string => {
+        if (!field || typeof field !== 'string') {
+          console.warn('=== OutputModule: Filtered out invalid field in single source:', field);
+          return false;
+        }
+        return true;
+      });
+
+      console.log('=== OutputModule: Final available fields ===', safeResult);
+      return safeResult;
     }
 
     // Multiple sources: show only COMMON fields (intersection, including appended fields)
     const allSourceFieldSets: Set<string>[] = [];
 
-    selectedInputSources.forEach(id => {
-      const source = availableInputSources.find(src => src.id === id);
+    selectedInputSources?.forEach(id => {
+      const source = availableInputSources?.find(src => src.id === id);
       if (source) {
         const sourceFields = new Set<string>();
         const allFields = getSourceFieldsWithAppends(source); // Include appended fields
 
-        allFields.forEach(field => {
-          const mapping = fieldMappings.find(m => {
-            return m.selectedColumns.some(col => {
-              const [colSourceId, colFieldName] = col.split('::');
+        allFields?.forEach(field => {
+          const mapping = fieldMappings?.find(m => {
+            return m.selectedColumns?.some(col => {
+              const [colSourceId, colFieldName] = col?.split('::');
               return colSourceId === id && colFieldName === field;
             });
           });
 
           // Use mapped field name if exists, otherwise use original
           const displayFieldName = mapping ? mapping.fieldName : field;
-          sourceFields.add(displayFieldName.toLowerCase()); // Case-insensitive comparison
+          sourceFields.add(displayFieldName?.toLowerCase()); // Case-insensitive comparison
         });
 
-        allSourceFieldSets.push(sourceFields);
+        allSourceFieldSets?.push(sourceFields);
       }
     });
 
-    if (allSourceFieldSets.length === 0) {
+    if (allSourceFieldSets?.length === 0) {
+      console.log('=== OutputModule: No source field sets found ===');
+      return [];
+    }
+
+    console.log('=== OutputModule: allSourceFieldSets ===', allSourceFieldSets);
+
+    // Safety check for first set
+    if (!allSourceFieldSets[0]) {
+      console.error('=== OutputModule: First source field set is undefined ===');
       return [];
     }
 
     // Find intersection of all field sets (fields common to ALL selected sources)
     const intersection = Array.from(allSourceFieldSets[0]).filter(field => {
       // Check if this field exists in ALL other source field sets
-      return allSourceFieldSets.every(fieldSet => fieldSet.has(field));
+      return allSourceFieldSets?.every(fieldSet => fieldSet.has(field));
     });
 
+    console.log('=== OutputModule: Field intersection ===', intersection);
+
     // Get the original casing from the first source (including appended fields)
-    const firstSource = availableInputSources.find(src => src.id === selectedInputSources[0]);
-    const resultFields = intersection.map(fieldLower => {
+    const firstSource = availableInputSources?.find(src => src.id === selectedInputSources[0]);
+    const resultFields = intersection?.map(fieldLower => {
       // Find the original field name with proper casing from first source
       if (firstSource) {
         const allFirstSourceFields = getSourceFieldsWithAppends(firstSource); // Include appended fields
-        const originalField = allFirstSourceFields.find(h => h.toLowerCase() === fieldLower);
+        const originalField = allFirstSourceFields?.find(h => h?.toLowerCase() === fieldLower);
         if (originalField) {
           // Check if there's a mapping for this field
-          const mapping = fieldMappings.find(m => {
-            return m.selectedColumns.some(col => {
-              const [, colFieldName] = col.split('::');
-              return colFieldName.toLowerCase() === fieldLower;
+          const mapping = fieldMappings?.find(m => {
+            return m.selectedColumns?.some(col => {
+              const [, colFieldName] = col?.split('::');
+              return colFieldName?.toLowerCase() === fieldLower;
             });
           });
           return mapping ? mapping.fieldName : originalField;
@@ -254,7 +336,17 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       return fieldLower;
     });
 
-    return resultFields;
+    // Filter out any null/undefined values to ensure array contains only valid strings
+    const safeResultFields = resultFields?.filter((field): field is string => {
+      if (!field || typeof field !== 'string') {
+        console.warn('=== OutputModule: Filtered out invalid field:', field);
+        return false;
+      }
+      return true;
+    }) || [];
+
+    console.log('=== OutputModule: Final resultFields ===', safeResultFields);
+    return safeResultFields;
   }, [selectedInputSources, availableInputSources, fieldMappings, getSourceFieldsWithAppends]);
 
   // Memoize flattened destinations to prevent infinite re-renders
@@ -264,8 +356,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     if (apiSources?.fileSource) {
       // Add SFTP sources as destinations (preconfigured)
       if (apiSources.fileSource.sftpSources) {
-        apiSources.fileSource.sftpSources.forEach(source => {
-          destinations.push({
+        apiSources.fileSource.sftpSources?.forEach(source => {
+          destinations?.push({
             id: source.id,
             name: source.name,
             type: 'SFTP',
@@ -276,8 +368,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
       // Add NFS sources as destinations (preconfigured)
       if (apiSources.fileSource.nfsSources) {
-        apiSources.fileSource.nfsSources.forEach(source => {
-          destinations.push({
+        apiSources.fileSource.nfsSources?.forEach(source => {
+          destinations?.push({
             id: source.id,
             name: source.name,
             type: 'NFS',
@@ -288,8 +380,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
       // Add AWS S3 sources as destinations (preconfigured)
       if (apiSources.fileSource.awsSources) {
-        apiSources.fileSource.awsSources.forEach(source => {
-          destinations.push({
+        apiSources.fileSource.awsSources?.forEach(source => {
+          destinations?.push({
             id: source.id,
             name: source.name,
             type: 'AWS S3',
@@ -300,8 +392,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     }
 
     // Add custom destinations (user-created)
-    customDestinations.forEach(dest => {
-      destinations.push({
+    customDestinations?.forEach(dest => {
+      destinations?.push({
         id: parseInt(dest.id),
         name: dest.name,
         type: dest.type,
@@ -315,30 +407,52 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   }, [apiSources, customDestinations]);
 
   // Memoize filtered lists to prevent infinite re-renders
-  const filteredInputSources = useMemo(() =>
-    availableInputSources.filter(source =>
-      source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
-    ),
-    [availableInputSources, inputSourcesSearch]
-  );
+  const filteredInputSources = useMemo(() => {
+    console.log('=== OutputModule: Computing filteredInputSources ===');
+    if (!availableInputSources || !Array.isArray(availableInputSources)) {
+      return [];
+    }
+    return availableInputSources?.filter(source =>
+      source?.sourceName?.toLowerCase()?.includes(inputSourcesSearch?.toLowerCase() || '')
+    );
+  }, [availableInputSources, inputSourcesSearch]);
 
-  const filteredOutputFields = useMemo(() =>
-    availableOutputFields.filter(field =>
-      field.toLowerCase().includes(outputFieldsSearch.toLowerCase())
-    ),
-    [availableOutputFields, outputFieldsSearch]
-  );
+  const filteredOutputFields = useMemo(() => {
+    console.log('=== OutputModule: Computing filteredOutputFields ===');
+    console.log('availableOutputFields:', availableOutputFields);
+    console.log('outputFieldsSearch:', outputFieldsSearch);
 
-  const filteredOutputDestinations = useMemo(() =>
-    allOutputDestinations.filter(dest =>
-      dest.name.toLowerCase().includes(outputDestinationsSearch.toLowerCase())
-    ),
-    [allOutputDestinations, outputDestinationsSearch]
-  );
+    if (!availableOutputFields || !Array.isArray(availableOutputFields)) {
+      console.log('=== OutputModule: availableOutputFields is not an array ===');
+      return [];
+    }
+
+    const result = availableOutputFields?.filter(field => {
+      // Safety check: ensure field is a string
+      if (!field || typeof field !== 'string') {
+        console.warn('=== OutputModule: Invalid field in availableOutputFields:', field);
+        return false;
+      }
+      return field?.toLowerCase().includes(outputFieldsSearch?.toLowerCase() || '');
+    });
+
+    console.log('=== OutputModule: filteredOutputFields result ===', result);
+    return result;
+  }, [availableOutputFields, outputFieldsSearch]);
+
+  const filteredOutputDestinations = useMemo(() => {
+    console.log('=== OutputModule: Computing filteredOutputDestinations ===');
+    if (!allOutputDestinations || !Array.isArray(allOutputDestinations)) {
+      return [];
+    }
+    return allOutputDestinations?.filter(dest =>
+      dest?.name?.toLowerCase()?.includes(outputDestinationsSearch?.toLowerCase() || '')
+    );
+  }, [allOutputDestinations, outputDestinationsSearch]);
 
   // When Combine Sources is selected, initialize combine sources list
   useEffect(() => {
-    if (combineSources && combineSourcesList.length === 0 && selectedInputSources.length > 0) {
+    if (combineSources && combineSourcesList?.length === 0 && selectedInputSources?.length > 0) {
       setCombineSourcesList(selectedInputSources);
       setPriorityOrder(selectedInputSources);
     } else if (!combineSources) {
@@ -353,7 +467,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   };
 
   const handleUpdateDestination = (destination: OutputDestination) => {
-    setCustomDestinations(customDestinations.map(dest =>
+    setCustomDestinations(customDestinations?.map(dest =>
       dest.id === destination.id ? destination : dest
     ));
   };
@@ -375,9 +489,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   const handleDeleteDestination = (destination: OutputDestination, event: React.MouseEvent) => {
     event.stopPropagation();
     if (window.confirm(`Are you sure you want to delete the destination "${destination.name}"?`)) {
-      setCustomDestinations(customDestinations.filter(dest => dest.id !== destination.id));
+      setCustomDestinations(customDestinations?.filter(dest => dest.id !== destination.id));
       // If any config uses this destination, clear it
-      setConfigs(configs.map(config => {
+      setConfigs(configs?.map(config => {
         if (config.destinationId === parseInt(destination.id)) {
           return {
             ...config,
@@ -409,11 +523,13 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   };
 
   const handleAddOrUpdateConfig = () => {
-    if (selectedInputSources.length === 0) {
+    console.log('=== OutputModule: handleAddOrUpdateConfig called ===');
+
+    if (selectedInputSources?.length === 0) {
       showAlert('Please select at least one Input Source', 'warning');
       return;
     }
-    if (selectedOutputFields.length === 0) {
+    if (selectedOutputFields?.length === 0) {
       showAlert('Please select at least one Output Field', 'warning');
       return;
     }
@@ -423,15 +539,19 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     }
 
     // Get destination details
-    const selectedDest = allOutputDestinations.find(d => d.id === selectedDestinationId);
+    const selectedDest = allOutputDestinations?.find(d => d.id === selectedDestinationId);
     if (!selectedDest) {
       showAlert('Invalid destination selected', 'error');
       return;
     }
 
+    console.log('=== OutputModule: Selected destination ===', selectedDest);
+    console.log('=== OutputModule: Current configs ===', configs);
+
     if (editingConfigId) {
+      console.log('=== OutputModule: Updating existing config ===', editingConfigId);
       // Update existing config (without field mappings - they're module-level)
-      setConfigs(configs.map(config =>
+      setConfigs(configs?.map(config =>
         config.id === editingConfigId
           ? {
               ...config,
@@ -454,6 +574,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       ));
       setEditingConfigId(null);
     } else {
+      console.log('=== OutputModule: Adding new config ===');
       // Add new config (without field mappings - they're module-level)
       const newConfig: OutputConfig = {
         id: generateId(),
@@ -472,7 +593,10 @@ const OutputModule: React.FC<OutputModuleProps> = ({
         limitCount,
         random,
       };
-      setConfigs([...configs, newConfig]);
+      console.log('=== OutputModule: New config object ===', newConfig);
+      const newConfigs = [...configs, newConfig];
+      console.log('=== OutputModule: Setting new configs array ===', newConfigs);
+      setConfigs(newConfigs);
     }
 
     // Reset form (but NOT field mappings - they're shared across all configs)
@@ -497,7 +621,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
     let destinationId = config?.destinationId || null;
     if (!destinationId && config?.destinationName) {
       // Look up destination ID from name
-      const destination = allOutputDestinations.find(d => d.name === config.destinationName);
+      const destination = allOutputDestinations?.find(d => d.name === config.destinationName);
       if (destination) {
         destinationId = destination.id;
       }
@@ -531,7 +655,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
   const handleDeleteConfig = (id: string) => {
     if (window.confirm('Are you sure you want to delete this output configuration?')) {
-      setConfigs(configs.filter(c => c.id !== id));
+      setConfigs(configs?.filter(c => c.id !== id));
       if (editingConfigId === id) {
         handleCancelEdit();
       }
@@ -539,9 +663,16 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    const source = availableInputSources.find(src => src.id === id);
+    console.log('=== OutputModule: getSourceName called for ID:', id);
+    const source = availableInputSources?.find(src => src.id === id);
+    console.log('=== OutputModule: Found source:', source);
     return source ? source?.sourceName : id;
   };
+
+  console.log('=== OutputModule: RENDER START ===');
+  console.log('configs:', configs);
+  console.log('availableInputSources:', availableInputSources);
+  console.log('selectedInputSources:', selectedInputSources);
 
   return (
     <Box
@@ -590,9 +721,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                 }}
               >
                 Field Mapping
-                {fieldMappings.length > 0 && (
+                {fieldMappings?.length > 0 && (
                   <Chip
-                    label={fieldMappings.length}
+                    label={fieldMappings?.length}
                     size="small"
                     sx={{
                       ml: 1,
@@ -630,7 +761,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
           </Box>
         </Box>
 
-        {availableInputSources.length === 0 ? (
+        {availableInputSources?.length === 0 ? (
           <Box
             sx={{
               p: 4,
@@ -689,13 +820,13 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     multiple
                     value={selectedInputSources}
                     onChange={(e) => {
-                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                      if (value.includes('select-all-input-sources')) {
-                        if (selectedInputSources.length === filteredInputSources.length) {
+                      const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                      if (value?.includes('select-all-input-sources')) {
+                        if (selectedInputSources?.length === filteredInputSources?.length) {
                           setSelectedInputSources([]);
                           setSelectedOutputFields([]);
                         } else {
-                          setSelectedInputSources(filteredInputSources.map(src => src.id));
+                          setSelectedInputSources(filteredInputSources?.map(src => src.id));
                         }
                       } else {
                         setSelectedInputSources(value);
@@ -705,7 +836,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     onClose={() => setInputSourcesSearch('')}
                     input={<OutlinedInput />}
                     renderValue={(selected) => {
-                      if (selected.length === 0) {
+                      if (selected?.length === 0) {
                         return (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             Select
@@ -714,7 +845,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       }
                       return (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, py: 0.4 }}>
-                          {selected.map((value) => (
+                          {selected?.map((value) => (
                             <Tooltip key={value} title={getSourceName(value)} arrow>
                               <Chip
                                 label={getSourceName(value)}
@@ -795,20 +926,20 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       }}
                     >
                       <Checkbox
-                        checked={filteredInputSources.length > 0 && selectedInputSources.length === filteredInputSources.length}
-                        indeterminate={selectedInputSources.length > 0 && selectedInputSources.length < filteredInputSources.length}
+                        checked={filteredInputSources?.length > 0 && selectedInputSources?.length === filteredInputSources?.length}
+                        indeterminate={selectedInputSources?.length > 0 && selectedInputSources?.length < filteredInputSources?.length}
                         size="small"
                       />
                       <ListItemText primary="Select All" />
                     </MenuItem>
-                    {filteredInputSources.length === 0 && (
+                    {filteredInputSources?.length === 0 && (
                       <MenuItem disabled>
                         <em>No items match your search</em>
                       </MenuItem>
                     )}
-                    {filteredInputSources.map((source) => (
+                    {filteredInputSources?.map((source) => (
                       <MenuItem key={source?.id} value={source?.id}>
-                        <Checkbox checked={selectedInputSources.indexOf(source?.id) > -1} size="small" />
+                        <Checkbox checked={selectedInputSources?.indexOf(source?.id) > -1} size="small" />
                         <ListItemText primary={source?.sourceName} />
                       </MenuItem>
                     ))}
@@ -850,7 +981,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     </Typography>
                   </Box>
                   {/* Combine Sources Checkbox - Show when 2+ input sources selected */}
-                  {selectedInputSources.length > 1 && (
+                  {selectedInputSources?.length > 1 && (
                     <FormControlLabel
                       control={
                         <Checkbox
@@ -879,9 +1010,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     multiple
                     value={selectedOutputFields}
                     onChange={(e) => {
-                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                      if (value.includes('select-all-output-fields')) {
-                        if (selectedOutputFields.length === filteredOutputFields.length) {
+                      const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                      if (value?.includes('select-all-output-fields')) {
+                        if (selectedOutputFields?.length === filteredOutputFields?.length) {
                           setSelectedOutputFields([]);
                         } else {
                           setSelectedOutputFields(filteredOutputFields);
@@ -893,7 +1024,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     onClose={() => setOutputFieldsSearch('')}
                     input={<OutlinedInput />}
                     renderValue={(selected) => {
-                      if (selected.length === 0) {
+                      if (selected?.length === 0) {
                         return (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                             Select
@@ -902,7 +1033,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       }
                       return (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.4, py: 0.4 }}>
-                          {selected.map((value) => (
+                          {selected?.map((value) => (
                             <Tooltip key={value} title={value} arrow>
                               <Chip
                                 label={value}
@@ -932,7 +1063,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         </Box>
                       );
                     }}
-                    disabled={availableOutputFields.length === 0}
+                    disabled={availableOutputFields?.length === 0}
                     displayEmpty
                     MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
                     sx={{
@@ -944,13 +1075,13 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                   >
                     <MenuItem disabled value="">
                       <em>
-                        {availableOutputFields.length === 0
+                        {availableOutputFields?.length === 0
                           ? 'Select input sources first'
                           : 'Select Output Fields'}
                       </em>
                     </MenuItem>
                     {/* Search TextField */}
-                    {availableOutputFields.length > 0 && (
+                    {availableOutputFields?.length > 0 && (
                       <MenuItem
                         disableRipple
                         disableTouchRipple
@@ -981,7 +1112,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         />
                       </MenuItem>
                     )}
-                    {filteredOutputFields.length > 0 && (
+                    {filteredOutputFields?.length > 0 && (
                       <MenuItem
                         value="select-all-output-fields"
                         sx={{
@@ -991,21 +1122,21 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         }}
                       >
                         <Checkbox
-                          checked={filteredOutputFields.length > 0 && selectedOutputFields.length === filteredOutputFields.length}
-                          indeterminate={selectedOutputFields.length > 0 && selectedOutputFields.length < filteredOutputFields.length}
+                          checked={filteredOutputFields?.length > 0 && selectedOutputFields?.length === filteredOutputFields?.length}
+                          indeterminate={selectedOutputFields?.length > 0 && selectedOutputFields?.length < filteredOutputFields?.length}
                           size="small"
                         />
                         <ListItemText primary="Select All" />
                       </MenuItem>
                     )}
-                    {filteredOutputFields.length === 0 && availableOutputFields.length > 0 && (
+                    {filteredOutputFields?.length === 0 && availableOutputFields?.length > 0 && (
                       <MenuItem disabled>
                         <em>No items match your search</em>
                       </MenuItem>
                     )}
-                    {filteredOutputFields.map((field) => (
+                    {filteredOutputFields?.map((field) => (
                       <MenuItem key={field} value={field}>
-                        <Checkbox checked={selectedOutputFields.indexOf(field) > -1} size="small" />
+                        <Checkbox checked={selectedOutputFields?.indexOf(field) > -1} size="small" />
                         <ListItemText primary={field} />
                       </MenuItem>
                     ))}
@@ -1014,7 +1145,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
               </Box>
 
               {/* Priority Order - Show as separate section when Combine Sources is enabled */}
-              {combineSources && selectedInputSources.length > 1 && priorityOrder.length > 0 && (
+              {combineSources && selectedInputSources?.length > 1 && priorityOrder?.length > 0 && (
                 <Box
                   sx={{
                     flex: 1,
@@ -1033,7 +1164,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                   </Box>
                   <DraggableOutputSources
                     selectedSources={priorityOrder}
-                    allSources={availableInputSources.map(src => ({ id: src.id, name: src.sourceName }))}
+                    allSources={availableInputSources?.map(src => ({ id: src.id, name: src.sourceName }))}
                     onReorder={handleReorderPriority}
                     getSourceName={getSourceName}
                   />
@@ -1041,7 +1172,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
               )}
 
               {/* Field Priority Order - Show as separate section when Combine Sources is enabled */}
-              {combineSources && selectedInputSources.length > 1 && (
+              {combineSources && selectedInputSources?.length > 1 && (
                 <Box
                   sx={{
                     flex: 1,
@@ -1063,9 +1194,9 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       multiple
                       value={fieldPriority}
                       onChange={(e) => {
-                        const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                        if (value.includes('select-all-field-priority')) {
-                          if (fieldPriority.length === availableOutputFields.length) {
+                        const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+                        if (value?.includes('select-all-field-priority')) {
+                          if (fieldPriority?.length === availableOutputFields?.length) {
                             setFieldPriority([]);
                           } else {
                             setFieldPriority(availableOutputFields);
@@ -1076,7 +1207,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       }}
                       input={<OutlinedInput />}
                       renderValue={(selected) => {
-                        if (selected.length === 0) {
+                        if (selected?.length === 0) {
                           return (
                             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                               Select
@@ -1085,7 +1216,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         }
                         return (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3, py: 0.3, alignItems: 'center' }}>
-                            {selected.map((value, index) => (
+                            {selected?.map((value, index) => (
                               <Tooltip key={value} title={`${index + 1}. ${value}`} arrow>
                                 <Chip
                                   label={`${index + 1}. ${value}`}
@@ -1116,7 +1247,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                           </Box>
                         );
                       }}
-                      disabled={availableOutputFields.length === 0}
+                      disabled={availableOutputFields?.length === 0}
                       displayEmpty
                       sx={{
                         backgroundColor: 'white',
@@ -1127,12 +1258,12 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     >
                       <MenuItem disabled value="">
                         <em style={{ fontSize: '0.75rem' }}>
-                          {availableOutputFields.length === 0
+                          {availableOutputFields?.length === 0
                             ? 'No fields'
                             : 'Select Fields'}
                         </em>
                       </MenuItem>
-                      {availableOutputFields.length > 0 && (
+                      {availableOutputFields?.length > 0 && (
                         <MenuItem
                           value="select-all-field-priority"
                           sx={{
@@ -1142,16 +1273,16 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                           }}
                         >
                           <Checkbox
-                            checked={availableOutputFields.length > 0 && fieldPriority.length === availableOutputFields.length}
-                            indeterminate={fieldPriority.length > 0 && fieldPriority.length < availableOutputFields.length}
+                            checked={availableOutputFields?.length > 0 && fieldPriority?.length === availableOutputFields?.length}
+                            indeterminate={fieldPriority?.length > 0 && fieldPriority?.length < availableOutputFields?.length}
                             size="small"
                           />
                           <ListItemText primary="Select All" primaryTypographyProps={{ fontSize: '0.75rem' }} />
                         </MenuItem>
                       )}
-                      {availableOutputFields.map((field) => (
+                      {availableOutputFields?.map((field) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={fieldPriority.indexOf(field) > -1} size="small" />
+                          <Checkbox checked={fieldPriority?.indexOf(field) > -1} size="small" />
                           <ListItemText primary={field} primaryTypographyProps={{ fontSize: '0.75rem' }} />
                         </MenuItem>
                       ))}
@@ -1292,7 +1423,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                           </Typography>
                         );
                       }
-                      const dest = allOutputDestinations.find(d => d.id === selected);
+                      const dest = allOutputDestinations?.find(d => d.id === selected);
                       return dest ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{dest.name}</Typography>
@@ -1355,14 +1486,14 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         }}
                       />
                     </MenuItem>
-                    {filteredOutputDestinations.length === 0 && (
+                    {filteredOutputDestinations?.length === 0 && (
                       <MenuItem disabled>
                         <em>No destinations match your search</em>
                       </MenuItem>
                     )}
-                    {filteredOutputDestinations.map((dest) => {
+                    {filteredOutputDestinations?.map((dest) => {
                       // Find the custom destination object if this is a custom destination
-                      const customDest = dest.isCustom ? customDestinations.find(d => d.id === dest.id.toString()) : null;
+                      const customDest = dest.isCustom ? customDestinations?.find(d => d.id === dest.id.toString()) : null;
 
                       return (
                         <MenuItem key={dest.id} value={dest.id}>
@@ -1522,14 +1653,14 @@ const OutputModule: React.FC<OutputModuleProps> = ({
             )}
 
             {/* Configurations List */}
-            {configs.length > 0 && (
+            {configs?.length > 0 && (
               <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem', color: '#2D3748' }}>
                     Configured Output Destinations
                   </Typography>
                   <Chip
-                    label={`${configs.length} configuration${configs.length !== 1 ? 's' : ''}`}
+                    label={`${configs?.length} configuration${configs?.length !== 1 ? 's' : ''}`}
                     size="small"
                     sx={{
                       backgroundColor: '#3B82F620',
@@ -1559,7 +1690,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {configs.map((config) => (
+                      {configs?.map((config) => (
                         <TableRow
                           key={config.id}
                           hover
@@ -1624,15 +1755,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
                           {/* Output Fields Column */}
                           <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                            {config.outputFields.length > 0 ? (
+                            {config.outputFields?.length > 0 ? (
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
                                     <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
-                                      Output Fields ({config.outputFields.length}):
+                                      Output Fields ({config.outputFields?.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
-                                      {config.outputFields.join(', ')}
+                                      {config.outputFields?.join(', ')}
                                     </Typography>
                                   </Box>
                                 }
@@ -1641,7 +1772,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               >
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <Chip
-                                    label={`${config.outputFields.length} field${config.outputFields.length !== 1 ? 's' : ''}`}
+                                    label={`${config.outputFields?.length} field${config.outputFields?.length !== 1 ? 's' : ''}`}
                                     size="small"
                                     sx={{
                                       backgroundColor: '#0EA5E920',
@@ -1662,8 +1793,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       whiteSpace: 'nowrap !important',
                                     }}
                                   >
-                                    {config.outputFields.slice(0, 2).join(', ')}
-                                    {config.outputFields.length > 2 ? '...' : ''}
+                                    {config.outputFields?.slice(0, 2).join(', ')}
+                                    {config.outputFields?.length > 2 ? '...' : ''}
                                   </Typography>
                                 </Box>
                               </Tooltip>
@@ -1676,15 +1807,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
                           {/* Destinations Column */}
                           <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                            {config.destinations.length > 0 ? (
+                            {config.destinations?.length > 0 ? (
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
                                     <Typography variant="caption" sx={{ fontWeight: 600, display: 'block !important', mb: 0.5 }}>
-                                      Output Destinations ({config.destinations.length}):
+                                      Output Destinations ({config.destinations?.length}):
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
-                                      {config.destinations.join(', ')}
+                                      {config.destinations?.join(', ')}
                                     </Typography>
                                   </Box>
                                 }
@@ -1693,7 +1824,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                               >
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <Chip
-                                    label={`${config.destinations.length} destination${config.destinations.length !== 1 ? 's' : ''}`}
+                                    label={`${config.destinations?.length} destination${config.destinations?.length !== 1 ? 's' : ''}`}
                                     size="small"
                                     sx={{
                                       backgroundColor: '#10B98120',
@@ -1714,8 +1845,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       whiteSpace: 'nowrap !important',
                                     }}
                                   >
-                                    {config.destinations.slice(0, 2).join(', ')}
-                                    {config.destinations.length > 2 ? '...' : ''}
+                                    {config.destinations?.slice(0, 2).join(', ')}
+                                    {config.destinations?.length > 2 ? '...' : ''}
                                   </Typography>
                                 </Box>
                               </Tooltip>
@@ -1738,7 +1869,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
 
                           {/* Priority Order Column */}
                           <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                            {config.combineSources && config.priorityOrder && config.priorityOrder.length > 0 ? (
+                            {config.combineSources && config.priorityOrder && config.priorityOrder?.length > 0 ? (
                               <Tooltip
                                 title={
                                   <Box sx={{ maxWidth: 400 }}>
@@ -1746,7 +1877,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                       Priority Order:
                                     </Typography>
                                     <Typography variant="caption" sx={{ display: 'block' }}>
-                                      {config.priorityOrder.map((id, idx) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
+                                      {config.priorityOrder?.map((id, idx) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
                                     </Typography>
                                   </Box>
                                 }
@@ -1764,8 +1895,8 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                                     cursor: 'help',
                                   }}
                                 >
-                                  {config.priorityOrder.slice(0, 2).map((id, idx) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
-                                  {config.priorityOrder.length > 2 ? '...' : ''}
+                                  {config.priorityOrder?.slice(0, 2).map((id, idx) => `${idx + 1}. ${getSourceName(id)}`).join(', ')}
+                                  {config.priorityOrder?.length > 2 ? '...' : ''}
                                 </Typography>
                               </Tooltip>
                             ) : (
@@ -1835,7 +1966,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
         onClose={() => setFieldMappingDialogOpen(false)}
         onSave={(mappings) => setFieldMappings(mappings)}
         availableSources={
-          availableInputSources.map(src => ({
+          availableInputSources?.map(src => ({
             id: src.id,
             name: src.sourceName,
             type: 'input' as const,

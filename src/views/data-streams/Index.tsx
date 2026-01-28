@@ -104,7 +104,7 @@ const DataStreamsPage = () => {
 
   const handleDelete = (id: number) => {
     if (window.confirm('Are you sure you want to delete this data stream?')) {
-      setDataStreams(dataStreams.filter(stream => stream.id !== id));
+      setDataStreams(dataStreams?.filter(stream => stream.id !== id));
       // TODO: Call API to delete the stream
     }
   };
@@ -216,7 +216,7 @@ const DataStreamsPage = () => {
                   </Typography>
                 </TableCell>
               </TableRow>
-            ) : dataStreams.length === 0 ? (
+            ) : dataStreams?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -225,7 +225,7 @@ const DataStreamsPage = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              dataStreams.map((stream) => (
+              dataStreams?.map((stream) => (
                 <TableRow key={stream.id} hover>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.85rem' }}>

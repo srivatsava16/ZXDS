@@ -52,7 +52,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
   const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
 
   // Filter out the currently editing version from available input sources
-  const filteredAvailableInputSources = availableInputSources.filter(source => {
+  const filteredAvailableInputSources = availableInputSources?.filter(source => {
     // If we're editing a version, exclude it from the dropdown
     if (version && version.id) {
       return source.id !== version.id;
@@ -94,15 +94,15 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
   }, [version, open]);
 
   const handleSave = () => {
-    if (!versionName.trim()) {
+    if (!versionName?.trim()) {
       setVersionNameError('Please enter a version name');
       return;
     }
 
     // Validate version name against API reserved names and existing sources
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : availableInputSources;
     const validationError = validateUniqueSourceName({
-      sourceName: versionName.trim(),
+      sourceName: versionName?.trim(),
       allExistingSources: sourcesToCheck,
       editingSourceId: version?.id,
       moduleName: 'Append Version',
@@ -114,27 +114,27 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
       return;
     }
 
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one input source');
       return;
     }
-    if (selectedAppendSources.length === 0) {
+    if (selectedAppendSources?.length === 0) {
       alert('Please select at least one append source');
       return;
     }
-    if (selectedMatchKeys.length === 0) {
+    if (selectedMatchKeys?.length === 0) {
       alert('Please select at least one Match Key');
       return;
     }
-    if (selectedAppendFields.length === 0) {
+    if (selectedAppendFields?.length === 0) {
       alert('Please select at least one Field to Append');
       return;
     }
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName.trim(),
-      versionLabel: versionName.trim(),
+      sourceName: versionName?.trim(),
+      versionLabel: versionName?.trim(),
       baseInputSources: selectedInputSources,
       operationSources: selectedAppendSources,
       operationFields: selectedMatchKeys,
@@ -150,10 +150,10 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources.find(s => s.id === id);
+    const inputSource = availableInputSources?.find(s => s.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const appendSource = availableAppendSources.find(s => s.id === id);
+    const appendSource = availableAppendSources?.find(s => s.id === id);
     if (appendSource) return appendSource.name;
 
     return id;
@@ -161,44 +161,44 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
 
   // Get available Match Keys from selected input sources
   const getAvailableMatchKeys = (): string[] => {
-    if (selectedInputSources.length === 0) return [];
+    if (selectedInputSources?.length === 0) return [];
 
-    const selectedSources = availableInputSources.filter(src => selectedInputSources.includes(src.id));
-    if (selectedSources.length === 0) return [];
+    const selectedSources = availableInputSources?.filter(src => selectedInputSources?.includes(src.id));
+    if (selectedSources?.length === 0) return [];
 
     // If only one source, return all its fields
-    if (selectedSources.length === 1) {
+    if (selectedSources?.length === 1) {
       return selectedSources[0].selectedHeaders || selectedSources[0].headers || [];
     }
 
     // If multiple sources, return common fields (intersection)
     const firstSourceFields = selectedSources[0].selectedHeaders || selectedSources[0].headers || [];
-    return firstSourceFields.filter(field =>
-      selectedSources.slice(1).every(src => {
+    return firstSourceFields?.filter(field =>
+      selectedSources?.slice(1).every(src => {
         const srcFields = src.selectedHeaders || src.headers || [];
-        return srcFields.includes(field);
+        return srcFields?.includes(field);
       })
     );
   };
 
   // Get available Fields to Append from selected append sources
   const getAvailableAppendFields = (): string[] => {
-    if (selectedAppendSources.length === 0) return [];
+    if (selectedAppendSources?.length === 0) return [];
 
-    const selectedSources = availableAppendSources.filter(src => selectedAppendSources.includes(src.id));
-    if (selectedSources.length === 0) return [];
+    const selectedSources = availableAppendSources?.filter(src => selectedAppendSources?.includes(src.id));
+    if (selectedSources?.length === 0) return [];
 
     // If only one source, return all its fields
-    if (selectedSources.length === 1) {
+    if (selectedSources?.length === 1) {
       return (selectedSources[0] as any).fields || [];
     }
 
     // If multiple sources, return common fields (intersection)
     const firstSourceFields = (selectedSources[0] as any).fields || [];
-    return firstSourceFields.filter((field: string) =>
-      selectedSources.slice(1).every(src => {
+    return firstSourceFields?.filter((field: string) =>
+      selectedSources?.slice(1).every(src => {
         const srcFields = (src as any).fields || [];
-        return srcFields.includes(field);
+        return srcFields?.includes(field);
       })
     );
   };
@@ -282,7 +282,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -300,9 +300,9 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                   },
                 }}
               >
-                {filteredAvailableInputSources.map((source) => (
+                {filteredAvailableInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedInputSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.sourceName} />
                   </MenuItem>
                 ))}
@@ -327,7 +327,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -345,9 +345,9 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                   },
                 }}
               >
-                {availableAppendSources.map((source) => (
+                {availableAppendSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedAppendSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedAppendSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.name} />
                   </MenuItem>
                 ))}
@@ -368,7 +368,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={value}
@@ -380,21 +380,21 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                     ))}
                   </Box>
                 )}
-                disabled={availableMatchKeys.length === 0}
+                disabled={availableMatchKeys?.length === 0}
                 sx={{
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
               >
-                {availableMatchKeys.length === 0 ? (
+                {availableMatchKeys?.length === 0 ? (
                   <MenuItem disabled>
                     <em>Select input sources first</em>
                   </MenuItem>
                 ) : (
-                  availableMatchKeys.map((field) => (
+                  availableMatchKeys?.map((field) => (
                     <MenuItem key={field} value={field}>
-                      <Checkbox checked={selectedMatchKeys.indexOf(field) > -1} />
+                      <Checkbox checked={selectedMatchKeys?.indexOf(field) > -1} />
                       <ListItemText primary={field} />
                     </MenuItem>
                   ))
@@ -416,7 +416,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={value}
@@ -428,21 +428,21 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                     ))}
                   </Box>
                 )}
-                disabled={availableAppendFields.length === 0}
+                disabled={availableAppendFields?.length === 0}
                 sx={{
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
               >
-                {availableAppendFields.length === 0 ? (
+                {availableAppendFields?.length === 0 ? (
                   <MenuItem disabled>
                     <em>Select append sources first</em>
                   </MenuItem>
                 ) : (
-                  availableAppendFields.map((field) => (
+                  availableAppendFields?.map((field) => (
                     <MenuItem key={field} value={field}>
-                      <Checkbox checked={selectedAppendFields.indexOf(field) > -1} />
+                      <Checkbox checked={selectedAppendFields?.indexOf(field) > -1} />
                       <ListItemText primary={field} />
                     </MenuItem>
                   ))
@@ -469,11 +469,11 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
           onClick={handleSave}
           startIcon={<Save />}
           disabled={
-            !versionName.trim() ||
-            selectedInputSources.length === 0 ||
-            selectedAppendSources.length === 0 ||
-            selectedMatchKeys.length === 0 ||
-            selectedAppendFields.length === 0
+            !versionName?.trim() ||
+            selectedInputSources?.length === 0 ||
+            selectedAppendSources?.length === 0 ||
+            selectedMatchKeys?.length === 0 ||
+            selectedAppendFields?.length === 0
           }
           sx={{ textTransform: 'none', boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)' }}
         >

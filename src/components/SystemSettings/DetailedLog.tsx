@@ -155,8 +155,8 @@ const DetailedLog = () => {
     },
   ]);
 
-  const filteredLogs = detailedLogs.filter((log) =>
-    log.requestName.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredLogs = detailedLogs?.filter((log) =>
+    log?.requestName?.toLowerCase()?.includes(searchQuery?.toLowerCase())
   );
 
   const handleChangePage = (_event: unknown, newPage: number) => {
@@ -234,13 +234,13 @@ const DetailedLog = () => {
 
       {/* Results Count */}
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-        Showing {filteredLogs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).length} of{' '}
-        {filteredLogs.length} requests
+        Showing {filteredLogs?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)?.length} of{' '}
+        {filteredLogs?.length} requests
       </Typography>
 
       {/* Accordion List */}
       <Box sx={{ mb: 2 }}>
-        {filteredLogs.length === 0 ? (
+        {filteredLogs?.length === 0 ? (
           <Paper sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="body2" color="text.secondary">
               No requests found matching "{searchQuery}"
@@ -248,10 +248,10 @@ const DetailedLog = () => {
           </Paper>
         ) : (
           filteredLogs
-            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-            .map((log) => (
+            ?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+            ?.map((log) => (
               <Accordion
-                key={log.id}
+                key={log?.id}
                 sx={{
                   mb: 1.5,
                   border: '1px solid',
@@ -272,14 +272,14 @@ const DetailedLog = () => {
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pr: 2 }}>
-                    {getStatusIcon(log.status)}
+                    {getStatusIcon(log?.status)}
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#296695' }}>
-                          {log.requestName}
+                          {log?.requestName}
                         </Typography>
                         <Chip
-                          label={log.requestType}
+                          label={log?.requestType}
                           size="small"
                           sx={{
                             backgroundColor: '#29669520',
@@ -290,11 +290,11 @@ const DetailedLog = () => {
                           }}
                         />
                         <Chip
-                          label={log.status}
+                          label={log?.status}
                           size="small"
                           sx={{
-                            backgroundColor: getStatusColor(log.status).bg,
-                            color: getStatusColor(log.status).color,
+                            backgroundColor: getStatusColor(log?.status)?.bg,
+                            color: getStatusColor(log?.status)?.color,
                             fontWeight: 600,
                             fontSize: '0.7rem',
                             height: 20,
@@ -303,11 +303,11 @@ const DetailedLog = () => {
                       </Box>
                       <Box sx={{ display: 'flex', gap: 2 }}>
                         <Typography variant="caption" color="text.secondary">
-                          <strong>User:</strong> {log.user}
+                          <strong>User:</strong> {log?.user}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           <strong>Time:</strong>{' '}
-                          {new Date(log.timestamp).toLocaleString('en-US', {
+                          {new Date(log?.timestamp).toLocaleString('en-US', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
@@ -316,7 +316,7 @@ const DetailedLog = () => {
                           })}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          <strong>Log Entries:</strong> {log.logs.length}
+                          <strong>Log Entries:</strong> {log?.logs?.length}
                         </Typography>
                       </Box>
                     </Box>
@@ -338,10 +338,10 @@ const DetailedLog = () => {
                       fontFamily: 'monospace',
                     }}
                   >
-                    {log.logs.map((logLine, index) => {
-                      const isError = logLine.includes('ERROR');
-                      const isWarning = logLine.includes('WARN');
-                      const isDebug = logLine.includes('DEBUG');
+                    {log?.logs?.map((logLine, index) => {
+                      const isError = logLine?.includes('ERROR');
+                      const isWarning = logLine?.includes('WARN');
+                      const isDebug = logLine?.includes('DEBUG');
 
                       return (
                         <Typography
@@ -377,7 +377,7 @@ const DetailedLog = () => {
       <TablePagination
         rowsPerPageOptions={[5, 10, 25]}
         component="div"
-        count={filteredLogs.length}
+        count={filteredLogs?.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={handleChangePage}

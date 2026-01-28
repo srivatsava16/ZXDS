@@ -187,14 +187,14 @@ const DraggableAppendSources: React.FC<DraggableAppendSourcesProps> = ({
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = items.indexOf(active.id as string);
-      const newIndex = items.indexOf(over.id as string);
+      const oldIndex = items?.indexOf(active.id as string);
+      const newIndex = items?.indexOf(over.id as string);
       const newOrder = arrayMove(items, oldIndex, newIndex);
       onReorder(newOrder);
     }
   };
 
-  if (selectedSources.length === 0) {
+  if (selectedSources?.length === 0) {
     return null;
   }
 
@@ -220,7 +220,7 @@ const DraggableAppendSources: React.FC<DraggableAppendSourcesProps> = ({
       </Box>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items} strategy={verticalListSortingStrategy}>
-          {items.map((sourceId, index) => (
+          {items?.map((sourceId, index) => (
             <SortableItem
               key={sourceId}
               id={sourceId}

@@ -71,23 +71,19 @@ export const transformOutputToAPIFormat = (
   fieldMappings: FieldMapping[],
   apiSources?: RequestInputsResponse | null
 ): OutputConfigPayload | null => {
+
+  console.log('entered_', outputConfig);
   if (!outputConfig) return null;
 
   // Ensure inputSources exists and is an array
-  if (!outputConfig.inputSources || !Array.isArray(outputConfig.inputSources) || outputConfig.inputSources.length === 0) {
+  if (!outputConfig.inputSources || !Array.isArray(outputConfig.inputSources) || outputConfig.inputSources?.length === 0) {
     console.warn('Output transformation: No input sources found in outputConfig');
     return null;
   }
 
   // Helper function to get source by ID
   const getSourceById = (sourceId: string): InputSource | undefined => {
-    return availableInputSources.find(s => s.id === sourceId || s.sourceName === sourceId);
-  };
-
-  // Helper function to get source name
-  const getSourceName = (sourceId: string): string => {
-    const source = getSourceById(sourceId);
-    return source?.sourceName || sourceId;
+    return availableInputSources?.find(s => s.id === sourceId || s.sourceName === sourceId);
   };
 
   // Transform input sources to array of source names
@@ -105,12 +101,12 @@ export const transformOutputToAPIFormat = (
   // Transform field mappings
   const transformedFieldMappings: Array<{ field_name: string; source_mappings: string }> = [];
 
-  if (fieldMappings && fieldMappings.length > 0) {
-    fieldMappings.forEach((mapping: FieldMapping) => {
+  if (fieldMappings && fieldMappings?.length > 0) {
+    fieldMappings?.forEach((mapping: FieldMapping) => {
       const sourceMappingsArray: string[] = [];
 
       (mapping.selectedColumns || []).forEach((column: string) => {
-        const [sourceId, originalField] = column.split('::');
+        const [sourceId, originalField] = column?.split('::');
 
         if (!sourceId || !originalField) {
           console.warn(`Invalid column format in field mapping: ${column}`);
@@ -123,13 +119,13 @@ export const transformOutputToAPIFormat = (
           return;
         }
 
-        sourceMappingsArray.push(`${source.sourceName}.${originalField}`);
+        sourceMappingsArray?.push(`${source.sourceName}.${originalField}`);
       });
 
-      if (sourceMappingsArray.length > 0) {
-        transformedFieldMappings.push({
+      if (sourceMappingsArray?.length > 0) {
+        transformedFieldMappings?.push({
           field_name: mapping.fieldName,
-          source_mappings: sourceMappingsArray.join('|')
+          source_mappings: sourceMappingsArray?.join('|')
         });
       }
     });
@@ -148,7 +144,7 @@ export const transformOutputToAPIFormat = (
     const destinationTypeUpper = (outputConfig.destinationType || '').toUpperCase();
 
     // Find custom destination details
-    const customDest = customDestinations.find(
+    const customDest = customDestinations?.find(
       dest => parseInt(dest.id) === outputConfig.destinationId
     );
 
@@ -204,21 +200,22 @@ export const transformOutputToAPIFormat = (
     payload.id = outputConfig.id;
   }
 
-  console.log('');
-  console.log('===============================================');
-  console.log('📤 OUTPUT TRANSFORMATION (NEW FORMAT)');
-  console.log('===============================================');
-  console.log('Output Config ID:', outputConfig.id);
-  console.log('Destination Type:', destinationType);
-  console.log('Input Sources:', transformedInputSources);
-  console.log('Output Fields:', outputConfig.outputFields?.length || 0);
-  console.log('Field Mappings:', transformedFieldMappings.length);
-  console.log('Combine Sources:', outputConfig.combineSources);
-  console.log('');
-  console.log('📦 TRANSFORMED PAYLOAD:');
-  console.log(JSON.stringify(payload, null, 2));
-  console.log('===============================================');
-  console.log('');
+  // Debug logging (commented out to prevent continuous output)
+  // console.log('');
+  // console.log('===============================================');
+  // console.log('📤 OUTPUT TRANSFORMATION (NEW FORMAT)');
+  // console.log('===============================================');
+  // console.log('Output Config ID:', outputConfig.id);
+  // console.log('Destination Type:', destinationType);
+  // console.log('Input Sources:', transformedInputSources);
+  // console.log('Output Fields:', outputConfig.outputFields?.length || 0);
+  // console.log('Field Mappings:', transformedFieldMappings.length);
+  // console.log('Combine Sources:', outputConfig.combineSources);
+  // console.log('');
+  // console.log('📦 TRANSFORMED PAYLOAD:');
+  // console.log(JSON.stringify(payload, null, 2));
+  // console.log('===============================================');
+  // console.log('');
 
   return payload;
 };
@@ -233,7 +230,12 @@ export const transformOutputConfigurationsToAPI = (
   moduleLevelFieldMappings: FieldMapping[],  // Module-level field mappings
   apiSources?: RequestInputsResponse | null
 ): OutputAPIPayload | null => {
-  if (!outputConfigurations || outputConfigurations.length === 0) {
+  console.log('=== transformOutputConfigurationsToAPI called ===');
+  console.log('outputConfigurations:', outputConfigurations);
+  console.log('availableInputSources:', availableInputSources);
+
+  if (!outputConfigurations || outputConfigurations?.length === 0) {
+    console.log('=== transformOutputConfigurationsToAPI: No configurations, returning null ===');
     return null;
   }
 
@@ -248,7 +250,7 @@ export const transformOutputConfigurationsToAPI = (
     ))
     .filter((config): config is OutputConfigPayload => config !== null);
 
-  if (transformedConfigs.length === 0) {
+  if (transformedConfigs?.length === 0) {
     return null;
   }
 

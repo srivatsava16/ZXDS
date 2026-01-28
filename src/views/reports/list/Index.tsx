@@ -342,20 +342,20 @@ const ReportPage: React.FC = () => {
         const destinations: Array<{ id: number; name: string; type: string }> = [];
 
         if (response.nfsSources && Array.isArray(response.nfsSources)) {
-          response.nfsSources.forEach((source: any) => {
-            destinations.push({ id: source.id, name: source.name, type: 'NFS' });
+          response.nfsSources?.forEach((source: any) => {
+            destinations?.push({ id: source.id, name: source.name, type: 'NFS' });
           });
         }
 
         if (response.sftpSources && Array.isArray(response.sftpSources)) {
-          response.sftpSources.forEach((source: any) => {
-            destinations.push({ id: source.id, name: source.name, type: 'SFTP' });
+          response.sftpSources?.forEach((source: any) => {
+            destinations?.push({ id: source.id, name: source.name, type: 'SFTP' });
           });
         }
 
         if (response.awsSources && Array.isArray(response.awsSources)) {
-          response.awsSources.forEach((source: any) => {
-            destinations.push({ id: source.id, name: source.name, type: 'AWS' });
+          response.awsSources?.forEach((source: any) => {
+            destinations?.push({ id: source.id, name: source.name, type: 'AWS' });
           });
         }
 
@@ -428,7 +428,7 @@ const ReportPage: React.FC = () => {
       setFileGenLoading(true);
 
       // Find the report data from the already-loaded reports list
-      const reportData = reports.find((report) => report.id === requestId);
+      const reportData = reports?.find((report) => report.id === requestId);
 
       if (!reportData) {
         console.warn('[handleOpenFileGeneration] Report not found in loaded data for ID:', requestId);
@@ -442,7 +442,7 @@ const ReportPage: React.FC = () => {
       // Check for dynamicStats.data in the report
       if ((reportData as any)?.dynamicStats?.data && Array.isArray((reportData as any).dynamicStats.data)) {
 
-        transformedSources = (reportData as any).dynamicStats.data.map((source: any) => ({
+        transformedSources = (reportData as any).dynamicStats.data?.map((source: any) => ({
           id: source.id,
           inputSource: source.inputSource,
           headers: source.headers || []
@@ -523,18 +523,18 @@ const ReportPage: React.FC = () => {
   };
 
   const handleSaveConfiguration = async () => {
-    if (selectedInputSources.length === 0 || selectedOutputFields.length === 0) {
+    if (selectedInputSources?.length === 0 || selectedOutputFields?.length === 0) {
       alert('Please select at least one input source and at least one output field');
       return;
     }
 
     // Validate priority order and field priority order when combine sources is checked
-    if (combineSources && selectedInputSources.length > 1) {
-      if (priorityOrder.length === 0) {
+    if (combineSources && selectedInputSources?.length > 1) {
+      if (priorityOrder?.length === 0) {
         alert('Please set the priority order for input sources');
         return;
       }
-      if (fieldPriorityOrder.length === 0) {
+      if (fieldPriorityOrder?.length === 0) {
         alert('Please set the field priority order');
         return;
       }
@@ -553,7 +553,7 @@ const ReportPage: React.FC = () => {
     }
 
     // Check if the selected destination is custom or preconfigured
-    const customDestination = customDestinations.find(dest => dest.name === selectedDestination);
+    const customDestination = customDestinations?.find(dest => dest.name === selectedDestination);
     const isCustomDestination = !!customDestination;
 
     // Build the API payload
@@ -561,10 +561,10 @@ const ReportPage: React.FC = () => {
       config: {
         input_sources: selectedInputSources,
         output_fields: selectedOutputFields,
-        field_mappings: fieldMappings.flatMap(mapping =>
-          mapping.selectedColumns.map(column => {
+        field_mappings: fieldMappings?.flatMap(mapping =>
+          mapping.selectedColumns?.map(column => {
             // Extract sourceId and field name from column value (format: sourceId::fieldName)
-            const [sourceId, fieldName] = column.includes('::') ? column.split('::') : ['', column];
+            const [sourceId, fieldName] = column?.includes('::') ? column?.split('::') : ['', column];
             return {
               sourceField: fieldName,
               targetField: mapping.fieldName,
@@ -573,7 +573,7 @@ const ReportPage: React.FC = () => {
           })
         ),
         combine_sources: combineSources,
-        field_priority: combineSources && selectedInputSources.length > 1 ? fieldPriorityOrder : [],
+        field_priority: combineSources && selectedInputSources?.length > 1 ? fieldPriorityOrder : [],
       },
       destinationType: isCustomDestination ? 'custom' : 'preconfigured',
       limitations: {
@@ -630,8 +630,8 @@ const ReportPage: React.FC = () => {
           inputSources: selectedInputSources,
           outputFields: selectedOutputFields,
           combineSources: combineSources,
-          priorityOrder: combineSources && selectedInputSources.length > 1 ? priorityOrder : undefined,
-          fieldPriorityOrder: combineSources && selectedInputSources.length > 1 ? fieldPriorityOrder : undefined,
+          priorityOrder: combineSources && selectedInputSources?.length > 1 ? priorityOrder : undefined,
+          fieldPriorityOrder: combineSources && selectedInputSources?.length > 1 ? fieldPriorityOrder : undefined,
           limitations: {
             limitRecords: limitRecords,
             recordCount: limitRecords ? parseInt(recordCount) : undefined,
@@ -668,7 +668,7 @@ const ReportPage: React.FC = () => {
 
   const handleOpenStats = (requestId: number) => {
     // Find the report data from the current reports list
-    const reportData = reports.find(r => r.id === requestId);
+    const reportData = reports?.find(r => r.id === requestId);
     setStatsRequestId(requestId);
     setSelectedReportData(reportData || null);
     setStatsDialogOpen(true);
@@ -696,8 +696,8 @@ const ReportPage: React.FC = () => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = priorityOrder.indexOf(active.id as string);
-      const newIndex = priorityOrder.indexOf(over.id as string);
+      const oldIndex = priorityOrder?.indexOf(active.id as string);
+      const newIndex = priorityOrder?.indexOf(over.id as string);
       const newOrder = arrayMove(priorityOrder, oldIndex, newIndex);
       setPriorityOrder(newOrder);
     }
@@ -705,7 +705,7 @@ const ReportPage: React.FC = () => {
 
   const handleToggleConfigExpand = (configId: string) => {
     // Find the config to check its status
-    const config = savedConfigurations.find(c => c.id === configId);
+    const config = savedConfigurations?.find(c => c.id === configId);
 
     // Don't expand if status is Waiting
     if (config?.status === 'Waiting') {
@@ -793,7 +793,7 @@ const ReportPage: React.FC = () => {
 
   const handleSaveDestination = () => {
     // Validation
-    if (!destinationName.trim()) {
+    if (!destinationName?.trim()) {
       alert('Please enter a destination name');
       return;
     }
@@ -827,7 +827,7 @@ const ReportPage: React.FC = () => {
 
     if (editingDestinationId) {
       // Update existing destination
-      setCustomDestinations(customDestinations.map(d =>
+      setCustomDestinations(customDestinations?.map(d =>
         d.id === editingDestinationId ? destinationData : d
       ));
       alert('Destination updated successfully');
@@ -847,7 +847,7 @@ const ReportPage: React.FC = () => {
   const handleDeleteDestination = (destinationId: string) => {
     const confirmed = window.confirm('Are you sure you want to delete this destination?');
     if (confirmed) {
-      setCustomDestinations(customDestinations.filter(d => d.id !== destinationId));
+      setCustomDestinations(customDestinations?.filter(d => d.id !== destinationId));
       // If we're editing this destination, reset the form
       if (editingDestinationId === destinationId) {
         resetDestinationForm();
@@ -902,14 +902,14 @@ const ReportPage: React.FC = () => {
     
     // Fallback calculation for when API is not available
     const today = new Date().toISOString().split('T')[0];
-    const todayRequests = reports.filter(request => 
-      request.createdDate && request.createdDate.split(' ')[0] === today
+    const todayRequests = reports?.filter(request => 
+      request.createdDate && request.createdDate?.split(' ')[0] === today
     );
     
     return {
-      total: todayRequests.length,
-      inProgress: todayRequests.filter(r => r.status === 'Inprogress' || r.status === 'Pending').length,
-      completed: todayRequests.filter(r => r.status === 'Completed').length
+      total: todayRequests?.length,
+      inProgress: todayRequests?.filter(r => r.status === 'Inprogress' || r.status === 'Pending').length,
+      completed: todayRequests?.filter(r => r.status === 'Completed').length
     };
   };
 
@@ -978,7 +978,7 @@ const ReportPage: React.FC = () => {
 
         {/* Stats Cards */}
         <Stack direction="row" spacing={3}>
-          {stats.map((stat, index) => (
+          {stats?.map((stat, index) => (
             <Card
               key={index}
               sx={{
@@ -1046,8 +1046,8 @@ const ReportPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {reports && reports.length > 0 ? (
-              reports.map((row) => (
+              {reports && reports?.length > 0 ? (
+              reports?.map((row) => (
                   <TableRow
                     key={row.id}
                     hover
@@ -1090,12 +1090,12 @@ const ReportPage: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.createdDate ? row.createdDate.split(' ')[0] : '-'}
+                      {row.createdDate ? row.createdDate?.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.processedDate ? row.processedDate.split(' ')[0] : '-'}
+                      {row.processedDate ? row.processedDate?.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
@@ -1110,7 +1110,7 @@ const ReportPage: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {row.updatedDate ? row.updatedDate.split(' ')[0] : '-'}
+                      {row.updatedDate ? row.updatedDate?.split(' ')[0] : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell align="center">
@@ -1302,7 +1302,7 @@ const ReportPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {selectedFileDetails.map((file, index) => (
+                {selectedFileDetails?.map((file, index) => (
                   <TableRow key={index} hover>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -1406,9 +1406,9 @@ const ReportPage: React.FC = () => {
                         Create and manage custom output destinations
                       </Typography>
                     </Box>
-                    {customDestinations.length > 0 && (
+                    {customDestinations?.length > 0 && (
                       <Chip
-                        label={`${customDestinations.length} created`}
+                        label={`${customDestinations?.length} created`}
                         size="small"
                         sx={{
                           height: 22,
@@ -1436,7 +1436,7 @@ const ReportPage: React.FC = () => {
                       id="destination-form"
                       elevation={0}
                       sx={{
-                        mb: customDestinations.length > 0 ? 3 : 0,
+                        mb: customDestinations?.length > 0 ? 3 : 0,
                         p: 2.5,
                         backgroundColor: '#FFFFFF',
                         borderRadius: 2,
@@ -1799,7 +1799,7 @@ const ReportPage: React.FC = () => {
                     </Paper>
 
                     {/* List of Created Destinations */}
-                    {customDestinations.length > 0 && (
+                    {customDestinations?.length > 0 && (
                       <Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                           <Storage sx={{ fontSize: 18, color: '#296695' }} />
@@ -1807,7 +1807,7 @@ const ReportPage: React.FC = () => {
                             Created Destinations
                           </Typography>
                           <Chip
-                            label={customDestinations.length}
+                            label={customDestinations?.length}
                             size="small"
                             sx={{
                               height: 20,
@@ -1819,7 +1819,7 @@ const ReportPage: React.FC = () => {
                           />
                         </Box>
                         <Stack spacing={1.5}>
-                          {customDestinations.map((dest) => {
+                          {customDestinations?.map((dest) => {
                             const isEditing = editingDestinationId === dest.id;
                             return (
                               <Paper
@@ -1953,9 +1953,9 @@ const ReportPage: React.FC = () => {
                         Rename or unify fields from multiple sources
                       </Typography>
                     </Box>
-                    {fieldMappings.length > 0 && (
+                    {fieldMappings?.length > 0 && (
                       <Chip
-                        label={`${fieldMappings.length} mapping${fieldMappings.length !== 1 ? 's' : ''}`}
+                        label={`${fieldMappings?.length} mapping${fieldMappings?.length !== 1 ? 's' : ''}`}
                         size="small"
                         sx={{
                           height: 22,
@@ -1982,7 +1982,7 @@ const ReportPage: React.FC = () => {
                     <Paper
                       elevation={0}
                       sx={{
-                        mb: fieldMappings.length > 0 ? 3 : 0,
+                        mb: fieldMappings?.length > 0 ? 3 : 0,
                         p: 2.5,
                         backgroundColor: '#FFFFFF',
                         borderRadius: 2,
@@ -2034,13 +2034,13 @@ const ReportPage: React.FC = () => {
                           size="small"
                           value={mappingSelectedSources}
                           onChange={(e) => {
-                            const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                            const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                             setMappingSelectedSources(value);
                             setMappingSelectedColumns([]);
                           }}
                           renderValue={(selected) => (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.map((value) => (
+                              {selected?.map((value) => (
                                 <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
                               ))}
                             </Box>
@@ -2050,9 +2050,9 @@ const ReportPage: React.FC = () => {
                           <MenuItem disabled value="">
                             <em>Select sources...</em>
                           </MenuItem>
-                          {availableInputSources.map((source) => (
+                          {availableInputSources?.map((source) => (
                             <MenuItem key={source.id} value={source.inputSource}>
-                              <Checkbox checked={mappingSelectedSources.indexOf(source.inputSource) > -1} size="small" />
+                              <Checkbox checked={mappingSelectedSources?.indexOf(source.inputSource) > -1} size="small" />
                               <ListItemText primary={source.inputSource} />
                             </MenuItem>
                           ))}
@@ -2071,14 +2071,14 @@ const ReportPage: React.FC = () => {
                           size="small"
                           value={mappingSelectedColumns}
                           onChange={(e) => {
-                            const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                            const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                             setMappingSelectedColumns(value);
                           }}
-                          disabled={mappingSelectedSources.length === 0}
+                          disabled={mappingSelectedSources?.length === 0}
                           renderValue={(selected) => (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {selected.map((value) => {
-                                const [, fieldName] = value.split('::');
+                              {selected?.map((value) => {
+                                const [, fieldName] = value?.split('::');
                                 return <Chip key={value} label={fieldName} size="small" color="primary" sx={{ height: 20, fontSize: '0.7rem' }} />;
                               })}
                             </Box>
@@ -2086,16 +2086,16 @@ const ReportPage: React.FC = () => {
                           displayEmpty
                         >
                           <MenuItem disabled value="">
-                            <em>{mappingSelectedSources.length === 0 ? 'Select sources first' : 'Select columns...'}</em>
+                            <em>{mappingSelectedSources?.length === 0 ? 'Select sources first' : 'Select columns...'}</em>
                           </MenuItem>
-                          {mappingSelectedSources.length > 0 &&
+                          {mappingSelectedSources?.length > 0 &&
                             (() => {
                               const columnsWithSources: Array<{ value: string; label: string; sourceName: string }> = [];
-                              mappingSelectedSources.forEach((sourceName) => {
-                                const source = availableInputSources.find((s) => s.inputSource === sourceName);
+                              mappingSelectedSources?.forEach((sourceName) => {
+                                const source = availableInputSources?.find((s) => s.inputSource === sourceName);
                                 if (source) {
-                                  source.headers.forEach((header) => {
-                                    columnsWithSources.push({
+                                  source.headers?.forEach((header) => {
+                                    columnsWithSources?.push({
                                       value: `${source.id}::${header}`,
                                       label: `${header} → ${sourceName}`,
                                       sourceName,
@@ -2103,9 +2103,9 @@ const ReportPage: React.FC = () => {
                                   });
                                 }
                               });
-                              return columnsWithSources.map((col) => (
+                              return columnsWithSources?.map((col) => (
                                 <MenuItem key={col.value} value={col.value}>
-                                  <Checkbox checked={mappingSelectedColumns.indexOf(col.value) > -1} size="small" />
+                                  <Checkbox checked={mappingSelectedColumns?.indexOf(col.value) > -1} size="small" />
                                   <ListItemText primary={col.label} />
                                 </MenuItem>
                               ));
@@ -2142,15 +2142,15 @@ const ReportPage: React.FC = () => {
                           size="small"
                           startIcon={editingMappingId ? <Edit /> : <Add />}
                           onClick={() => {
-                            if (!mappingFieldName.trim()) {
+                            if (!mappingFieldName?.trim()) {
                               alert('Please enter a target field name');
                               return;
                             }
-                            if (mappingSelectedSources.length === 0) {
+                            if (mappingSelectedSources?.length === 0) {
                               alert('Please select at least one source');
                               return;
                             }
-                            if (mappingSelectedColumns.length === 0) {
+                            if (mappingSelectedColumns?.length === 0) {
                               alert('Please select at least one column');
                               return;
                             }
@@ -2158,7 +2158,7 @@ const ReportPage: React.FC = () => {
                             if (editingMappingId) {
                               // Update existing mapping
                               setFieldMappings(
-                                fieldMappings.map((m) =>
+                                fieldMappings?.map((m) =>
                                   m.id === editingMappingId
                                     ? { ...m, fieldName: mappingFieldName, selectedSources: mappingSelectedSources, selectedColumns: mappingSelectedColumns }
                                     : m
@@ -2199,10 +2199,10 @@ const ReportPage: React.FC = () => {
                     </Paper>
 
                     {/* Field Mappings List */}
-                    {fieldMappings.length > 0 && (
+                    {fieldMappings?.length > 0 && (
                       <Box>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.875rem' }}>
-                          Configured Mappings ({fieldMappings.length})
+                          Configured Mappings ({fieldMappings?.length})
                         </Typography>
                         <TableContainer
                           component={Paper}
@@ -2224,7 +2224,7 @@ const ReportPage: React.FC = () => {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {fieldMappings.map((mapping) => (
+                              {fieldMappings?.map((mapping) => (
                                 <TableRow
                                   key={mapping.id}
                                   hover
@@ -2239,8 +2239,8 @@ const ReportPage: React.FC = () => {
                                   </TableCell>
                                   <TableCell sx={{ py: 1 }}>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                      {mapping.selectedColumns.slice(0, 3).map((columnValue) => {
-                                        const [, fieldName] = columnValue.split('::');
+                                      {mapping.selectedColumns?.slice(0, 3).map((columnValue) => {
+                                        const [, fieldName] = columnValue?.split('::');
                                         return (
                                           <Chip
                                             key={columnValue}
@@ -2255,9 +2255,9 @@ const ReportPage: React.FC = () => {
                                           />
                                         );
                                       })}
-                                      {mapping.selectedColumns.length > 3 && (
+                                      {mapping.selectedColumns?.length > 3 && (
                                         <Chip
-                                          label={`+${mapping.selectedColumns.length - 3}`}
+                                          label={`+${mapping.selectedColumns?.length - 3}`}
                                           size="small"
                                           sx={{
                                             height: 18,
@@ -2293,7 +2293,7 @@ const ReportPage: React.FC = () => {
                                         size="small"
                                         onClick={() => {
                                           if (window.confirm('Are you sure you want to delete this mapping?')) {
-                                            setFieldMappings(fieldMappings.filter((m) => m.id !== mapping.id));
+                                            setFieldMappings(fieldMappings?.filter((m) => m.id !== mapping.id));
                                             if (editingMappingId === mapping.id) {
                                               setEditingMappingId(null);
                                               setMappingFieldName('');
@@ -2361,26 +2361,26 @@ const ReportPage: React.FC = () => {
                   multiple
                   value={selectedInputSources}
                   onChange={(e) => {
-                    const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                    const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                     setSelectedInputSources(value);
                     setSelectedOutputFields([]);
                     // Initialize priority order with selected sources order
                     setPriorityOrder(value);
                     setFieldPriorityOrder([]);
                     // Reset combine sources if only one source is selected
-                    if (value.length <= 1) {
+                    if (value?.length <= 1) {
                       setCombineSources(false);
                     }
                   }}
                   displayEmpty
                   size="small"
                   renderValue={(selected) => {
-                    if (selected.length === 0) {
+                    if (selected?.length === 0) {
                       return <em>Select Input Sources</em>;
                     }
                     return (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
+                        {selected?.map((value) => (
                           <Chip key={value} label={value} size="small" />
                         ))}
                       </Box>
@@ -2390,9 +2390,9 @@ const ReportPage: React.FC = () => {
                   <MenuItem disabled value="">
                     <em>Select Input Sources</em>
                   </MenuItem>
-                  {availableInputSources.map((source) => (
+                  {availableInputSources?.map((source) => (
                     <MenuItem key={source.id} value={source.inputSource}>
-                      <Checkbox checked={selectedInputSources.indexOf(source.inputSource) > -1} size="small" />
+                      <Checkbox checked={selectedInputSources?.indexOf(source.inputSource) > -1} size="small" />
                       <ListItemText primary={source.inputSource} />
                     </MenuItem>
                   ))}
@@ -2400,7 +2400,7 @@ const ReportPage: React.FC = () => {
               </Box>
 
               {/* Combine Sources Checkbox (shown when multiple sources selected) */}
-              {selectedInputSources.length > 1 && (
+              {selectedInputSources?.length > 1 && (
                 <Box sx={{ mb: 3, ml: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Checkbox
@@ -2429,19 +2429,19 @@ const ReportPage: React.FC = () => {
                   multiple
                   value={selectedOutputFields}
                   onChange={(e) => {
-                    const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                    const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                     setSelectedOutputFields(value);
                   }}
-                  disabled={selectedInputSources.length === 0}
+                  disabled={selectedInputSources?.length === 0}
                   displayEmpty
                   size="small"
                   renderValue={(selected) => {
-                    if (selected.length === 0) {
-                      return <em>{selectedInputSources.length > 0 ? 'Select Output Fields' : 'Select input sources first'}</em>;
+                    if (selected?.length === 0) {
+                      return <em>{selectedInputSources?.length > 0 ? 'Select Output Fields' : 'Select input sources first'}</em>;
                     }
                     return (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
+                        {selected?.map((value) => (
                           <Chip key={value} label={value} size="small" />
                         ))}
                       </Box>
@@ -2449,24 +2449,24 @@ const ReportPage: React.FC = () => {
                   }}
                 >
                   <MenuItem disabled value="">
-                    <em>{selectedInputSources.length > 0 ? 'Select Output Fields' : 'Select input sources first'}</em>
+                    <em>{selectedInputSources?.length > 0 ? 'Select Output Fields' : 'Select input sources first'}</em>
                   </MenuItem>
-                  {selectedInputSources.length > 0 &&
+                  {selectedInputSources?.length > 0 &&
                     (() => {
                       let availableHeaders: string[] = [];
 
-                      if (selectedInputSources.length === 1) {
+                      if (selectedInputSources?.length === 1) {
                         // Single source: show all headers from that source (with mappings applied)
-                        const source = availableInputSources.find((s) => s.inputSource === selectedInputSources[0]);
+                        const source = availableInputSources?.find((s) => s.inputSource === selectedInputSources[0]);
                         const sourceId = source?.id.toString() || '';
                         const originalHeaders = source?.headers || [];
 
                         // Apply field mappings
                         const fieldsMap = new Map<string, string>();
-                        originalHeaders.forEach((field) => {
-                          const mapping = fieldMappings.find((m) =>
-                            m.selectedColumns.some((col) => {
-                              const [colSourceId, colFieldName] = col.split('::');
+                        originalHeaders?.forEach((field) => {
+                          const mapping = fieldMappings?.find((m) =>
+                            m.selectedColumns?.some((col) => {
+                              const [colSourceId, colFieldName] = col?.split('::');
                               return colSourceId === sourceId && colFieldName === field;
                             })
                           );
@@ -2483,48 +2483,48 @@ const ReportPage: React.FC = () => {
                         // Multiple sources: show only common headers (intersection, with mappings applied)
                         const allSourceFieldSets: Set<string>[] = [];
 
-                        selectedInputSources.forEach((sourceName) => {
-                          const source = availableInputSources.find((s) => s.inputSource === sourceName);
+                        selectedInputSources?.forEach((sourceName) => {
+                          const source = availableInputSources?.find((s) => s.inputSource === sourceName);
                           if (source) {
                             const sourceId = source.id.toString();
                             const sourceFields = new Set<string>();
                             const originalHeaders = source.headers || [];
 
-                            originalHeaders.forEach((field) => {
-                              const mapping = fieldMappings.find((m) =>
-                                m.selectedColumns.some((col) => {
-                                  const [colSourceId, colFieldName] = col.split('::');
+                            originalHeaders?.forEach((field) => {
+                              const mapping = fieldMappings?.find((m) =>
+                                m.selectedColumns?.some((col) => {
+                                  const [colSourceId, colFieldName] = col?.split('::');
                                   return colSourceId === sourceId && colFieldName === field;
                                 })
                               );
 
                               // Use mapped field name if exists, otherwise use original
                               const displayFieldName = mapping ? mapping.fieldName : field;
-                              sourceFields.add(displayFieldName.toLowerCase()); // Case-insensitive comparison
+                              sourceFields.add(displayFieldName?.toLowerCase()); // Case-insensitive comparison
                             });
 
-                            allSourceFieldSets.push(sourceFields);
+                            allSourceFieldSets?.push(sourceFields);
                           }
                         });
 
-                        if (allSourceFieldSets.length > 0) {
+                        if (allSourceFieldSets?.length > 0) {
                           // Find intersection of all field sets (fields common to ALL selected sources)
                           const intersection = Array.from(allSourceFieldSets[0]).filter((field) =>
-                            allSourceFieldSets.every((fieldSet) => fieldSet.has(field))
+                            allSourceFieldSets?.every((fieldSet) => fieldSet.has(field))
                           );
 
                           // Get the original casing from the first source
-                          const firstSource = availableInputSources.find((s) => s.inputSource === selectedInputSources[0]);
+                          const firstSource = availableInputSources?.find((s) => s.inputSource === selectedInputSources[0]);
                           if (firstSource) {
                             const firstSourceId = firstSource.id.toString();
-                            availableHeaders = intersection.map((fieldLower) => {
-                              const originalField = firstSource.headers.find((h) => h.toLowerCase() === fieldLower);
+                            availableHeaders = intersection?.map((fieldLower) => {
+                              const originalField = firstSource.headers?.find((h) => h?.toLowerCase() === fieldLower);
                               if (originalField) {
                                 // Check if there's a mapping for this field
-                                const mapping = fieldMappings.find((m) =>
-                                  m.selectedColumns.some((col) => {
-                                    const [, colFieldName] = col.split('::');
-                                    return colFieldName.toLowerCase() === fieldLower;
+                                const mapping = fieldMappings?.find((m) =>
+                                  m.selectedColumns?.some((col) => {
+                                    const [, colFieldName] = col?.split('::');
+                                    return colFieldName?.toLowerCase() === fieldLower;
                                   })
                                 );
                                 return mapping ? mapping.fieldName : originalField;
@@ -2535,9 +2535,9 @@ const ReportPage: React.FC = () => {
                         }
                       }
 
-                      return availableHeaders.map((field) => (
+                      return availableHeaders?.map((field) => (
                         <MenuItem key={field} value={field}>
-                          <Checkbox checked={selectedOutputFields.indexOf(field) > -1} size="small" />
+                          <Checkbox checked={selectedOutputFields?.indexOf(field) > -1} size="small" />
                           <ListItemText primary={field} />
                         </MenuItem>
                       ));
@@ -2546,7 +2546,7 @@ const ReportPage: React.FC = () => {
               </Box>
 
                 {/* Priority Order (shown when combine sources is checked) */}
-                {combineSources && selectedInputSources.length > 1 && (
+                {combineSources && selectedInputSources?.length > 1 && (
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
                       Priority Order
@@ -2572,7 +2572,7 @@ const ReportPage: React.FC = () => {
                   </Box>
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePriorityOrderDragEnd}>
                     <SortableContext items={priorityOrder} strategy={verticalListSortingStrategy}>
-                      {priorityOrder.map((sourceId, index) => (
+                      {priorityOrder?.map((sourceId, index) => (
                         <SortableItem
                           key={sourceId}
                           id={sourceId}
@@ -2586,7 +2586,7 @@ const ReportPage: React.FC = () => {
               )}
 
                 {/* Field Priority Order (shown when combine sources is checked) */}
-                {combineSources && selectedInputSources.length > 1 && (
+                {combineSources && selectedInputSources?.length > 1 && (
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
                       Field Priority Order
@@ -2597,18 +2597,18 @@ const ReportPage: React.FC = () => {
                     multiple
                     value={fieldPriorityOrder}
                     onChange={(e) => {
-                      const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                      const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
                       setFieldPriorityOrder(value);
                     }}
                     displayEmpty
                     size="small"
                     renderValue={(selected) => {
-                      if (selected.length === 0) {
+                      if (selected?.length === 0) {
                         return <em>Select fields for priority order</em>;
                       }
                       return (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {selected.map((value) => (
+                          {selected?.map((value) => (
                             <Chip key={value} label={value} size="small" />
                           ))}
                         </Box>
@@ -2618,9 +2618,9 @@ const ReportPage: React.FC = () => {
                     <MenuItem disabled value="">
                       <em>Select fields for priority order</em>
                     </MenuItem>
-                    {selectedOutputFields.map((field) => (
+                    {selectedOutputFields?.map((field) => (
                       <MenuItem key={field} value={field}>
-                        <Checkbox checked={fieldPriorityOrder.indexOf(field) > -1} size="small" />
+                        <Checkbox checked={fieldPriorityOrder?.indexOf(field) > -1} size="small" />
                         <ListItemText primary={field} />
                       </MenuItem>
                     ))}
@@ -2632,7 +2632,7 @@ const ReportPage: React.FC = () => {
               )}
 
                 {/* Limitation Section (shown when at least one source is selected) */}
-                {selectedInputSources.length > 0 && (
+                {selectedInputSources?.length > 0 && (
                   <Box sx={{ mb: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                       <FilterList sx={{ fontSize: 18, color: '#296695' }} />
@@ -2697,7 +2697,7 @@ const ReportPage: React.FC = () => {
               )}
 
                 {/* Output Destination Section (shown when at least one source is selected) */}
-                {selectedInputSources.length > 0 && (
+                {selectedInputSources?.length > 0 && (
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                       <CloudUpload sx={{ fontSize: 18, color: '#296695' }} />
@@ -2719,13 +2719,13 @@ const ReportPage: React.FC = () => {
                     </MenuItem>
 
                     {/* Custom Destinations Section */}
-                    {customDestinations.length > 0 && [
+                    {customDestinations?.length > 0 && [
                       <MenuItem key="custom-header" disabled>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280' }}>
                           Custom Destinations
                         </Typography>
                       </MenuItem>,
-                      ...customDestinations.map((dest) => (
+                      ...customDestinations?.map((dest) => (
                         <MenuItem key={`custom-${dest.id}`} value={dest.name}>
                           <Box
                             component="span"
@@ -2749,14 +2749,14 @@ const ReportPage: React.FC = () => {
                     ]}
 
                     {/* Preconfigured Destinations Section */}
-                    {availableDestinations.length > 0 && [
-                      customDestinations.length > 0 && <Divider key="divider" sx={{ my: 0.5 }} />,
+                    {availableDestinations?.length > 0 && [
+                      customDestinations?.length > 0 && <Divider key="divider" sx={{ my: 0.5 }} />,
                       <MenuItem key="preconfigured-header" disabled>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280' }}>
                           Preconfigured Destinations
                         </Typography>
                       </MenuItem>,
-                      ...availableDestinations.map((dest) => (
+                      ...availableDestinations?.map((dest) => (
                         <MenuItem key={`preconfigured-${dest.type}-${dest.id}`} value={dest.name}>
                           <Box
                             component="span"
@@ -2780,13 +2780,13 @@ const ReportPage: React.FC = () => {
                     ]}
 
                     {/* No destinations available */}
-                    {availableDestinations.length === 0 && customDestinations.length === 0 && (
+                    {availableDestinations?.length === 0 && customDestinations?.length === 0 && (
                       <MenuItem disabled>
                         <em>No destinations available</em>
                       </MenuItem>
                     )}
                   </Select>
-                  {availableDestinations.length === 0 && customDestinations.length === 0 && (
+                  {availableDestinations?.length === 0 && customDestinations?.length === 0 && (
                     <Alert severity="warning" sx={{ mt: 1 }}>
                       No destinations available. Please refresh the page or create a custom destination above.
                     </Alert>
@@ -2803,9 +2803,9 @@ const ReportPage: React.FC = () => {
                   onClick={handleSaveConfiguration}
                   disabled={
                     fileGenLoading ||
-                    selectedInputSources.length === 0 ||
-                    selectedOutputFields.length === 0 ||
-                    (combineSources && selectedInputSources.length > 1 && (priorityOrder.length === 0 || fieldPriorityOrder.length === 0)) ||
+                    selectedInputSources?.length === 0 ||
+                    selectedOutputFields?.length === 0 ||
+                    (combineSources && selectedInputSources?.length > 1 && (priorityOrder?.length === 0 || fieldPriorityOrder?.length === 0)) ||
                     (limitRecords && !recordCount) ||
                     !selectedDestination
                   }
@@ -2833,7 +2833,7 @@ const ReportPage: React.FC = () => {
               </Box>
 
               {/* Output Configurations List */}
-              {savedConfigurations.length > 0 && (
+              {savedConfigurations?.length > 0 && (
                 <Paper
                   elevation={0}
                   sx={{
@@ -2851,7 +2851,7 @@ const ReportPage: React.FC = () => {
                           Saved Configurations
                         </Typography>
                         <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
-                          {savedConfigurations.length} configuration{savedConfigurations.length !== 1 ? 's' : ''} ready for processing
+                          {savedConfigurations?.length} configuration{savedConfigurations?.length !== 1 ? 's' : ''} ready for processing
                         </Typography>
                       </Box>
                     </Box>
@@ -2868,7 +2868,7 @@ const ReportPage: React.FC = () => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {savedConfigurations.map((config) => {
+                        {savedConfigurations?.map((config) => {
                           const isExpanded = expandedConfigIds.has(config?.id || '');
                           const isCompleted = config?.status === 'Completed';
                           const canExpand = isCompleted;

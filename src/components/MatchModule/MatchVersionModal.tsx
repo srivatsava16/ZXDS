@@ -51,7 +51,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   const [selectedAddFields, setSelectedAddFields] = useState<string[]>([]);
 
   // Filter out the currently editing version from available input sources
-  const filteredAvailableInputSources = availableInputSources.filter(source => {
+  const filteredAvailableInputSources = availableInputSources?.filter(source => {
     // If we're editing a version, exclude it from the dropdown
     if (version && version.id) {
       return source.id !== version.id;
@@ -87,15 +87,15 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   }, [version, open]);
 
   const handleSave = () => {
-    if (!versionName.trim()) {
+    if (!versionName?.trim()) {
       setVersionNameError('Please enter a version name');
       return;
     }
 
     // Validate version name against API reserved names and existing sources
-    const sourcesToCheck = allExistingSources.length > 0 ? allExistingSources : availableInputSources;
+    const sourcesToCheck = allExistingSources?.length > 0 ? allExistingSources : availableInputSources;
     const validationError = validateUniqueSourceName({
-      sourceName: versionName.trim(),
+      sourceName: versionName?.trim(),
       allExistingSources: sourcesToCheck,
       editingSourceId: version?.id,
       moduleName: 'Match Version',
@@ -107,19 +107,19 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
       return;
     }
 
-    if (selectedInputSources.length === 0) {
+    if (selectedInputSources?.length === 0) {
       alert('Please select at least one input source');
       return;
     }
-    if (selectedMatchSources.length === 0) {
+    if (selectedMatchSources?.length === 0) {
       alert('Please select at least one match source');
       return;
     }
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName.trim(),
-      versionLabel: versionName.trim(),
+      sourceName: versionName?.trim(),
+      versionLabel: versionName?.trim(),
       baseInputSources: selectedInputSources,
       operationSources: selectedMatchSources,
       addFields: selectedAddFields,
@@ -134,10 +134,10 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources.find(s => s.id === id);
+    const inputSource = availableInputSources?.find(s => s.id === id);
     if (inputSource) return inputSource.sourceName;
 
-    const matchSource = availableMatchSources.find(s => s.id === id);
+    const matchSource = availableMatchSources?.find(s => s.id === id);
     if (matchSource) return matchSource.name;
 
     return id;
@@ -145,22 +145,22 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
 
   // Get available Add Fields from selected match sources
   const getAvailableAddFields = (): string[] => {
-    if (selectedMatchSources.length === 0) return [];
+    if (selectedMatchSources?.length === 0) return [];
 
-    const selectedSources = availableMatchSources.filter(src => selectedMatchSources.includes(src.id));
-    if (selectedSources.length === 0) return [];
+    const selectedSources = availableMatchSources?.filter(src => selectedMatchSources?.includes(src.id));
+    if (selectedSources?.length === 0) return [];
 
     // If only one source, return all its fields
-    if (selectedSources.length === 1) {
+    if (selectedSources?.length === 1) {
       return (selectedSources[0] as any).fields || [];
     }
 
     // If multiple sources, return common fields (intersection)
     const firstSourceFields = (selectedSources[0] as any).fields || [];
-    return firstSourceFields.filter((field: string) =>
-      selectedSources.slice(1).every(src => {
+    return firstSourceFields?.filter((field: string) =>
+      selectedSources?.slice(1).every(src => {
         const srcFields = (src as any).fields || [];
-        return srcFields.includes(field);
+        return srcFields?.includes(field);
       })
     );
   };
@@ -239,7 +239,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -257,9 +257,9 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                   },
                 }}
               >
-                {filteredAvailableInputSources.map((source) => (
+                {filteredAvailableInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedInputSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedInputSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.sourceName} />
                   </MenuItem>
                 ))}
@@ -280,7 +280,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                 input={<OutlinedInput />}
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
+                    {selected?.map((value) => (
                       <Chip
                         key={value}
                         label={getSourceName(value)}
@@ -298,9 +298,9 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                   },
                 }}
               >
-                {availableMatchSources.map((source) => (
+                {availableMatchSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedMatchSources.indexOf(source.id) > -1} />
+                    <Checkbox checked={selectedMatchSources?.indexOf(source.id) > -1} />
                     <ListItemText primary={source.name} />
                   </MenuItem>
                 ))}
@@ -319,17 +319,17 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                 value={selectedAddFields}
                 onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
                 input={<OutlinedInput />}
-                disabled={availableAddFields.length === 0}
+                disabled={availableAddFields?.length === 0}
                 displayEmpty
                 renderValue={(selected) => {
-                  if (selected.length === 0) {
+                  if (selected?.length === 0) {
                     return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
-                      {availableAddFields.length === 0 ? 'No common fields available' : 'Select fields...'}
+                      {availableAddFields?.length === 0 ? 'No common fields available' : 'Select fields...'}
                     </Typography>;
                   }
                   return (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((value) => (
+                      {selected?.map((value) => (
                         <Chip
                           key={value}
                           label={value}
@@ -348,9 +348,9 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                   },
                 }}
               >
-                {availableAddFields.map((field) => (
+                {availableAddFields?.map((field) => (
                   <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAddFields.indexOf(field) > -1} />
+                    <Checkbox checked={selectedAddFields?.indexOf(field) > -1} />
                     <ListItemText primary={field} />
                   </MenuItem>
                 ))}
@@ -375,7 +375,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
           variant="contained"
           onClick={handleSave}
           startIcon={<Save />}
-          disabled={!versionName.trim() || selectedInputSources.length === 0 || selectedMatchSources.length === 0}
+          disabled={!versionName?.trim() || selectedInputSources?.length === 0 || selectedMatchSources?.length === 0}
           sx={{ textTransform: 'none', boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)' }}
         >
           Save Changes

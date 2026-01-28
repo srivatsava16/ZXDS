@@ -53,9 +53,9 @@ const MatchConfigHeader: React.FC<MatchConfigHeaderProps> = ({
           }}
         >
           Field Mapping
-          {fieldMappings.length > 0 && (
+          {fieldMappings?.length > 0 && (
             <Chip
-              label={fieldMappings.length}
+              label={fieldMappings?.length}
               size="small"
               sx={{
                 ml: 1,

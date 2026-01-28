@@ -186,7 +186,7 @@ const UserManagementPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {users.map((user) => (
+            {users?.map((user) => (
               <TableRow
                 key={user.id}
                 hover

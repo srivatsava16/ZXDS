@@ -24,21 +24,21 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
   disabled = false,
 }) => {
   // Ensure selectedHeaders only contains valid headers from availableHeaders
-  const validSelectedHeaders = selectedHeaders.filter(header =>
-    availableHeaders.includes(header)
+  const validSelectedHeaders = selectedHeaders?.filter(header =>
+    availableHeaders?.includes(header)
   );
 
   const handleChange = (event: any) => {
-    const value = event.target.value;
+    const value = event?.target?.value;
 
     // Ensure we always have a clean array and filter out any invalid values
-    const newSelectedHeaders = typeof value === 'string' ? value.split(',') : value;
+    const newSelectedHeaders = typeof value === 'string' ? value?.split(',') : value;
     // Filter to ensure only valid headers are included
-    const validSelectedHeaders = newSelectedHeaders.filter((header: string) =>
-      availableHeaders.includes(header)
+    const validSelectedHeaders = newSelectedHeaders?.filter((header: string) =>
+      availableHeaders?.includes(header)
     );
 
-    onHeadersChange(validSelectedHeaders);
+    onHeadersChange?.(validSelectedHeaders);
   };
 
 
@@ -50,12 +50,12 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
         <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
           Select Headers
           <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.8rem', ml: 1 }}>
-            ({validSelectedHeaders.length} of {availableHeaders.length} selected)
+            ({validSelectedHeaders?.length} of {availableHeaders?.length} selected)
           </Typography>
-        </Typography> 
+        </Typography>
       </Box>
 
-      {availableHeaders.length === 0 ? (
+      {availableHeaders?.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
           No headers available. Please fetch records first.
         </Typography>
@@ -68,12 +68,12 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
               onChange={handleChange}
               displayEmpty
               renderValue={(selected) => {
-                if (selected.length === 0) {
+                if (selected?.length === 0) {
                   return <em>Select headers...</em>;
                 }
                 return (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.slice(0, 3).map((value) => (
+                    {selected?.slice(0, 3)?.map((value) => (
                       <Chip
                         key={value}
                         label={value}
@@ -89,9 +89,9 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
                         }}
                       />
                     ))}
-                    {selected.length > 3 && (
+                    {selected?.length > 3 && (
                       <Chip
-                        label={`+${selected.length - 3} more`}
+                        label={`+${selected?.length - 3} more`}
                         size="small"
                         sx={{
                           height: 20,
@@ -113,10 +113,10 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
                 },
               }}
             >
-              {availableHeaders.map((header) => (
+              {availableHeaders?.map((header) => (
                 <MenuItem key={header} value={header}>
                   <Checkbox
-                    checked={validSelectedHeaders.indexOf(header) > -1}
+                    checked={validSelectedHeaders?.indexOf(header) > -1}
                     size="small"
                     sx={{ mr: 1 }}
                   />
@@ -131,7 +131,7 @@ const HeaderSelector: React.FC<HeaderSelectorProps> = ({
             </Select>
           </FormControl>
 
-          {validSelectedHeaders.length > 0 && (
+          {validSelectedHeaders?.length > 0 && (
             <Box sx={{ mt: 1 }}>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
                 Selected headers will be included in the data source. Unselected headers will be excluded from processing.

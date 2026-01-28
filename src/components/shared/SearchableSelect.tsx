@@ -49,11 +49,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   const filteredOptions = useMemo(() => {
     if (!searchText) return options;
-    const lowerSearch = searchText.toLowerCase();
-    return options.filter(
+    const lowerSearch = searchText?.toLowerCase();
+    return options?.filter(
       (option) =>
-        option.label.toLowerCase().includes(lowerSearch) ||
-        option.value.toLowerCase().includes(lowerSearch)
+        option.label?.toLowerCase().includes(lowerSearch) ||
+        option.value?.toLowerCase().includes(lowerSearch)
     );
   }, [options, searchText]);
 
@@ -63,16 +63,16 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   };
 
   const defaultRenderValue = (selected: string | string[]) => {
-    if (!selected || (Array.isArray(selected) && selected.length === 0)) {
+    if (!selected || (Array.isArray(selected) && selected?.length === 0)) {
       return <em style={{ color: '#999' }}>{placeholder || 'Select...'}</em>;
     }
 
     if (Array.isArray(selected)) {
-      if (selected.length <= 2) {
+      if (selected?.length <= 2) {
         return (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {selected.map((val) => {
-              const option = options.find((opt) => opt.value === val);
+            {selected?.map((val) => {
+              const option = options?.find((opt) => opt.value === val);
               return (
                 <Chip
                   key={val}
@@ -90,10 +90,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           </Box>
         );
       }
-      return `${selected.length} selected`;
+      return `${selected?.length} selected`;
     }
 
-    const option = options.find((opt) => opt.value === selected);
+    const option = options?.find((opt) => opt.value === selected);
     return option?.label || selected;
   };
 
@@ -143,16 +143,16 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           />
         </ListSubheader>
 
-        {filteredOptions.length === 0 ? (
+        {filteredOptions?.length === 0 ? (
           <MenuItem disabled>
             <em>No options found</em>
           </MenuItem>
         ) : (
-          filteredOptions.map((option) => (
+          filteredOptions?.map((option) => (
             <MenuItem key={option.value} value={option.value} disabled={option.disabled}>
               {multiple && (
                 <Checkbox
-                  checked={Array.isArray(value) && value.indexOf(option.value) > -1}
+                  checked={Array.isArray(value) && value?.indexOf(option.value) > -1}
                   size="small"
                 />
               )}
