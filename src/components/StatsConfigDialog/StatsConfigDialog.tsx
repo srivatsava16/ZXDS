@@ -586,41 +586,6 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
     document.body.removeChild(link);
   };
 
-  // Export to Excel (using HTML table method for simplicity)
-  const handleExportExcel = () => {
-    if (!statsResults || statsResults?.length === 0) return;
-
-    // Get headers from first row
-    const headers = Object.keys(statsResults?.[0] || {});
-
-    // Create HTML table
-    let tableHTML = '<table><thead><tr>';
-    headers?.forEach(header => {
-      tableHTML += `<th>${header}</th>`;
-    });
-    tableHTML += '</tr></thead><tbody>';
-
-    statsResults?.forEach((row: any) => {
-      tableHTML += '<tr>';
-      headers?.forEach(header => {
-        const value = row[header];
-        tableHTML += `<td>${value !== null && value !== undefined ? value : ''}</td>`;
-      });
-      tableHTML += '</tr>';
-    });
-    tableHTML += '</tbody></table>';
-
-    // Create and trigger download
-    const blob = new Blob([tableHTML], { type: 'application/vnd.ms-excel' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `stats_request_${requestId}_config_${selectedConfigId}.xls`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Get available stats configurations for selected source table
   const getAvailableConfigs = () => {
@@ -647,8 +612,8 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 4,
-          maxHeight: '90vh',
+          borderRadius: 3,
+          maxHeight: '85vh',
         },
       }}
     >
@@ -657,46 +622,46 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          py: 2,
-          px: 3,
+          py: 1.5,
+          px: 2,
         }}
       >
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#2D3748' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#2D3748', fontSize: '1.1rem' }}>
             Stats Configuration
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mt: 0.25 }}>
             Generate stats for Request #{requestId}
           </Typography>
         </Box>
-        <IconButton onClick={handleCancel} size="small">
-          <Close />
+        <IconButton onClick={handleCancel} size="small" sx={{ p: 0.5 }}>
+          <Close sx={{ fontSize: '1.25rem' }} />
         </IconButton>
       </DialogTitle>
 
       <Divider />
 
       {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab label="Preconfigured Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
-          <Tab label="Dynamic Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
-          <Tab label="Suppression Breakdown" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' }} />
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ minHeight: 42 }}>
+          <Tab label="Preconfigured Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.8rem', py: 1, minHeight: 42 }} />
+          <Tab label="Dynamic Stats View" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.8rem', py: 1, minHeight: 42 }} />
+          <Tab label="Suppression Breakdown" sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.8rem', py: 1, minHeight: 42 }} />
         </Tabs>
       </Box>
 
-      <DialogContent sx={{ py: 3, px: 3, minHeight: 400 }}>
+      <DialogContent sx={{ py: 2, px: 2, minHeight: 350 }}>
         {/* Tab 1: Preconfigured Stats View */}
         {activeTab === 0 && (
           <Box>
             {loading && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={32} />
               </Box>
             )}
 
             {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+              <Alert severity="error" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
                 {error}
               </Alert>
             )}
@@ -716,8 +681,8 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 )} */}
 
                 {/* Source Table Selection */}
-                <Box sx={{ mb: 2.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.85rem' }}>
                     Select Source Table
                   </Typography>
                   <FormControl fullWidth size="small">
@@ -758,8 +723,8 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 </Box>
 
                 {/* Stats Combination Selection */}
-                <Box sx={{ mb: 2.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.85rem' }}>
                     Select Stats Combination
                   </Typography>
                   <FormControl fullWidth size="small">
@@ -791,10 +756,10 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
                 {/* Stats Results Section */}
                 {selectedConfigId && !loadingStats && statsResults !== null && (
-                  <Box sx={{ mb: 2.5 }}>
+                  <Box sx={{ mb: 1.5 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-                        Results
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
+                        Results {statsResults && statsResults?.length > 0 && `(${statsResults.length} total records)`}
                       </Typography>
                       {statsResults && statsResults?.length > 0 && (
                         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -818,48 +783,61 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                           >
                             Export CSV
                           </Button>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<GetApp />}
-                            onClick={handleExportExcel}
-                            sx={{
-                              textTransform: 'none',
-                              fontSize: '0.75rem',
-                              py: 0.5,
-                              px: 1.5,
-                              borderColor: '#296695',
-                              color: '#296695',
-                              '&:hover': {
-                                borderColor: '#1e4d6f',
-                                backgroundColor: 'rgba(41, 102, 149, 0.04)',
-                              },
-                            }}
-                          >
-                            Export Excel
-                          </Button>
                         </Box>
                       )}
                     </Box>
 
+                    {/* Info message when more than 200 records */}
+                    {statsResults && statsResults?.length > 200 && (
+                      <Alert
+                        severity="info"
+                        sx={{
+                          mb: 1.5,
+                          py: 0.75,
+                          fontSize: '0.85rem',
+                          backgroundColor: '#E3F2FD',
+                          color: '#1565C0'
+                        }}
+                      >
+                        Displaying first 200 of {statsResults.length} records. Use "Export CSV" to download all results.
+                      </Alert>
+                    )}
+
                     {!statsResults || statsResults?.length === 0 ? (
-                      <Alert severity="info" sx={{ backgroundColor: '#E3F2FD', color: '#1565C0' }}>
+                      <Alert severity="info" sx={{ backgroundColor: '#E3F2FD', color: '#1565C0', py: 0.75, fontSize: '0.85rem' }}>
                         No data available for the selected combination. The stats generation was successful but returned no records.
                       </Alert>
                     ) : (
-                      <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider' }}>
-                        <Table size="small">
+                      <TableContainer
+                        component={Paper}
+                        sx={{
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          maxHeight: 400,
+                          overflow: 'auto'
+                        }}
+                      >
+                        <Table size="small" stickyHeader>
                           <TableHead>
                             <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
                               {Object.keys(statsResults?.[0] || {}).map((key) => (
-                                <TableCell key={key} sx={{ fontWeight: 600 }}>
+                                <TableCell
+                                  key={key}
+                                  sx={{
+                                    fontWeight: 600,
+                                    backgroundColor: '#F8FAFB',
+                                    position: 'sticky',
+                                    top: 0,
+                                    zIndex: 1
+                                  }}
+                                >
                                   {key}
                                 </TableCell>
                               ))}
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {statsResults?.map((row: any, index: number) => (
+                            {statsResults?.slice(0, 200).map((row: any, index: number) => (
                               <TableRow key={index} hover>
                                 {Object.values(row).map((value: any, colIndex: number) => (
                                   <TableCell key={colIndex}>
@@ -883,14 +861,14 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
         {activeTab === 1 && (
           <Box>
             {/* Configuration Section */}
-            <Paper sx={{ p: 3, mb: 3, backgroundColor: '#F8FAFB', border: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2.5, color: '#2D3748', fontSize: '1rem' }}>
+            <Paper sx={{ p: 2, mb: 2, backgroundColor: '#F8FAFB', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.25, color: '#2D3748', fontSize: '0.85rem' }}>
                 Configure Dynamic Stats
               </Typography>
 
               {/* Input Source Selection */}
-              <Box sx={{ mb: 2.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+              <Box sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.85rem' }}>
                   Input Source
                   <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                 </Typography>
@@ -928,10 +906,10 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
               </Box>
 
               {/* Counts On and Breakdown By in horizontal layout */}
-              <Box sx={{ display: 'flex', gap: 2, mb: 2.5 }}>
+              <Box sx={{ display: 'flex', gap: 2, mb: 1.5 }}>
                 {/* Generate Counts On - Multi-select */}
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.85rem', color: '#2D3748' }}>
                     Generate Counts On
                     <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                   </Typography>
@@ -984,7 +962,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
                 {/* Breakdown By - Multi-select */}
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.85rem', color: '#2D3748' }}>
                     Breakdown By
                   </Typography>
                   <FormControl fullWidth size="small">
@@ -1034,8 +1012,8 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
               </Box>
 
               {/* Distinct Fields - Multi-select showing Generate Counts On fields */}
-              <Box sx={{ mb: 2.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', color: '#2D3748' }}>
+              <Box sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.85rem', color: '#2D3748' }}>
                   Distinct Fields
                   <Typography component="span" sx={{ fontSize: '0.75rem', color: 'text.secondary', ml: 1 }}>
                     (Select which fields should have distinct counts)
@@ -1092,12 +1070,12 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                   variant="contained"
                   onClick={handleGenerateDynamicStats}
                   disabled={!selectedDynamicInputSource || selectedDynamicCountsOn?.length === 0 || loadingDynamicStats}
-                  startIcon={loadingDynamicStats ? <CircularProgress size={16} /> : <Assessment />}
+                  startIcon={loadingDynamicStats ? <CircularProgress size={14} /> : <Assessment sx={{ fontSize: '1rem' }} />}
                   sx={{
-                    px: 4,
-                    py: 1,
+                    px: 3,
+                    py: 0.75,
                     textTransform: 'none',
-                    fontSize: '0.875rem',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
                     backgroundColor: '#296695',
                     '&:hover': { backgroundColor: '#1e4d6f' },
@@ -1254,7 +1232,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                             <TableHead>
                               <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
                                 {Object.keys(stat?.data?.[0] || {}).map((key) => (
-                                  <TableCell key={key} sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                                  <TableCell key={key} sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
                                     {key}
                                   </TableCell>
                                 ))}
@@ -1309,7 +1287,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
               <>
                 {/* Input Source Selection */}
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.85rem' }}>
                     Select Input Source
                   </Typography>
                   <FormControl fullWidth size="small">
@@ -1336,7 +1314,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                 {/* Data Flow Table */}
                 {selectedSuppressionSource && (
                   <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748', fontSize: '0.9rem' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#2D3748', fontSize: '0.85rem' }}>
                       Data Flow for {selectedSuppressionSource}
                     </Typography>
 
@@ -1357,13 +1335,13 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                           <Table size="small">
                             <TableHead>
                               <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                                <TableCell sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                                <TableCell sx={{ py: 0.75, px: 1.5, fontWeight: 600, fontSize: '0.8rem' }}>
                                   Operation Name
                                 </TableCell>
-                                <TableCell align="right" sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                                <TableCell align="right" sx={{ py: 0.75, px: 1.5, fontWeight: 600, fontSize: '0.8rem' }}>
                                   Input Count
                                 </TableCell>
-                                <TableCell align="right" sx={{ py: 1, px: 2, fontWeight: 600, fontSize: '0.875rem' }}>
+                                <TableCell align="right" sx={{ py: 0.75, px: 1.5, fontWeight: 600, fontSize: '0.8rem' }}>
                                   Output Count
                                 </TableCell>
                               </TableRow>
@@ -1414,16 +1392,16 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
 
       <Divider />
 
-      <DialogActions sx={{ p: 2.5, gap: 1 }}>
+      <DialogActions sx={{ p: 2, gap: 1 }}>
         <Button
           variant="outlined"
           onClick={handleCancel}
-          startIcon={<Close />}
+          startIcon={<Close sx={{ fontSize: '1rem' }} />}
           sx={{
-            px: 3,
-            py: 0.75,
+            px: 2.5,
+            py: 0.625,
             textTransform: 'none',
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
           }}
         >
           Close
@@ -1439,7 +1417,7 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
               px: 3,
               py: 0.75,
               textTransform: 'none',
-              fontSize: '0.875rem',
+              fontSize: '0.8rem',
               boxShadow: '0 4px 16px rgba(41, 102, 149, 0.3)',
               backgroundColor: '#296695',
               '&:hover': {

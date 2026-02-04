@@ -48,6 +48,7 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
   const [versionNameError, setVersionNameError] = useState('');
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedSuppressSources, setSelectedSuppressSources] = useState<string[]>([]);
+  const [selectedSuppressOnFields, setSelectedSuppressOnFields] = useState<string[]>([]);
 
   // Filter out the currently editing version from available input sources
   const filteredAvailableInputSources = availableInputSources?.filter(source => {
@@ -60,11 +61,36 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
 
   useEffect(() => {
     if (version && open) {
-      setVersionName(version.sourceName || version.versionLabel || '');
-      setSelectedInputSources(version.baseInputSources || []);
-      setSelectedSuppressSources(version.operationSources || []);
+      setVersionName(version?.sourceName || version?.versionLabel || '');
+      setSelectedInputSources(version?.baseInputSources || []);
+      setSelectedSuppressSources(version?.operationSources || []);
+      setSelectedSuppressOnFields(version?.operationFields || []);
     }
   }, [version, open]);
+
+  // Clear invalid suppress on fields when input sources change
+  useEffect(() => {
+    if (open && selectedSuppressOnFields?.length > 0) {
+      // Get current available fields based on selected input sources
+      const headersSet = new Set<string>();
+      selectedInputSources?.forEach(sourceId => {
+        const source = availableInputSources?.find(s => s?.id === sourceId);
+        if (source?.headers) {
+          source?.headers?.forEach((header: string) => {
+            if (header) {
+              headersSet?.add(header);
+            }
+          });
+        }
+      });
+      const availableFields = Array?.from(headersSet);
+
+      const validFields = selectedSuppressOnFields?.filter(field => availableFields?.includes(field));
+      if (validFields?.length !== selectedSuppressOnFields?.length) {
+        setSelectedSuppressOnFields(validFields);
+      }
+    }
+  }, [selectedInputSources, open, availableInputSources, selectedSuppressOnFields]);
 
   const handleSave = () => {
     if (!versionName?.trim()) {
@@ -98,24 +124,58 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName?.trim(),
-      versionLabel: versionName?.trim(),
+      versionName: versionName?.trim(),     // Used in payload transformation
+      sourceName: versionName?.trim(),      // Source name
+      versionLabel: versionName?.trim(),    // Display label
       baseInputSources: selectedInputSources,
       operationSources: selectedSuppressSources,
+      operationFields: selectedSuppressOnFields,
     };
+
+    // Update configJson to include suppress_on_fields
+    if (updatedVersion?.configJson) {
+      updatedVersion.configJson = {
+        ...updatedVersion?.configJson,
+        suppress_on_fields: selectedSuppressOnFields || []
+      };
+    }
 
     onSave(updatedVersion);
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources?.find(s => s.id === id);
-    if (inputSource) return inputSource.sourceName;
+    const inputSource = availableInputSources?.find(s => s?.id === id);
+    if (inputSource) return inputSource?.sourceName;
 
-    const suppressSource = availableSuppressSources?.find(s => s.id === id);
-    if (suppressSource) return suppressSource.name;
+    const suppressSource = availableSuppressSources?.find(s => s?.id === id);
+    if (suppressSource) return suppressSource?.name;
 
     return id;
   };
+
+  // Get available headers from selected input sources for Suppress On Fields
+  const getSuppressOnFieldsOptions = (): string[] => {
+    if (!selectedInputSources || selectedInputSources?.length === 0) {
+      return [];
+    }
+
+    const headersSet = new Set<string>();
+
+    selectedInputSources?.forEach(sourceId => {
+      const source = availableInputSources?.find(s => s?.id === sourceId);
+      if (source?.headers) {
+        source?.headers?.forEach((header: string) => {
+          if (header) {
+            headersSet?.add(header);
+          }
+        });
+      }
+    });
+
+    return Array?.from(headersSet)?.sort();
+  };
+
+  const suppressOnFieldsOptions = getSuppressOnFieldsOptions();
 
   return (
     <Dialog
@@ -217,6 +277,64 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
             </FormControl>
           </Box>
 
+           {/* Suppress On Fields Selection */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+              Suppress On Fields
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                multiple
+                value={selectedSuppressOnFields?.filter(field => suppressOnFieldsOptions?.includes(field)) || []}
+                onChange={(e) => setSelectedSuppressOnFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                input={<OutlinedInput />}
+                renderValue={(selected) => {
+                  if (!selected || selected?.length === 0) {
+                    return <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Select fields...</Typography>;
+                  }
+                  return (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected?.map((value) => (
+                        <Chip
+                          key={value}
+                          label={value}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Box>
+                  );
+                }}
+                disabled={!selectedInputSources || selectedInputSources?.length === 0}
+                sx={{
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(0, 0, 0, 0.15)',
+                  },
+                }}
+              >
+                {suppressOnFieldsOptions?.length === 0 ? (
+                  <MenuItem disabled>
+                    <Typography variant="caption" color="text.secondary">
+                      Select input sources first
+                    </Typography>
+                  </MenuItem>
+                ) : (
+                  suppressOnFieldsOptions?.map((field) => (
+                    <MenuItem key={field} value={field}>
+                      <Checkbox checked={selectedSuppressOnFields?.indexOf(field) > -1} />
+                      <ListItemText primary={field} />
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              Optional: Select fields to match against suppress sources
+            </Typography>
+          </Box>
+
           {/* Suppress Sources Selection */}
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
@@ -257,6 +375,8 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
               </Select>
             </FormControl>
           </Box>
+
+         
         </Box>
       </DialogContent>
 

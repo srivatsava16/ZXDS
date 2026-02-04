@@ -4,14 +4,14 @@ RewriteEngine On
 
 # Handle Angular/React Router in subdirectory
 # First, set the base directory
-RewriteBase /zxPlatformDevEnvironment/
+RewriteBase /zxPlatformQAEnvironment/
 
 # Skip rewriting for existing files and directories
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 
 # Skip rewriting for API endpoints (adjust pattern as needed)
-RewriteCond %{REQUEST_URI} !^/zxPlatformDevEnvironment/api/
+RewriteCond %{REQUEST_URI} !^/zxPlatformQAEnvironment/api/
 
 # Skip rewriting for static assets
 RewriteCond %{REQUEST_URI} !\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$
@@ -20,7 +20,7 @@ RewriteCond %{REQUEST_URI} !\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eo
 RewriteRule ^.*$ index.html [QSA,L]
 
 # Error handling
-ErrorDocument 404 /zxPlatformDevEnvironment/index.html
+ErrorDocument 404 /zxPlatformQAEnvironment/index.html
 
 # MIME Types (in case server doesn't have them configured)
 AddType application/javascript .js

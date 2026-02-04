@@ -60,9 +60,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   // Sync initialMappings to local state when dialog opens or prop changes
   useEffect(() => {
     if (open) {
-      console.log('🔍 [DEBUG - FieldMappingDialog] Step 1: Dialog opened, initialMappings from parent =', initialMappings);
       setMappings(initialMappings);
-      console.log('🔍 [DEBUG - FieldMappingDialog] Step 2: Set local mappings state =', initialMappings);
     }
   }, [open, initialMappings]);
 
@@ -99,9 +97,6 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   );
 
   const handleAddMapping = () => {
-    console.log('🔍 [DEBUG - FieldMappingDialog] Step 3: Add/Update mapping clicked');
-    console.log('🔍 [DEBUG - FieldMappingDialog] Step 3a: Current mappings state BEFORE add =', mappings);
-
     if (!fieldName?.trim()) {
       alert('Please enter a field name');
       return;
@@ -135,7 +130,6 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
           ? { ...m, fieldName, selectedSources, selectedColumns }
           : m
       );
-      console.log('🔍 [DEBUG - FieldMappingDialog] Step 3b: Updating existing mapping, new mappings array =', updatedMappings);
       setMappings(updatedMappings);
       setEditingId(null);
     } else {
@@ -147,7 +141,6 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
         selectedColumns,
       };
       const newMappingsArray = [...mappings, newMapping];
-      console.log('🔍 [DEBUG - FieldMappingDialog] Step 3b: Adding new mapping, new mappings array =', newMappingsArray);
       setMappings(newMappingsArray);
     }
 
@@ -186,7 +179,6 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
   };
 
   const handleSave = () => {
-    console.log('🔍 [DEBUG - FieldMappingDialog] Step 4: Save button clicked, sending mappings to parent =', mappings);
     onSave(mappings);
     onClose();
   };

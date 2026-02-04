@@ -31,6 +31,7 @@ import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, Visibil
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
 import {  type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
+import { validateCustomHeaders, getCustomHeadersErrorMessage } from '../../utils/columnNameValidation';
 
 interface FileSourceConfigProps {
   data: Partial<InputSource>;
@@ -38,6 +39,7 @@ interface FileSourceConfigProps {
   sourceNameError?: string;
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
+  onValidationError?: (error: string) => void; // Callback to notify parent of validation errors
 }
 
 // Default fallback sources if API fails
@@ -49,16 +51,16 @@ const DEFAULT_SOURCES = {
 const DELIMITERS = [
   { label: 'Comma (,)', value: ',' },
   { label: 'Pipe (|)', value: '|' },
-  { label: 'Semicolon (;)', value: ';' },
   { label: 'Custom', value: 'custom' },
 ];
 
-const FileSourceConfig: React.FC<FileSourceConfigProps> = ({ 
-  data, 
-  onChange, 
-  sourceNameError, 
+const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
+  data,
+  onChange,
+  sourceNameError,
   apiSources = null,
-  sourcesLoading = false 
+  sourcesLoading = false,
+  onValidationError
 }) => {
   
   const [fileSource, setFileSource] = useState<string>(data.subSourceType || 'SFTP');
@@ -73,11 +75,15 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [delimiter, setDelimiter] = useState<string>(data.delimiter || ',');
   const [hasHeader, setHasHeader] = useState<boolean>(data.hasHeader ?? true);
   const [previewData, setPreviewData] = useState<any[]>(data.previewData || []);
-  const [originalPreviewData, setOriginalPreviewData] = useState<any[]>([]); // Store original data for re-transformation
+  // Store original data for re-transformation - initialize from data.previewData in edit mode
+  const [originalPreviewData, setOriginalPreviewData] = useState<any[]>(data.previewData || []);
   const [headers, setHeaders] = useState<string[]>(data.headers || []);
   const [allAvailableHeaders, setAllAvailableHeaders] = useState<string[]>(data.headers || []);
   const [selectedHeaders, setSelectedHeaders] = useState<string[]>(data.headers || []);
-  const [headersFetched, setHeadersFetched] = useState<boolean>(false); // Track if we've fetched headers from data source
+  // Track if we've fetched headers from data source - initialize to true if data already has headers or custom headers (edit mode)
+  const [headersFetched, setHeadersFetched] = useState<boolean>(
+    !!(data?.headers?.length > 0 || data?.customHeaders)
+  );
   const [dataTypes, setDataTypes] = useState<Record<string, string>>(data.dataTypes || {});
   const [filterQuery, setFilterQuery] = useState<string>(data.filterQuery || '');
   const [filterJson, setFilterConfig] = useState<any>(data.filterJson || null);
@@ -85,6 +91,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [customDelimiter, setCustomDelimiter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedColumn, setSelectedColumn] = useState<string>('all');
+  const [selectedPreviewColumns, setSelectedPreviewColumns] = useState<string[]>([]); // For multi-select preview
   const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState<boolean>(true);
   const [contentPreview, setContentPreview] = useState<string>(data.contentPreview || '');
@@ -168,20 +175,76 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     prevDataLengthRef.current = currentDataLength;
   }, [data]);
 
+  // Helper function to derive subSourceType from fileSourceId
+  const deriveSubSourceType = (fileSourceId: number | string | undefined, fallback: string = 'SFTP'): string => {
+    if (!fileSourceId || !apiSources?.fileSource) {
+      console.log('[subSourceType] deriveSubSourceType - no fileSourceId or apiSources, returning fallback:', fallback);
+      return fallback;
+    }
+
+    console.log('[subSourceType] deriveSubSourceType - looking up fileSourceId:', fileSourceId);
+    const numericId = Number(fileSourceId);
+
+    // Check SFTP sources
+    const sftpSource = apiSources?.fileSource?.sftpSources?.find((s: any) => s?.id === numericId);
+    if (sftpSource) {
+      console.log('[subSourceType] deriveSubSourceType - found in sftpSources, type: SFTP');
+      return 'SFTP';
+    }
+
+    // Check NFS sources
+    const nfsSource = apiSources?.fileSource?.nfsSources?.find((s: any) => s?.id === numericId);
+    if (nfsSource) {
+      console.log('[subSourceType] deriveSubSourceType - found in nfsSources, type: NFS');
+      return 'NFS';
+    }
+
+    // Check AWS S3 sources
+    const awsSource = apiSources?.fileSource?.awsSources?.find((s: any) => s?.id === numericId);
+    if (awsSource) {
+      console.log('[subSourceType] deriveSubSourceType - found in awsSources, type: S3');
+      return 'S3';
+    }
+
+    console.log('[subSourceType] deriveSubSourceType - source not found, returning fallback:', fallback);
+    return fallback;
+  };
+
   // Sync local state with incoming data prop changes (for edit mode)
   useEffect(() => {
+    console.log('[EDIT-SOURCE] FileSourceConfig data useEffect triggered');
+    console.log('[EDIT-SOURCE] data:', data);
+    console.log('[EDIT-SOURCE] data.fileSourceId:', data?.fileSourceId);
+    console.log('[EDIT-SOURCE] data.headers:', data?.headers);
+    console.log('[EDIT-SOURCE] data.selectedHeaders:', data?.selectedHeaders);
+    console.log('[EDIT-SOURCE] data.subSourceType:', data?.subSourceType);
+    console.log('[EDIT-SOURCE] isSourceInitialized:', isSourceInitialized);
+
     if (data && Object.keys(data).length > 0) {
-      setFileSource(data.subSourceType || 'SFTP');
+      // Derive subSourceType: use provided value, or derive from fileSourceId
+      let derivedSubSourceType = data?.subSourceType;
+      if (!derivedSubSourceType || derivedSubSourceType?.trim() === '') {
+        console.log('[subSourceType] subSourceType missing or empty, deriving from fileSourceId:', data?.fileSourceId);
+        derivedSubSourceType = deriveSubSourceType(data?.fileSourceId, 'SFTP');
+      } else {
+        console.log('[subSourceType] Using existing subSourceType:', derivedSubSourceType);
+      }
+
+      console.log('[subSourceType] Setting fileSource to:', derivedSubSourceType);
+      setFileSource(derivedSubSourceType);
 
       // Only initialize selectedSource once to avoid resetting user selections
       if (!isSourceInitialized) {
         // Restore selected source by ID if available, fallback to name
-        if (data.fileSourceId) {
-          const sourceName = getSourceName(data.fileSourceId);
-          setSelectedSource(sourceName || data.fileSource || '');
-        } else if (data.fileSource) {
-          setSelectedSource(data.fileSource);
+        if (data?.fileSourceId) {
+          const sourceName = getSourceName(data?.fileSourceId);
+          console.log('[EDIT-SOURCE] Restoring fileSourceId:', data?.fileSourceId, '-> sourceName:', sourceName);
+          setSelectedSource(sourceName || data?.fileSource || '');
+        } else if (data?.fileSource) {
+          console.log('[EDIT-SOURCE] Using fileSource:', data?.fileSource);
+          setSelectedSource(data?.fileSource);
         } else {
+          console.log('[EDIT-SOURCE] No fileSourceId or fileSource, clearing selectedSource');
           setSelectedSource('');
         }
         setIsSourceInitialized(true);
@@ -204,11 +267,13 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         setHeaders(headersFromData);
         setAllAvailableHeaders(headersFromData);
 
-        // Restore selectedHeaders from data.selectedHeaders if available, otherwise use all headers
-        if (data.selectedHeaders && data.selectedHeaders?.length > 0) {
-          setSelectedHeaders(data.selectedHeaders);
+        // Restore selectedHeaders from data.selectedHeaders
+        // Check if selectedHeaders exists in data (even if empty array)
+        if (data.hasOwnProperty('selectedHeaders')) {
+          // Use the selectedHeaders from data (could be empty array if user deselected all)
+          setSelectedHeaders(data.selectedHeaders || []);
         } else {
-          // Fallback to all headers if no specific selection is stored
+          // Only fallback to all headers if selectedHeaders was never set
           setSelectedHeaders(headersFromData);
         }
       }
@@ -237,6 +302,21 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         if (data.fileSource) {
 
           setSelectedSource(data.fileSource);
+        }
+      }
+    }
+
+    // Re-derive subSourceType when apiSources becomes available
+    // This handles the case where data loaded before apiSources, so we defaulted to 'SFTP'
+    if (data && data?.fileSourceId && apiSources && apiSources?.fileSource) {
+      // If data doesn't have subSourceType, we should derive it from fileSourceId
+      if (!data?.subSourceType || data?.subSourceType?.trim() === '') {
+        console.log('[subSourceType] apiSources now available, re-deriving subSourceType for fileSourceId:', data?.fileSourceId);
+        const derivedType = deriveSubSourceType(data?.fileSourceId, fileSource || 'SFTP');
+        console.log('[subSourceType] Derived type:', derivedType, 'Current fileSource:', fileSource);
+        if (derivedType && derivedType !== fileSource) {
+          console.log('[subSourceType] Updating fileSource from', fileSource, 'to', derivedType);
+          setFileSource(derivedType);
         }
       }
     }
@@ -290,9 +370,36 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const handleFileSourceChange = (value: string) => {
     setFileSource(value);
     setSelectedSource('');
-    setHeadersFetched(false); // Reset headers fetched flag for new source
+
+    // Reset file path/name when file source type changes
+    setFileName('');
+    setFilePath('');
+
+    // Reset preview data and headers
+    setPreviewData([]);
+    setOriginalPreviewData([]);
+    setHeaders([]);
+    setAllAvailableHeaders([]);
+    setSelectedHeaders([]);
+    setHeadersFetched(false);
+    setDataTypes({});
+    setCustomHeadersInput('');
+    setCustomHeadersError('');
+
     setIsSourceInitialized(true); // Mark as initialized since we're making a user selection
-    updateParentData({ subSourceType: value, fileSource: '', fileSourceId: undefined });
+
+    updateParentData({
+      subSourceType: value,
+      fileSource: '',
+      fileSourceId: undefined,
+      fileName: '',
+      filePath: '',
+      headers: [],
+      selectedHeaders: [],
+      previewData: [],
+      dataTypes: {},
+      customHeaders: ''
+    });
   };
 
   const handleGetTop10Records = async () => {
@@ -321,22 +428,6 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         formData.append('sourceOption', '1'); // Default source option for Desktop
         formData.append('sourceType', 'file');
 
-        // Console log FormData contents
-        console.log('=== Desktop File Upload - FormData Payload ===');
-        console.log('File:', uploadedFile);
-        console.log('File name:', uploadedFile.name);
-        console.log('File size:', uploadedFile.size, 'bytes');
-        console.log('File type:', uploadedFile.type);
-        console.log('FormData entries:');
-        for (const [key, value] of formData.entries()) {
-          if (value instanceof File) {
-            console.log(`  ${key}:`, value.name, `(${value.size} bytes)`);
-          } else {
-            console.log(`  ${key}:`, value);
-          }
-        }
-        console.log('==========================================');
-
         // Make the API call with FormData
         response = await getTop10Records(formData as any);
       } else {
@@ -355,21 +446,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
           sourceType: 'file'
         };
 
-        // Console log JSON payload
-        console.log('=== File Source API Call - JSON Payload ===');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('==========================================');
-
         // Make the API call
         response = await getTop10Records(payload);
       }
-
-      // Console log API response
-      console.log('=== API Response from getTop10Records ===');
-      console.log('Response:', response);
-      console.log('Response type:', typeof response);
-      console.log('Is Array:', Array.isArray(response));
-      console.log('==========================================');
 
       // Handle multiple response formats:
       // 1. New format: { separator: string, data: object[], content: string }
@@ -475,6 +554,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setPreviewData(finalPreviewData);
       setAllAvailableHeaders(finalHeaders);
       setSelectedHeaders(finalHeaders); // Initially select all headers
+      setSelectedPreviewColumns(finalHeaders); // Initially show all columns in preview
 
       // Initialize data types for all columns (default to 'String')
       const initialDataTypes: Record<string, string> = {};
@@ -501,10 +581,9 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       }
 
       // Include content preview if it was provided in the response
-      if (responseContent !== undefined) {
         updateObj.contentPreview = responseContent;
-        setContentPreview(responseContent); // Set in local state for immediate access
-      }
+        setContentPreview(responseContent || ""); // Set in local state for immediate access
+      
 
       updateParentData(updateObj);
 
@@ -548,26 +627,41 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const handleCustomHeadersChange = (value: string) => {
     setCustomHeadersInput(value);
 
-    // Validate custom headers count against original headers
+    // Validate custom headers count and SQL naming conventions
     const trimmedValue = value?.trim();
     if (trimmedValue && headers?.length > 0) {
-      const customHeadersList = trimmedValue?.split(',').map(h => h?.trim()).filter(h => h?.length > 0);
       const originalHeadersCount = headers?.length;
 
-      if (customHeadersList?.length !== originalHeadersCount) {
-        setCustomHeadersError(
-          `Error: File has ${originalHeadersCount} headers. You must enter exactly ${originalHeadersCount} comma-separated custom headers.`
-        );
+      // Validate using centralized validation utility
+      const validation = validateCustomHeaders(trimmedValue, originalHeadersCount);
+
+      if (!validation.isValid) {
+        // Get user-friendly error message
+        const errorMessage = getCustomHeadersErrorMessage(validation);
+        setCustomHeadersError(errorMessage);
+
+        // Notify parent of validation error to block saving
+        if (onValidationError) {
+          onValidationError(errorMessage);
+        }
+
         // Update parent data with error state but don't transform
         updateParentData({
           hasHeader,
           customHeaders: trimmedValue
         });
       } else {
+        // Validation passed - get the validated list
+        const customHeadersList = trimmedValue?.split(',').map(h => h?.trim()).filter(h => h?.length > 0);
         // Set flag to prevent useEffect from overriding our changes
         isUpdatingCustomHeaders.current = true;
 
         setCustomHeadersError('');
+
+        // Notify parent that error is cleared
+        if (onValidationError) {
+          onValidationError('');
+        }
 
         // Update allAvailableHeaders and selectedHeaders with custom headers
         setAllAvailableHeaders(customHeadersList);
@@ -610,6 +704,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       }
     } else {
       setCustomHeadersError('');
+
+      // Notify parent that error is cleared
+      if (onValidationError) {
+        onValidationError('');
+      }
+
       // Reset to original headers if custom headers are cleared
       if (!trimmedValue && headers?.length > 0) {
         setAllAvailableHeaders(headers);
@@ -650,30 +750,33 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   };
 
   const handleHeaderSelectionChange = (newSelectedHeaders: string[]) => {
-    
     setSelectedHeaders(newSelectedHeaders);
     // Don't update headers state - keep it as the original full list for data processing
     // Only selectedHeaders should track user selection for the Select Headers dropdown
-    
+
     // Update data types to only include selected headers
     const updatedDataTypes: Record<string, string> = {};
     newSelectedHeaders?.forEach(header => {
       updatedDataTypes[header] = dataTypes[header] || 'String';
     });
     setDataTypes(updatedDataTypes);
-    
-    updateParentData({ 
+
+    updateParentData({
       selectedHeaders: newSelectedHeaders, // Only save selection, keep headers as full list
-      dataTypes: updatedDataTypes 
+      dataTypes: updatedDataTypes
     });
   };
 
   const updateParentData = (updates: Partial<InputSource>) => {
+    console.log('[subSourceType] updateParentData called');
+    console.log('[subSourceType] Current fileSource state:', fileSource);
+    console.log('[subSourceType] updates:', updates);
+
     const finalData = {
       ...data,
       subSourceType: fileSource,
-      fileSource: updates.fileSource !== undefined ? updates.fileSource : data.fileSource,
-      fileSourceId: updates.fileSourceId !== undefined ? updates.fileSourceId : data.fileSourceId,
+      fileSource: updates?.fileSource !== undefined ? updates?.fileSource : data?.fileSource,
+      fileSourceId: updates?.fileSourceId !== undefined ? updates?.fileSourceId : data?.fileSourceId,
       filePath,
       fileName,
       delimiter,
@@ -681,15 +784,17 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       customHeaders: customHeadersInput?.trim(),
       // IMPORTANT: headers should always contain ALL available headers (original or custom)
       // selectedHeaders tracks which ones are actually selected
-      headers: updates.headers !== undefined ? updates.headers : (allAvailableHeaders || []),
-      dataTypes: updates.dataTypes !== undefined ? updates.dataTypes : dataTypes,
-      previewData: updates.previewData !== undefined ? updates.previewData : previewData,
-      selectedHeaders: updates.selectedHeaders !== undefined ? updates.selectedHeaders : selectedHeaders,
+      headers: updates?.headers !== undefined ? updates?.headers : (allAvailableHeaders || []),
+      dataTypes: updates?.dataTypes !== undefined ? updates?.dataTypes : dataTypes,
+      previewData: updates?.previewData !== undefined ? updates?.previewData : previewData,
+      selectedHeaders: updates?.selectedHeaders !== undefined ? updates?.selectedHeaders : selectedHeaders,
       filterQuery,
       filterJson,
       ...updates, // Apply updates last to ensure they override everything
     };
 
+    console.log('[subSourceType] finalData.subSourceType:', finalData?.subSourceType);
+    console.log('[subSourceType] Calling onChange with finalData');
 
     onChange(finalData);
   };
@@ -730,6 +835,10 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               setSelectedSource(sourceName);
               const sourceId = getSourceId(sourceName);
 
+              // Reset file path/name when file source changes
+              setFileName('');
+              setFilePath('');
+
               // Reset preview data and headers when file source changes
               setPreviewData([]);
               setOriginalPreviewData([]);
@@ -744,6 +853,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               updateParentData({
                 fileSource: sourceName,
                 fileSourceId: sourceId,
+                fileName: '',
+                filePath: '',
                 headers: [],
                 selectedHeaders: [],
                 previewData: [],
@@ -881,6 +992,295 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       </Box>
 
+            {/* Preview Data Table */}
+      {previewData?.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                SampleRecords
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
+                sx={{ p: 0.5 }}
+              >
+                {isPreviewExpanded ? <ExpandLess /> : <ExpandMore />}
+              </IconButton>
+              {contentPreview && (
+                <Tooltip title="Preview raw content" arrow>
+                  <IconButton
+                    size="small"
+                    onMouseEnter={(e) => setPreviewAnchorEl(e.currentTarget)}
+                    onMouseLeave={() => setPreviewAnchorEl(null)}
+                    sx={{
+                      p: 0.5,
+                      color: '#8B5CF6',
+                      '&:hover': {
+                        backgroundColor: 'rgba(139, 92, 246, 0.12)',
+                      },
+                    }}
+                  >
+                    <Visibility sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
+            {/* Column Selection and Search - Only show when expanded */}
+            {isPreviewExpanded && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 'auto' }}>
+                {/* Column Selection Dropdown - Searchable Multi-Select */}
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={['__SELECT_ALL__', ...(selectedHeaders || [])]}
+                  value={selectedPreviewColumns}
+                onChange={(event, newValue) => {
+                  // Check if "Select All" was clicked
+                  if (newValue?.includes('__SELECT_ALL__')) {
+                    // Toggle: if all are selected, deselect all; otherwise select all
+                    if (selectedPreviewColumns?.length === selectedHeaders?.length) {
+                      setSelectedPreviewColumns([]);
+                      setSelectedColumn('');
+                    } else {
+                      setSelectedPreviewColumns(selectedHeaders || []);
+                      setSelectedColumn('all');
+                    }
+                  } else {
+                    // Filter out __SELECT_ALL__ in case it's in the array
+                    const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');
+                    setSelectedPreviewColumns(filtered);
+                    setSelectedColumn(filtered?.length === selectedHeaders?.length ? 'all' : '');
+                  }
+                }}
+                disableCloseOnSelect
+                getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'All Columns' : option}
+                renderOption={(props, option, { selected }) => {
+                  if (option === '__SELECT_ALL__') {
+                    const allSelected = selectedPreviewColumns?.length === selectedHeaders?.length;
+                    const someSelected = selectedPreviewColumns?.length > 0 && selectedPreviewColumns?.length < (selectedHeaders?.length || 0);
+                    return (
+                      <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                        <Checkbox
+                          icon={<CheckBoxOutlineBlank fontSize="small" />}
+                          checkedIcon={<CheckBox fontSize="small" />}
+                          indeterminateIcon={<CheckBox fontSize="small" />}
+                          style={{ marginRight: 8 }}
+                          checked={allSelected}
+                          indeterminate={someSelected}
+                        />
+                        All Columns
+                      </li>
+                    );
+                  }
+                  return (
+                    <li {...props}>
+                      <Checkbox
+                        icon={<CheckBoxOutlineBlank fontSize="small" />}
+                        checkedIcon={<CheckBox fontSize="small" />}
+                        style={{ marginRight: 8 }}
+                        checked={selected}
+                      />
+                      {option}
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder={selectedPreviewColumns?.length === 0 ? "Select columns to view..." : ""}
+                    size="small"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value?.length === selectedHeaders?.length
+                    ? [
+                        <Chip
+                          key="all"
+                          label="All Columns"
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.75rem',
+                            backgroundColor: 'primary.main',
+                            color: 'white',
+                          }}
+                        />
+                      ]
+                    : value?.slice(0, 2).map((option, index) => (
+                        <Chip
+                          {...getTagProps({ index })}
+                          key={option}
+                          label={option}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.75rem',
+                            backgroundColor: 'primary.main',
+                            color: 'white',
+                            '& .MuiChip-deleteIcon': {
+                              color: 'rgba(255, 255, 255, 0.7)',
+                              '&:hover': {
+                                color: 'white',
+                              },
+                            },
+                          }}
+                        />
+                      )).concat(
+                        value?.length > 2
+                          ? [
+                              <Chip
+                                key="more"
+                                label={`+${value?.length - 2} more`}
+                                size="small"
+                                sx={{
+                                  height: 20,
+                                  fontSize: '0.75rem',
+                                  backgroundColor: 'text.secondary',
+                                  color: 'white',
+                                }}
+                              />
+                            ]
+                          : []
+                      )
+                }
+                sx={{
+                  minWidth: 250,
+                  maxWidth: 400,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                  },
+                }}
+              />
+              {/* Search Box */}
+              <TextField
+                size="small"
+                placeholder="Search records..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  width: 250,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                  },
+                }}
+              />
+              </Box>
+            )}
+          </Box>
+          <Collapse in={isPreviewExpanded}>
+            <TableContainer
+            component={Paper}
+            sx={{
+              maxHeight: 350,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              overflowX: 'auto', // Enable horizontal scroll
+            }}
+          >
+            <Table stickyHeader size="small" sx={{ minWidth: (selectedPreviewColumns?.length || 1) * 120 }}>
+              <TableHead>
+                <TableRow>
+                  {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : selectedHeaders || []).map((header) => (
+                    <TableCell key={header} sx={{ backgroundColor: '#F8FAFB', fontWeight: 600, py: 1, whiteSpace: 'nowrap' }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                        {header}
+                      </Typography>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {previewData
+                  ?.filter((row) => {
+                    // Filter rows based on search term
+                    if (!searchTerm?.trim()) return true;
+                    const searchLower = searchTerm?.toLowerCase();
+                    const columnsToSearch = selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : selectedHeaders || [];
+                    return columnsToSearch?.some((header) =>
+                      String(row?.[header] || '')?.toLowerCase()?.includes(searchLower)
+                    );
+                  })
+                  ?.map((row, idx) => (
+                    <TableRow key={idx} hover>
+                      {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : selectedHeaders || []).map((header) => (
+                        <TableCell key={header} sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
+                          <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                            {row?.[header]}
+                          </Typography>
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          </Collapse>
+        </Box>
+      )}
+
+      {/* Delimiter Selection - Only shown after successful Get Sample Recods */}
+      {headersFetched && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
+            Delimiter
+          </Typography>
+        <RadioGroup
+          row
+          value={delimiter}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            setDelimiter(newValue);
+            if (newValue !== 'custom') {
+              setCustomDelimiter('');
+              updateParentData({ delimiter: newValue });
+            }
+          }}
+        >
+          {DELIMITERS?.map((d) => (
+            <FormControlLabel
+              key={d.value}
+              value={d.value}
+              control={<Radio size="small" />}
+              label={d.label}
+              sx={{ mr: 2 }}
+            />
+          ))}
+        </RadioGroup>
+
+        {/* Custom Delimiter Input */}
+        {delimiter === 'custom' && (
+          <Box sx={{ mt: 1.5 }}>
+            <TextField
+              size="small"
+              placeholder="Enter custom delimiter (e.g., ~, ^, etc.)"
+              value={customDelimiter}
+              onChange={(e) => {
+                const value = e.target.value;
+                setCustomDelimiter(value);
+                updateParentData({ delimiter: value });
+              }}
+              sx={{
+                width: '300px',
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'white',
+                },
+              }}
+              helperText="Enter any single or multi-character delimiter"
+            />
+          </Box>
+        )}
+        </Box>
+      )}
+
       {/* Sections below are only shown after successful Get Sample Recods */}
       {headersFetched && (
         <>
@@ -906,14 +1306,14 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Typography>
         <TextField
           fullWidth
-          placeholder="e.g., Name, Email, Phone, Address (comma-separated)"
+          placeholder="e.g., Customer_Name, Email_Address, Phone_Number, Street_Address (comma-separated, letters/numbers/underscores only)"
           value={customHeadersInput}
           onChange={(e) => handleCustomHeadersChange(e.target.value)}
           multiline
           rows={3}
           size="small"
           error={!!customHeadersError}
-          helperText={customHeadersError || "Enter custom header names separated by commas. These will be used as column headers for your data."}
+          helperText={customHeadersError || "Enter custom header names separated by commas. Must follow SQL naming rules: start with letter/underscore, contain only letters/numbers/underscores, no spaces or special characters."}
           sx={{
             '& .MuiOutlinedInput-root': {
               backgroundColor: 'white',
@@ -963,10 +1363,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
                 if (selectedHeaders?.length === allAvailableHeaders?.length) {
                   handleHeaderSelectionChange([]);
                 } else {
-                  handleHeaderSelectionChange(allAvailableHeaders);
+                  handleHeaderSelectionChange(allAvailableHeaders || []);
                 }
               } else {
-                handleHeaderSelectionChange(newValue);
+                // Filter out __SELECT_ALL__ in case it's in the array
+                const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');
+                handleHeaderSelectionChange(filtered);
               }
             }}
             disableCloseOnSelect
@@ -1062,193 +1464,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         </Box>
       )}
 
-      {/* Preview Data Table */}
-      {previewData?.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Top 10 Records Preview
-              </Typography>
-              <IconButton
-                size="small"
-                onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
-                sx={{ p: 0.5 }}
-              >
-                {isPreviewExpanded ? <ExpandLess /> : <ExpandMore />}
-              </IconButton>
-              {contentPreview && (
-                <Tooltip title="Preview raw content" arrow>
-                  <IconButton
-                    size="small"
-                    onMouseEnter={(e) => setPreviewAnchorEl(e.currentTarget)}
-                    onMouseLeave={() => setPreviewAnchorEl(null)}
-                    sx={{
-                      p: 0.5,
-                      color: '#8B5CF6',
-                      '&:hover': {
-                        backgroundColor: 'rgba(139, 92, 246, 0.12)',
-                      },
-                    }}
-                  >
-                    <Visibility sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              {/* Column Selection Dropdown */}
-              <Select
-                size="small"
-                value={selectedColumn}
-                onChange={(e) => setSelectedColumn(e.target.value)}
-                sx={{
-                  minWidth: 150,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: 'white',
-                  },
-                }}
-              >
-                <MenuItem value="all">All Columns</MenuItem>
-                {selectedHeaders?.map((header) => (
-                  <MenuItem key={header} value={header}>
-                    {header}
-                  </MenuItem>
-                ))}
-              </Select>
-              {/* Search Box */}
-              <TextField
-                size="small"
-                placeholder="Search records..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  width: 250,
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: 'white',
-                  },
-                }}
-              />
-            </Box>
-          </Box>
-          <Collapse in={isPreviewExpanded}>
-            <TableContainer
-            component={Paper}
-            sx={{
-              maxHeight: 350,
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2,
-              overflowX: 'auto', // Enable horizontal scroll
-            }}
-          >
-            <Table stickyHeader size="small" sx={{ minWidth: (selectedColumn === 'all' ? selectedHeaders?.length : 1) * 120 }}>
-              <TableHead>
-                <TableRow>
-                  {(selectedColumn === 'all' ? selectedHeaders : [selectedColumn]).map((header) => (
-                    <TableCell key={header} sx={{ backgroundColor: '#F8FAFB', fontWeight: 600, py: 1, whiteSpace: 'nowrap' }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
-                        {header}
-                      </Typography>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {previewData
-                  .filter((row) => {
-                    // Filter rows based on search term
-                    if (!searchTerm?.trim()) return true;
-                    const searchLower = searchTerm?.toLowerCase();
-                    const columnsToSearch = selectedColumn === 'all' ? selectedHeaders : [selectedColumn];
-                    return columnsToSearch?.some((header) =>
-                      String(row[header] || '').toLowerCase().includes(searchLower)
-                    );
-                  })
-                  .map((row, idx) => (
-                    <TableRow key={idx} hover>
-                      {(selectedColumn === 'all' ? selectedHeaders : [selectedColumn]).map((header) => (
-                        <TableCell key={header} sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
-                          <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                            {row[header]}
-                          </Typography>
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          </Collapse>
-        </Box>
-      )}
-
-      {/* Delimiter Selection - Only shown after successful Get Sample Recods */}
-      {headersFetched && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-            Delimiter (Auto-detected, can be changed)
-          </Typography>
-        <RadioGroup
-          row
-          value={delimiter}
-          onChange={(e) => {
-            const newValue = e.target.value;
-            setDelimiter(newValue);
-            if (newValue !== 'custom') {
-              setCustomDelimiter('');
-              updateParentData({ delimiter: newValue });
-            }
-          }}
-        >
-          {DELIMITERS?.map((d) => (
-            <FormControlLabel
-              key={d.value}
-              value={d.value}
-              control={<Radio size="small" />}
-              label={d.label}
-              sx={{ mr: 2 }}
-            />
-          ))}
-        </RadioGroup>
-
-        {/* Custom Delimiter Input */}
-        {delimiter === 'custom' && (
-          <Box sx={{ mt: 1.5 }}>
-            <TextField
-              size="small"
-              placeholder="Enter custom delimiter (e.g., ~, ^, etc.)"
-              value={customDelimiter}
-              onChange={(e) => {
-                const value = e.target.value;
-                setCustomDelimiter(value);
-                updateParentData({ delimiter: value });
-              }}
-              sx={{
-                width: '300px',
-                '& .MuiOutlinedInput-root': {
-                  backgroundColor: 'white',
-                },
-              }}
-              helperText="Enter any single or multi-character delimiter"
-            />
-          </Box>
-        )}
-        </Box>
-      )}
 
       {/* Filter Builder - Show only when headers are available */}
-      {allAvailableHeaders?.length > 0 && (
+      {selectedHeaders?.length > 0 && (
         <Box sx={{ mb: 2 }}>
-          <FilterBuilder 
-            headers={allAvailableHeaders} 
+          <FilterBuilder
+            headers={selectedHeaders} 
             initialValue={data.filterQuery}
             initialConfig={data.filterJson}
             onFilterChange={(query) => {

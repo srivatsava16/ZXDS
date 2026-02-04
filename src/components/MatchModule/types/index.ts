@@ -4,11 +4,11 @@ import type { RequestInputsResponse } from '../../../services/api';
 export interface MatchConfig {
   id: string;
   inputSources: string[];
-  matchOnFields: string[];
+  matchOnFields: string[];  // Fields from INPUT sources to match on (becomes match_keys in API)
   matchSources: string[];
   expand: boolean;
   matchType: 'full' | 'any';
-  addFields?: string[]; // Fields to add when expand is true
+  addFields?: string[];  // Fields from MATCH sources to add to output (becomes add_fields in API)
   fieldMappings?: Array<{
     id: string;
     fieldName: string;
@@ -58,10 +58,13 @@ export interface MatchModuleProps {
   // Module-level field mappings (shared across all configs/versions in this module)
   moduleFieldMappings?: any[];
   onModuleFieldMappingsChange?: (mappings: any[]) => void;
+  // Table dictionary data from dictionary.php API
+  tableDictionary?: any;
 }
 
 export interface PredefinedSource {
   id: string;
   name: string;
   description?: string;
+  fields?: string[];
 }

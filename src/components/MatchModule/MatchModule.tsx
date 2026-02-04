@@ -29,10 +29,9 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import { Add, Delete, Edit, AccountTree, Visibility } from '@mui/icons-material';
+import { Add, Delete, Edit, Visibility } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
 import MatchSourceDialog from './MatchSourceDialog';
-import DraggableMatchSources from './DraggableMatchSources';
 import FieldMappingDialog, { type FieldMapping } from '../AppendModule/FieldMappingDialog';
 import MatchVersionModal from './MatchVersionModal';
 
@@ -46,6 +45,7 @@ import ViewSourceDialog from './components/ViewSourceDialog';
 export type { MatchConfig };
 
 const MatchModule: React.FC<MatchModuleProps> = ({
+  moduleId,
   availableInputSources,
   onCreateVersionedSource,
   initialConfigs,
@@ -63,7 +63,8 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   onConfigurationsChange,
   appendConfigurations = [],
   moduleFieldMappings = [],
-  onModuleFieldMappingsChange
+  onModuleFieldMappingsChange,
+  tableDictionary = null
 }) => {
   // Use custom hooks for state management
   const matchConfig = useMatchConfig(initialConfigs);
@@ -217,26 +218,46 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     );
   };
 
+  // Track if initial configs have been loaded to prevent re-loading on every render
+  const initialConfigsLoadedRef = useRef(false);
+
   // Load initial configurations if provided (for edit mode)
+  // Only load once to allow user deletions to persist
   useEffect(() => {
-    if (initialConfigs && initialConfigs?.length > 0) {
+    console.log('[DELETE] MatchModule - initialConfigs useEffect triggered');
+    console.log('[DELETE] MatchModule - initialConfigs:', initialConfigs);
+    console.log('[DELETE] MatchModule - initialConfigs count:', initialConfigs?.length);
+    console.log('[DELETE] MatchModule - initialConfigsLoadedRef.current:', initialConfigsLoadedRef.current);
+    console.log('[DELETE] MatchModule - moduleId:', moduleId);
+    console.log('[DELETE] MatchModule - Current configs count:', matchConfig?.configs?.length);
+
+    if (initialConfigs && initialConfigs?.length > 0 && !initialConfigsLoadedRef.current) {
+      console.log('[DELETE] MatchModule - Loading initial configs (first time)');
       matchConfig.setConfigs(initialConfigs);
+      initialConfigsLoadedRef.current = true;
+    } else if (initialConfigs && initialConfigs?.length > 0 && initialConfigsLoadedRef.current) {
+      console.log('[DELETE] MatchModule - Skipping initialConfigs reload (already loaded once)');
     }
-  }, [initialConfigs]);
+  }, [initialConfigs, matchConfig, moduleId]);
 
   // Track previous configs to prevent infinite loops
   const prevConfigsRef = useRef<string>('');
 
   // Notify parent component when configurations change (for dependency validation)
   useEffect(() => {
+    console.log('[DELETE] MatchModule - configs changed, count:', matchConfig?.configs?.length);
+    console.log('[DELETE] MatchModule - configs:', matchConfig?.configs);
     if (onConfigurationsChange) {
       // Use JSON.stringify to compare deep equality
       const currentConfigsString = JSON.stringify(matchConfig.configs);
 
       // Only call callback if configs actually changed
       if (currentConfigsString !== prevConfigsRef.current) {
+        console.log('[DELETE] MatchModule - Notifying parent of config change');
         prevConfigsRef.current = currentConfigsString;
         onConfigurationsChange(matchConfig.configs);
+      } else {
+        console.log('[DELETE] MatchModule - Configs same as previous, not notifying parent');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -273,17 +294,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   const [matchOnFieldsSearch, setMatchOnFieldsSearch] = useState('');
   const [matchSourcesSearch, setMatchSourcesSearch] = useState('');
   const [addFieldsSearch, setAddFieldsSearch] = useState('');
-
-  // Handle reordering of match sources via drag-and-drop
-  const handleReorderMatchSources = (newOrder: string[]) => {
-    matchConfig.setSelectedMatchSources(newOrder);
-  };
-
-  // Handle deletion of match source from priority list
-  const handleDeleteMatchSource = (id: string) => {
-    const updatedSelection = matchConfig.selectedMatchSources?.filter(sourceId => sourceId !== id);
-    matchConfig.setSelectedMatchSources(updatedSelection);
-  };
 
   const handleCreateVersion = () => {
     // Validation
@@ -877,15 +887,52 @@ const MatchModule: React.FC<MatchModuleProps> = ({
               <Box sx={{ width: '1px', height: '20px', backgroundColor: 'divider', mx: 0.5 }} />
 
               {/* Options inline with label */}
-              {/* Expand Checkbox - Hidden when Full Match is selected */}
-              {matchConfig.matchType !== 'full' && (
-                <FormGroup>
+              {/* Expand Checkbox - Disabled when Full Match is selected */}
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={matchConfig?.expand || false}
+                      onChange={(e) => matchConfig?.setExpand?.(e.target.checked)}
+                      disabled={matchConfig?.matchType === 'full'}
+                      sx={{
+                        padding: '2px',
+                        '& .MuiSvgIcon-root': { fontSize: 18 }
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: matchConfig?.matchType === 'full' ? 'text.disabled' : '#2D3748'
+                      }}
+                    >
+                      Expand
+                    </Typography>
+                  }
+                  sx={{ margin: 0 }}
+                  disabled={matchConfig?.matchType === 'full'}
+                />
+              </FormGroup>
+
+              {/* Full Match / Any Match Radio Buttons - Disabled when Expand is enabled */}
+              <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
+                <RadioGroup
+                  row
+                  value={matchConfig?.matchType || 'any'}
+                  onChange={(e) => matchConfig?.setMatchType?.(e.target.value as 'full' | 'any')}
+                  sx={{ gap: 1 }}
+                >
                   <FormControlLabel
+                    value="full"
                     control={
-                      <Checkbox
+                      <Radio
                         size="small"
-                        checked={matchConfig.expand}
-                        onChange={(e) => matchConfig.setExpand(e.target.checked)}
+                        disabled={matchConfig?.expand || false}
                         sx={{
                           padding: '2px',
                           '& .MuiSvgIcon-root': { fontSize: 18 }
@@ -893,63 +940,49 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                       />
                     }
                     label={
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                        Expand
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          color: matchConfig?.expand ? 'text.disabled' : '#2D3748'
+                        }}
+                      >
+                        Full Match
                       </Typography>
                     }
                     sx={{ margin: 0 }}
+                    disabled={matchConfig?.expand || false}
                   />
-                </FormGroup>
-              )}
-
-              {/* Full Match / Any Match Radio Buttons - Hidden when Expand is enabled */}
-              {!matchConfig.expand && (
-                <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
-                  <RadioGroup
-                    row
-                    value={matchConfig.matchType}
-                    onChange={(e) => matchConfig.setMatchType(e.target.value as 'full' | 'any')}
-                    sx={{ gap: 1 }}
-                  >
-                    <FormControlLabel
-                      value="full"
-                      control={
-                        <Radio
-                          size="small"
-                          sx={{
-                            padding: '2px',
-                            '& .MuiSvgIcon-root': { fontSize: 18 }
-                          }}
-                        />
-                      }
-                      label={
-                        <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                          Full Match
-                        </Typography>
-                      }
-                      sx={{ margin: 0 }}
-                    />
-                    <FormControlLabel
-                      value="any"
-                      control={
-                        <Radio
-                          size="small"
-                          sx={{
-                            padding: '2px',
-                            '& .MuiSvgIcon-root': { fontSize: 18 }
-                          }}
-                        />
-                      }
-                      label={
-                        <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500, color: '#2D3748' }}>
-                          Any Match
-                        </Typography>
-                      }
-                      sx={{ margin: 0 }}
-                    />
-                  </RadioGroup>
-                </FormControl>
-              )}
+                  <FormControlLabel
+                    value="any"
+                    control={
+                      <Radio
+                        size="small"
+                        disabled={matchConfig?.expand || false}
+                        sx={{
+                          padding: '2px',
+                          '& .MuiSvgIcon-root': { fontSize: 18 }
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          color: matchConfig?.expand ? 'text.disabled' : '#2D3748'
+                        }}
+                      >
+                        Any Match
+                      </Typography>
+                    }
+                    sx={{ margin: 0 }}
+                    disabled={matchConfig?.expand || false}
+                  />
+                </RadioGroup>
+              </FormControl>
             </Box>
           </Box>
           <FormControl fullWidth size="small">
@@ -1186,16 +1219,6 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                 );
               })}
             </Select>
-
-            {/* Draggable Priority Order for selected sources */}
-            {matchConfig.selectedMatchSources?.length > 0 && (
-              <DraggableMatchSources
-                selectedSources={matchConfig.selectedMatchSources}
-                onReorder={handleReorderMatchSources}
-                onDelete={handleDeleteMatchSource}
-                getSourceName={getSourceName}
-              />
-            )}
           </FormControl>
         </Box>
 
@@ -1620,99 +1643,112 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     {/* Match On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        version?.operationFields && version.operationFields?.length > 0 ? (
-                          <Tooltip
-                            title={
-                              <Box sx={{ maxWidth: 400 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                  Match On Fields ({version.operationFields?.length}):
-                                </Typography>
-                                <Typography variant="caption" sx={{ display: 'block' }}>
-                                  {version.operationFields?.join(', ')}
+                        // For versions, use addFields (user's Match Keys selection) first, fallback to operationFields
+                        (() => {
+                          const matchKeys = version?.addFields || version?.operationFields || [];
+                          return matchKeys && matchKeys.length > 0 ? (
+                            <Tooltip
+                              title={
+                                <Box sx={{ maxWidth: 400 }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    Match Keys ({matchKeys.length}):
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    {matchKeys.join(', ')}
+                                  </Typography>
+                                </Box>
+                              }
+                              arrow
+                              placement="top"
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                                <Chip
+                                  label={`${matchKeys.length} field${matchKeys.length !== 1 ? 's' : ''}`}
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: '#F59E0B20',
+                                    color: '#F59E0B',
+                                    border: '1px solid #F59E0B40',
+                                    fontWeight: 600,
+                                    height: '20px !important',
+                                    fontSize: '0.65rem',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                  sx={{
+                                    fontSize: '0.7rem',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  {matchKeys.join(', ')}
                                 </Typography>
                               </Box>
-                            }
-                            arrow
-                            placement="top"
-                          >
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
-                              <Chip
-                                label={`${version.operationFields?.length} field${version.operationFields?.length !== 1 ? 's' : ''}`}
-                                size="small"
-                                sx={{
-                                  backgroundColor: '#F59E0B20',
-                                  color: '#F59E0B',
-                                  border: '1px solid #F59E0B40',
-                                  fontWeight: 600,
-                                  height: '20px !important',
-                                  fontSize: '0.65rem',
-                                  flexShrink: 0,
-                                }}
-                              />
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                sx={{
-                                  fontSize: '0.7rem',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  minWidth: 0,
-                                }}
-                              >
-                                {version.operationFields?.join(', ')}
-                              </Typography>
-                            </Box>
-                          </Tooltip>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                            --
-                          </Typography>
-                        )
-                      ) : config && config.matchOnFields && config.matchOnFields?.length > 0 ? (
-                        <Tooltip
-                          title={
-                            <Box sx={{ maxWidth: 400 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                                Match On Fields ({config.matchOnFields?.length}):
-                              </Typography>
-                              <Typography variant="caption" sx={{ display: 'block' }}>
-                                {config.matchOnFields?.join(', ')}
-                              </Typography>
-                            </Box>
-                          }
-                          arrow
-                          placement="top"
-                        >
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
-                            <Chip
-                              label={`${config.matchOnFields?.length} field${config.matchOnFields?.length !== 1 ? 's' : ''}`}
-                              size="small"
-                              sx={{
-                                backgroundColor: '#F59E0B20',
-                                color: '#F59E0B',
-                                border: '1px solid #F59E0B40',
-                                fontWeight: 600,
-                                height: '20px !important',
-                                fontSize: '0.65rem',
-                                flexShrink: 0,
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                fontSize: '0.7rem',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                minWidth: 0,
-                              }}
-                            >
-                              {config.matchOnFields?.join(', ')}
+                            </Tooltip>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                              --
                             </Typography>
-                          </Box>
-                        </Tooltip>
+                          );
+                        })()
+                      ) : config && (() => {
+                        // For configs, use addFields (user's Match Keys selection) first, fallback to matchOnFields
+                        const matchKeys = config.addFields || config.matchOnFields || [];
+                        return matchKeys && matchKeys.length > 0;
+                      })() ? (
+                        (() => {
+                          const matchKeys = config.addFields || config.matchOnFields || [];
+                          return (
+                            <Tooltip
+                              title={
+                                <Box sx={{ maxWidth: 400 }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+                                    Match Keys ({matchKeys.length}):
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    {matchKeys.join(', ')}
+                                  </Typography>
+                                </Box>
+                              }
+                              arrow
+                              placement="top"
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                                <Chip
+                                  label={`${matchKeys.length} field${matchKeys.length !== 1 ? 's' : ''}`}
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: '#F59E0B20',
+                                    color: '#F59E0B',
+                                    border: '1px solid #F59E0B40',
+                                    fontWeight: 600,
+                                    height: '20px !important',
+                                    fontSize: '0.65rem',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                  sx={{
+                                    fontSize: '0.7rem',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  {matchKeys.join(', ')}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                          );
+                        })()
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                           --
@@ -2073,6 +2109,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={customSources.editingSource}
+        tableDictionary={tableDictionary}
       />
 
       {/* Field Mapping Dialog */}
@@ -2377,7 +2414,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({
         }}
         version={editingVersion}
         availableInputSources={availableInputSources}
-        availableMatchSources={[...predefinedSources?.map(s => ({ id: s.id, name: s.name })), ...customSources.customMatchSources?.map(s => ({ id: s.id, name: s.sourceName }))]}
+        availableMatchSources={[
+          ...predefinedSources?.map(s => ({ id: s?.id, name: s?.name, fields: s?.fields || [] })),
+          ...customSources?.customMatchSources?.map(s => ({ id: s?.id, name: s?.sourceName, fields: s?.selectedHeaders || s?.headers || [] })),
+          ...localVersionedSources?.map(src => ({ id: src.id, name: src.sourceName, fields: src.selectedHeaders || src.headers || [] })),
+          ...regularInputSources?.map(src => ({ id: src.id, name: src.sourceName, fields: src.selectedHeaders || src.headers || [] }))
+        ]}
         apiSources={apiSources}
         allExistingSources={[...availableInputSources, ...sharedCustomSources]}
         onSave={handleSaveVersion}

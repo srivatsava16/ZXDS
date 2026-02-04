@@ -339,3 +339,29 @@ export async function getEditRequest(requestId: number): Promise<EditRequestResp
     throw error;
   }
 }
+
+// Table Dictionary Interfaces
+export interface TableDictionaryField {
+  field_name: string;
+  description: string;
+  field_values: string[];
+  data_type: string;
+}
+
+export interface TableDictionaryResponse {
+  success: boolean;
+  dictionary: Record<string, TableDictionaryField[]>;
+  total_tables: number;
+}
+
+export async function getTableDictionary(): Promise<TableDictionaryResponse> {
+  try {
+    const response = await ApiService.fetchData<TableDictionaryResponse>({
+      url: '/dictionary.php',
+      method: 'get',
+    });
+    return ApiService.transform<TableDictionaryResponse>(response);
+  } catch (error) {
+    throw error;
+  }
+}

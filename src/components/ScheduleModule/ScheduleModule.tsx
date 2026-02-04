@@ -30,6 +30,19 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
   scheduledDateTime = '',
   onScheduledDateTimeChange,
 }) => {
+  // Get current date and time in the format required by datetime-local (YYYY-MM-DDTHH:MM)
+  const getCurrentDateTime = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const minDateTime = getCurrentDateTime();
+
   return (
     <Box
       sx={{
@@ -156,6 +169,9 @@ const ScheduleModule: React.FC<ScheduleModuleProps> = ({
                 }}
                 InputLabelProps={{
                   shrink: true,
+                }}
+                inputProps={{
+                  min: minDateTime,
                 }}
               />
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>

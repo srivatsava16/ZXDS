@@ -90,6 +90,7 @@ interface InputModuleProps {
   versionCounters?: { Input: number; Match: number; Append: number; Suppress: number };
   onUpdateVersionCounter?: (module: 'Input', increment: number) => void;
   sharedCustomSources?: InputSource[]; // Sources from Append/Match/Suppress modules for validation
+  tableDictionary?: any; // Table dictionary data from dictionary.php API
 }
 
 const InputModule: React.FC<InputModuleProps> = ({
@@ -101,7 +102,8 @@ const InputModule: React.FC<InputModuleProps> = ({
   sourcesLoading = false,
   versionCounters = { Input: 0, Match: 0, Append: 0, Suppress: 0 },
   onUpdateVersionCounter,
-  sharedCustomSources = []
+  sharedCustomSources = [],
+  tableDictionary = null
 }) => {
   const [sources, setSources] = useState<InputSource[]>(initialSources || []);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -184,6 +186,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         ...editingVersion,
         sourceName: versionName || editingVersion.sourceName, // Use new version name or keep existing
         headers: allHeaders,
+        createdByModuleId: 'panel1', // Track that this version was created by Input module
         versionConfig: {
           selectedSources: selectedSourceNames,
           combineAs: operation === 'union' ? 'merge' : operation, // Map back to UI format
@@ -205,6 +208,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         fileSource: '', // Empty for versions
         headers: allHeaders,
         isVersioned: true,
+        createdByModuleId: 'panel1', // Track that this version was created by Input module
         versionConfig: {
           selectedSources: selectedSourceNames,
           combineAs: operation === 'union' ? 'merge' : operation, // Map back to UI format
@@ -421,7 +425,17 @@ const InputModule: React.FC<InputModuleProps> = ({
                       </Tooltip>
                     </TableCell>
                     <TableCell sx={{ py: 0.75, px: 1.5 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontSize: '0.75rem' }}
+                        onClick={() => {
+                          console.log('[subSourceType] Source clicked:', source?.sourceName);
+                          console.log('[subSourceType] Full source object:', source);
+                          console.log('[subSourceType] source.subSourceType:', source?.subSourceType);
+                          console.log('[subSourceType] source.sourceType:', source?.sourceType);
+                        }}
+                      >
                         {source?.subSourceType || '--'}
                       </Typography>
                     </TableCell>
@@ -520,6 +534,7 @@ const InputModule: React.FC<InputModuleProps> = ({
         allExistingSources={[...sources, ...sharedCustomSources]}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
+        tableDictionary={tableDictionary}
       />
 
       {/* Input Version Modal */}

@@ -48,8 +48,7 @@ const DATA_TYPES = [
   { value: 'DATE', label: 'Date' },
   { value: 'DATETIME', label: 'DateTime' },
   { value: 'BOOLEAN', label: 'Boolean' },
-  { value: 'VARCHAR', label: 'VarChar' },
-  { value: 'TEXT', label: 'Text' },
+  { value: 'TIMESTAMP', label: 'Timestamp' },
 ];
 
 const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
@@ -85,119 +84,76 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   // Get all fields from selected input sources - memoized to prevent recalculation on every render
   const allFields = useMemo(() => {
-    console.log('[SelfSourceConfig] Calculating allFields');
-    console.log('  inputSourceNames:', inputSourceNames);
-    console.log('  availableInputSources count:', availableInputSources?.length);
-    console.log('  appendConfigs count:', appendConfigs?.length || 0);
-
     const fieldsSet = new Set<string>();
     const selectedSources = availableInputSources?.filter(src =>
-      inputSourceNames?.includes(src.sourceName)
+      inputSourceNames?.includes(src?.sourceName)
     );
 
-    console.log('  selectedSources count:', selectedSources?.length);
 
     selectedSources?.forEach(src => {
       // Always use the full headers array to show ALL available fields
       // Don't use selectedHeaders here - we want all fields to be available in filters
-      const headersToUse = src.headers;
-
-      console.log(`  Source "${src.sourceName}":`, {
-        hasHeaders: !!headersToUse,
-        isArray: Array.isArray(headersToUse),
-        headersCount: headersToUse?.length || 0,
-        headers: headersToUse
-      });
+      const headersToUse = src?.headers;
 
       if (headersToUse && Array.isArray(headersToUse)) {
-        headersToUse?.forEach(field => fieldsSet.add(field));
+        headersToUse?.forEach(field => fieldsSet?.add(field));
       }
 
       // IMPORTANT: Add appended fields from configurations
       // Check if any append config targets this source
       if (appendConfigs && appendConfigs?.length > 0) {
-        console.log(`  Checking ${appendConfigs?.length} append configs for "${src.sourceName}"`);
         appendConfigs?.forEach((config, idx) => {
-          console.log(`    Config ${idx + 1}:`, {
-            id: config.id,
-            inputSources: config.inputSources,
-            appendFields: config.appendFields,
-            appendOnFields: config.appendOnFields,
-            fullConfig: config
-          });
 
           // Check if this config targets the current source (by ID or by name)
-          const matchesById = config.inputSources && config.inputSources?.includes(src.id);
-          const matchesByName = config.inputSources && config.inputSources?.includes(src.sourceName);
+          const matchesById = config?.inputSources && config?.inputSources?.includes(src?.id);
+          const matchesByName = config?.inputSources && config?.inputSources?.includes(src?.sourceName);
 
           if (matchesById || matchesByName) {
-            console.log(`  ✓ Found append config for "${src.sourceName}":`, {
-              appendFields: config.appendFields
-            });
             // Add the appended fields from this config
-            if (config.appendFields && Array.isArray(config.appendFields)) {
-              config.appendFields?.forEach((field: string) => fieldsSet.add(field));
-              console.log(`    Added ${config.appendFields?.length} appended fields:`, config.appendFields);
+            if (config?.appendFields && Array.isArray(config?.appendFields)) {
+              config?.appendFields?.forEach((field: string) => fieldsSet?.add(field));
             }
-          } else {
-            console.log(`  ✗ Config does not target "${src.sourceName}"`);
           }
         });
       }
     });
 
     const result = Array.from(fieldsSet);
-    console.log('  Final allFields (including appended):', result);
     return result;
   }, [inputSourceNames, availableInputSources, appendConfigs]);
 
 
   // Filtered lists
   const filteredInputSources = availableInputSources?.filter(source =>
-    source.sourceName?.toLowerCase().includes(inputSourcesSearch?.toLowerCase())
+    source?.sourceName?.toLowerCase()?.includes(inputSourcesSearch?.toLowerCase())
   );
 
-  // Log available sources for debugging
-  useEffect(() => {
-    console.log('[SelfSourceConfig] Available Input Sources:', availableInputSources?.map(src => ({
-      id: src.id,
-      sourceName: src.sourceName,
-      sourceType: src.sourceType,
-      isVersioned: src.isVersioned,
-      headersCount: src.headers?.length || 0,
-      headers: src.headers
-    })));
-  }, [availableInputSources]);
-
-  const filteredTieringOnFields = allFields?.filter(field =>
-    field?.toLowerCase().includes(tieringOnSearch?.toLowerCase())
-  );
 
   // Initialize state from data prop (for edit mode)
   useEffect(() => {
-    if (data.sourceName) {
-      setSourceName(data.sourceName);
+    if (data?.sourceName) {
+      setSourceName(data?.sourceName);
     }
 
-    if (data.selfConfig) {
-      if (data.selfConfig.input_source_names) {
-        setInputSourceNames(data.selfConfig.input_source_names);
+    if (data?.selfConfig) {
+      if (data?.selfConfig?.input_source_names) {
+        setInputSourceNames(data?.selfConfig?.input_source_names);
       }
 
-      if (data.selfConfig.generated_column) {
-        setGeneratedColumn(data.selfConfig.generated_column);
+      if (data?.selfConfig?.generated_column) {
+        setGeneratedColumn(data?.selfConfig?.generated_column);
       }
 
-      if (data.selfConfig.generated_datatype) {
-        setGeneratedDatatype(data.selfConfig.generated_datatype);
+      if (data?.selfConfig?.generated_datatype) {
+        setGeneratedDatatype(data?.selfConfig?.generated_datatype);
       }
 
-      if (data.selfConfig.assignment_sets && data.selfConfig.assignment_sets?.length > 0) {
-        setAssignmentSets(data.selfConfig.assignment_sets);
+      if (data?.selfConfig?.assignment_sets && data?.selfConfig?.assignment_sets?.length > 0) {
+        setAssignmentSets(data?.selfConfig?.assignment_sets);
       }
 
-      if (data.selfConfig.tiering_on) {
-        const tieringFields = data.selfConfig.tiering_on?.split(',').map(f => f?.trim()).filter(f => f);
+      if (data?.selfConfig?.tiering_on) {
+        const tieringFields = data?.selfConfig?.tiering_on?.split(',')?.map(f => f?.trim())?.filter(f => f);
         setTieringOnFields(tieringFields);
       }
     }
@@ -211,17 +167,17 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
   // Auto-generate source name when generated column or input sources change
   useEffect(() => {
     // Skip during initialization
-    if (isInitializing.current) {
+    if (isInitializing?.current) {
       return;
     }
 
     // Skip if user has manually edited the source name
-    if (isManuallyEdited.current) {
+    if (isManuallyEdited?.current) {
       return;
     }
 
     // Skip if already in edit mode with existing source name
-    if (data.sourceName && data.id) {
+    if (data?.sourceName && data?.id) {
       return;
     }
 
@@ -230,15 +186,14 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       const autoSourceName = `Self_${generatedColumn}`;
       setSourceName(autoSourceName);
     }
-  }, [generatedColumn, inputSourceNames, data.sourceName, data.id]);
+  }, [generatedColumn, inputSourceNames, data?.sourceName, data?.id]);
 
   // Update parent component when local state changes
   useEffect(() => {
     // Skip during initialization
-    if (isInitializing.current) {
+    if (isInitializing?.current) {
       return;
     }
-
     // Build the selfConfig object matching backend format
     const selfConfig: SelfConfig = {
       input_source_names: inputSourceNames,
@@ -247,6 +202,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       assignment_sets: assignmentSets,
       tiering_on: tieringOnFields?.join(','),
     };
+
 
     const updatedData = {
       sourceName: sourceName || 'Self Append Source',
@@ -257,9 +213,10 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
       isSelfSource: true,
     };
 
+
     // Check if data actually changed to prevent unnecessary updates
-    const currentDataString = JSON.stringify(updatedData);
-    if (currentDataString !== prevDataStringRef.current) {
+    const currentDataString = JSON?.stringify(updatedData);
+    if (currentDataString !== prevDataStringRef?.current) {
       prevDataStringRef.current = currentDataString;
       onChange(updatedData as any);
     }
@@ -286,9 +243,9 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
 
   return (
     <Box>
-      {/* Input Sources Multi-Select */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+      {/* Input Sources Multi-Select - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#2D3748', fontSize: '0.85rem' }}>
           Input Sources
           <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
         </Typography>
@@ -297,36 +254,48 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             multiple
             value={inputSourceNames}
             onChange={(e) => {
-              const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+              const value = typeof e?.target?.value === 'string' ? e?.target?.value?.split(',') : e?.target?.value;
               if (value?.includes('select-all')) {
                 if (inputSourceNames?.length === filteredInputSources?.length) {
                   setInputSourceNames([]);
                 } else {
-                  setInputSourceNames(filteredInputSources?.map(s => s.sourceName));
+                  setInputSourceNames(filteredInputSources?.map(s => s?.sourceName));
                 }
               } else {
                 setInputSourceNames(value);
               }
             }}
             onClose={() => setInputSourcesSearch('')}
-            input={<OutlinedInput />}
+            input={<OutlinedInput sx={{ fontSize: '0.875rem' }} />}
             renderValue={(selected) => (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {selected?.map((value) => (
-                  <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+                  <Chip key={value} label={value} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                 ))}
               </Box>
             )}
             displayEmpty
-            MenuProps={{ PaperProps: { sx: { maxHeight: 300 } }, autoFocus: false }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  maxHeight: 280,
+                  '& .MuiMenuItem-root': {
+                    minHeight: 32,
+                    fontSize: '0.85rem',
+                    py: 0.5
+                  }
+                }
+              },
+              autoFocus: false
+            }}
           >
-            <MenuItem disabled value="">
+            <MenuItem disabled value="" sx={{ fontSize: '0.8rem' }}>
               <em>Select input sources...</em>
             </MenuItem>
             <MenuItem
               disableRipple
               disableTouchRipple
-              onKeyDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e?.stopPropagation()}
               sx={{
                 position: 'sticky',
                 top: 0,
@@ -335,6 +304,7 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                 borderBottom: '1px solid #ddd',
                 '&:hover': { backgroundColor: 'white' },
                 cursor: 'default',
+                py: 0.5
               }}
             >
               <TextField
@@ -342,57 +312,69 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                 placeholder="Search..."
                 fullWidth
                 value={inputSourcesSearch}
-                onChange={(e) => setInputSourcesSearch(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => setInputSourcesSearch(e?.target?.value)}
+                onClick={(e) => e?.stopPropagation()}
+                onKeyDown={(e) => e?.stopPropagation()}
+                sx={{
+                  '& .MuiInputBase-root': {
+                    fontSize: '0.85rem',
+                    py: 0.25
+                  }
+                }}
               />
             </MenuItem>
-            <MenuItem value="select-all" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+            <MenuItem value="select-all" sx={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd', fontSize: '0.85rem' }}>
               <Checkbox
                 checked={filteredInputSources?.length > 0 && inputSourceNames?.length === filteredInputSources?.length}
                 indeterminate={inputSourceNames?.length > 0 && inputSourceNames?.length < filteredInputSources?.length}
                 size="small"
+                sx={{ p: 0.25, mr: 0.75 }}
               />
-              <ListItemText primary="Select All" />
+              <ListItemText primary="Select All" primaryTypographyProps={{ fontSize: '0.85rem' }} />
             </MenuItem>
             {filteredInputSources?.map((source) => (
-              <MenuItem key={source.id} value={source.sourceName}>
-                <Checkbox checked={inputSourceNames?.indexOf(source.sourceName) > -1} size="small" />
-                <ListItemText primary={source.sourceName} />
+              <MenuItem key={source?.id} value={source?.sourceName}>
+                <Checkbox checked={inputSourceNames?.indexOf(source?.sourceName) > -1} size="small" sx={{ p: 0.25, mr: 0.75 }} />
+                <ListItemText primary={source?.sourceName} primaryTypographyProps={{ fontSize: '0.85rem' }} />
               </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Box>
 
-      <Divider sx={{ my: 2 }} />
+      <Divider sx={{ my: 1.5 }} />
 
-      {/* Generated Column Configuration */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+      {/* Generated Column Configuration - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#2D3748', fontSize: '0.85rem' }}>
           Generated Column Configuration
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 1.5 }}>
           <TextField
             fullWidth
             size="small"
             label="Generated Column Name"
             placeholder="e.g., customer_tier"
             value={generatedColumn}
-            onChange={(e) => setGeneratedColumn(e.target.value)}
+            onChange={(e) => setGeneratedColumn(e?.target?.value)}
             required
+            sx={{
+              '& .MuiInputBase-root': { fontSize: '0.875rem' },
+              '& .MuiInputLabel-root': { fontSize: '0.875rem' }
+            }}
           />
           <FormControl fullWidth size="small">
-            <InputLabel>Data Type</InputLabel>
+            <InputLabel sx={{ fontSize: '0.875rem' }}>Data Type</InputLabel>
             <Select
               value={generatedDatatype}
-              onChange={(e) => setGeneratedDatatype(e.target.value)}
+              onChange={(e) => setGeneratedDatatype(e?.target?.value)}
               label="Data Type"
               required
+              sx={{ fontSize: '0.875rem' }}
             >
               {DATA_TYPES?.map((type) => (
-                <MenuItem key={type.value} value={type.value}>
-                  {type.label}
+                <MenuItem key={type?.value} value={type?.value} sx={{ fontSize: '0.875rem' }}>
+                  {type?.label}
                 </MenuItem>
               ))}
             </Select>
@@ -400,12 +382,12 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         </Box>
       </Box>
 
-      <Divider sx={{ my: 3 }} />
+      <Divider sx={{ my: 2 }} />
 
-      {/* Assignment Sets */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
+      {/* Assignment Sets - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
             Assignment Sets (Conditions)
             <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
           </Typography>
@@ -416,9 +398,11 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             onClick={handleAddAssignmentSet}
             sx={{
               textTransform: 'none',
-              fontSize: '0.75rem',
-              px: 1.5,
-              py: 0.5,
+              fontSize: '0.7rem',
+              px: 1.25,
+              py: 0.375,
+              minHeight: 'unset',
+              height: '28px'
             }}
           >
             Add Condition
@@ -429,18 +413,18 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           <Paper
             key={index}
             sx={{
-              p: 2.5,
-              mb: 2,
-              backgroundColor: 'white',
-              border: '2px solid',
-              borderColor: '#3B82F6',
-              borderRadius: 2,
+              p: 1.5,
+              mb: 1.5,
+              backgroundColor: '#F8FAFB',
+              border: '1px solid',
+              borderColor: '#CBD5E0',
+              borderRadius: 1.5,
               position: 'relative',
             }}
           >
             {/* Header with delete button */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#2D3748', fontSize: '0.95rem' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.8rem' }}>
                 Condition #{index + 1}
               </Typography>
               {assignmentSets?.length > 1 && (
@@ -449,39 +433,44 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                   onClick={() => handleRemoveAssignmentSet(index)}
                   sx={{
                     color: 'error.main',
+                    p: 0.5,
                     '&:hover': {
                       backgroundColor: 'rgba(239, 68, 68, 0.08)',
                     },
                   }}
                 >
-                  <Delete fontSize="small" />
+                  <Delete sx={{ fontSize: '1rem' }} />
                 </IconButton>
               )}
             </Box>
 
             {/* Value to Assign */}
-            <Box sx={{ mb: 2 }}>
+            <Box sx={{ mb: 1.25 }}>
               <TextField
                 fullWidth
                 size="small"
                 label="Value to Assign"
                 placeholder="e.g., Platinum, Gold, etc."
-                value={set.value_to_assign}
-                onChange={(e) => handleUpdateAssignmentSet(index, 'value_to_assign', e.target.value)}
+                value={set?.value_to_assign}
+                onChange={(e) => handleUpdateAssignmentSet(index, 'value_to_assign', e?.target?.value)}
                 required
+                sx={{
+                  '& .MuiInputBase-root': { fontSize: '0.875rem', py: 0.5 },
+                  '& .MuiInputLabel-root': { fontSize: '0.875rem' }
+                }}
               />
             </Box>
 
             {/* Filter SQL - Show only if fields are available */}
             {allFields?.length > 0 && (
               <Box>
-                <Typography variant="caption" sx={{ fontWeight: 600, mb: 1, display: 'block', color: '#2D3748' }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, mb: 0.75, display: 'block', color: '#2D3748', fontSize: '0.75rem' }}>
                   Filter Condition (SQL)
                 </Typography>
                 <FilterBuilder
                   headers={allFields}
-                  initialValue={set.filter_sql}
-                  initialConfig={set.filter_config}
+                  initialValue={set?.filter_sql}
+                  initialConfig={set?.filter_config}
                   onFilterChange={(query) => {
                     handleUpdateAssignmentSet(index, 'filter_sql', query);
                   }}
@@ -495,27 +484,27 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         ))}
 
         {allFields?.length === 0 && inputSourceNames?.length > 0 && (
-          <Typography variant="caption" sx={{ color: 'warning.main', fontStyle: 'italic', display: 'block', mt: 1 }}>
+          <Typography variant="caption" sx={{ color: 'warning.main', fontStyle: 'italic', display: 'block', mt: 0.75, fontSize: '0.75rem' }}>
             ⚠️ Selected input sources have no headers. Please ensure input sources are properly configured.
           </Typography>
         )}
       </Box>
 
-      <Divider sx={{ my: 3 }} />
+      <Divider sx={{ my: 2 }} />
 
-      {/* Tiering On Multi-Select - SIMPLIFIED VERSION */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+      {/* Tiering On Multi-Select - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#2D3748', fontSize: '0.85rem' }}>
           Tiering On (Fields used for logic)
         </Typography>
 
-        {/* Debug info for troubleshooting */}
+        {/* Warning message - more compact */}
         {inputSourceNames?.length > 0 && allFields?.length === 0 && (
-          <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#FEF3C7', borderRadius: 1, border: '1px solid #F59E0B' }}>
-            <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 0.5 }}>
+          <Box sx={{ mb: 1, p: 1, backgroundColor: '#FEF3C7', borderRadius: 1, border: '1px solid #F59E0B' }}>
+            <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', fontSize: '0.7rem', mb: 0.25 }}>
               ⚠️ No fields available from selected input sources
             </Typography>
-            <Typography variant="caption" sx={{ color: '#92400E', fontSize: '0.7rem' }}>
+            <Typography variant="caption" sx={{ color: '#92400E', fontSize: '0.65rem' }}>
               The selected input sources don't have headers configured. Please ensure your input sources are properly configured with columns/headers.
             </Typography>
           </Box>
@@ -526,20 +515,20 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             multiple
             value={tieringOnFields}
             onChange={(e) => {
-              const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+              const value = typeof e?.target?.value === 'string' ? e?.target?.value?.split(',') : e?.target?.value;
               setTieringOnFields(value);
             }}
             onClose={() => setTieringOnSearch('')}
-            input={<OutlinedInput />}
+            input={<OutlinedInput sx={{ fontSize: '0.875rem' }} />}
             renderValue={(selected) => (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {selected?.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: allFields?.length === 0 ? 'error.main' : 'text.secondary', fontSize: '0.875rem' }}>
+                  <Typography variant="body2" sx={{ color: allFields?.length === 0 ? 'error.main' : 'text.secondary', fontSize: '0.8rem' }}>
                     {allFields?.length === 0 ? 'No fields available - check input sources' : 'Select tiering fields...'}
                   </Typography>
                 ) : (
                   selected?.map((value) => (
-                    <Chip key={value} label={value} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+                    <Chip key={value} label={value} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                   ))
                 )}
               </Box>
@@ -549,9 +538,11 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
             MenuProps={{
               PaperProps: {
                 sx: {
-                  maxHeight: 300,
+                  maxHeight: 280,
                   '& .MuiMenuItem-root': {
-                    minHeight: 36
+                    minHeight: 32,
+                    fontSize: '0.85rem',
+                    py: 0.5
                   }
                 }
               },
@@ -564,10 +555,10 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                 <em>{inputSourceNames?.length === 0 ? 'Select input sources first' : 'No fields available'}</em>
               </MenuItem>
             ) : [
-              <MenuItem key="header" disabled>
+              <MenuItem key="header" disabled sx={{ fontSize: '0.8rem' }}>
                 <em>Select tiering fields ({allFields?.length} available)</em>
               </MenuItem>,
-              ...allFields?.map((field) => (
+              ...(allFields || []).map((field) => (
                 <MenuItem
                   key={field}
                   value={field}
@@ -575,9 +566,9 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
                   <Checkbox
                     checked={tieringOnFields?.indexOf(field) > -1}
                     size="small"
-                    sx={{ mr: 1 }}
+                    sx={{ mr: 0.75, p: 0.25 }}
                   />
-                  <ListItemText primary={field} />
+                  <ListItemText primary={field} primaryTypographyProps={{ fontSize: '0.85rem' }} />
                 </MenuItem>
               ))
             ]}
@@ -585,11 +576,11 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         </FormControl>
 
         {allFields?.length > 0 ? (
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', mt: 0.5, display: 'block' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem', mt: 0.5, display: 'block' }}>
             Select fields that are used in the filter conditions above. You can select multiple fields.
           </Typography>
         ) : (
-          <Typography variant="caption" sx={{ color: 'warning.main', fontSize: '0.75rem', mt: 0.5, display: 'block', fontStyle: 'italic' }}>
+          <Typography variant="caption" sx={{ color: 'warning.main', fontSize: '0.7rem', mt: 0.5, display: 'block', fontStyle: 'italic' }}>
             {inputSourceNames?.length === 0
               ? 'Please select input sources first to see available fields'
               : 'No fields available from selected input sources - they may not be configured properly'}
@@ -597,11 +588,11 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
         )}
       </Box>
 
-      <Divider sx={{ my: 3 }} />
+      <Divider sx={{ my: 2 }} />
 
       {/* Source Name - Auto-generated, always shown at the end */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: '#2D3748', fontSize: '0.9rem' }}>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#2D3748', fontSize: '0.85rem' }}>
           Source Name
           <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
         </Typography>
@@ -611,14 +602,16 @@ const SelfSourceConfig: React.FC<SelfSourceConfigProps> = ({
           placeholder="Auto-generated based on generated column"
           value={sourceName}
           onChange={(e) => {
-            setSourceName(e.target.value);
+            setSourceName(e?.target?.value || '');
             isManuallyEdited.current = true; // Mark as manually edited
           }}
           required
           helperText="Source name will be auto-generated from the generated column name"
           sx={{
+            '& .MuiInputBase-root': { fontSize: '0.875rem', py: 0.5 },
+            '& .MuiInputLabel-root': { fontSize: '0.875rem' },
             '& .MuiFormHelperText-root': {
-              fontSize: '0.7rem',
+              fontSize: '0.65rem',
               mt: 0.5
             }
           }}

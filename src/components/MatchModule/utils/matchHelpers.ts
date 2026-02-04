@@ -47,7 +47,8 @@ export const getPredefinedSources = (apiSources?: RequestInputsResponse | null):
     ?.map((table) => ({
       id: `match_${table?.tableId}`,
       name: table?.tableName,
-      description: table?.description
+      description: table?.description,
+      fields: table?.columns?.map((col: any) => col?.name || col) || []
     }));
 };
 
@@ -132,10 +133,11 @@ export const getAddFieldsFromMatchSources = (
   availableInputSources: InputSource[],
   apiSources?: RequestInputsResponse | null
 ): string[] => {
-  const fieldsSet = new Set<string>();
+  // If no match sources selected, return empty array
+  if (!matchSourceIds || matchSourceIds?.length === 0) return [];
 
-  matchSourceIds?.forEach(id => {
-    // Ensure id is a string
+  // Helper function to get fields from a single match source
+  const getFieldsFromSource = (id: string): string[] => {
     const idStr = String(id || '');
 
     // Check if it's a predefined match source (from API)
@@ -144,23 +146,64 @@ export const getAddFieldsFromMatchSources = (
       const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
         table => table?.tableId === tableId
       );
-      if (matchTable?.columns) {
-        matchTable?.columns?.forEach(col => fieldsSet.add(col?.name));
-      }
+      return matchTable?.columns?.map(col => col?.name) || [];
     } else {
       // Check if it's a custom match source
       const customSource = customMatchSources?.find(src => src?.id === id);
-      if (customSource?.selectedHeaders ?? customSource?.headers) {
-        (customSource?.selectedHeaders ?? customSource?.headers ?? [])?.forEach(field => fieldsSet.add(field));
+      if (customSource) {
+        return customSource?.selectedHeaders ?? customSource?.headers ?? [];
       } else {
         // Check if it's a versioned source
         const versionedSource = availableInputSources?.find(src => src?.id === id);
-        if (versionedSource?.selectedHeaders ?? versionedSource?.headers) {
-          (versionedSource?.selectedHeaders ?? versionedSource?.headers ?? [])?.forEach(field => fieldsSet.add(field));
-        }
+        return versionedSource?.selectedHeaders ?? versionedSource?.headers ?? [];
       }
+    }
+  };
+
+  // Get fields from all match sources
+  const allSourceFields: string[][] = matchSourceIds?.map(id => getFieldsFromSource(id));
+
+  // Filter out empty arrays
+  const validSourceFields = allSourceFields?.filter(fields => fields && fields?.length > 0);
+
+  // If no valid sources, return empty
+  if (validSourceFields?.length === 0) return [];
+
+  // If only one source, return all its fields
+  if (validSourceFields?.length === 1) {
+    return validSourceFields[0];
+  }
+
+  // If multiple sources, return common fields (intersection) - case-insensitive
+  const fieldNameOccurrences = new Map<string, number>();
+  const fieldNameCasing = new Map<string, string>(); // Track original casing
+
+  validSourceFields?.forEach(fields => {
+    const uniqueFieldsInSource = new Set<string>();
+
+    fields?.forEach(field => {
+      const fieldLower = field?.toLowerCase();
+      uniqueFieldsInSource?.add(fieldLower);
+
+      // Preserve the casing from the first occurrence
+      if (!fieldNameCasing?.has(fieldLower)) {
+        fieldNameCasing?.set(fieldLower, field);
+      }
+    });
+
+    // Increment count for each unique field in this source
+    uniqueFieldsInSource?.forEach(fieldLower => {
+      fieldNameOccurrences?.set(fieldLower, (fieldNameOccurrences?.get(fieldLower) || 0) + 1);
+    });
+  });
+
+  // Return fields that appear in ALL sources (case-insensitive), preserving original casing
+  const commonFields: string[] = [];
+  fieldNameOccurrences?.forEach((count, fieldLower) => {
+    if (count === validSourceFields?.length) {
+      commonFields?.push(fieldNameCasing?.get(fieldLower) || fieldLower);
     }
   });
 
-  return Array.from(fieldsSet);
+  return commonFields;
 };

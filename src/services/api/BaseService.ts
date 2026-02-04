@@ -4,10 +4,17 @@ import { store } from '../../store';
 
 const unauthorizedCode = [401];
 
+// Debug: Log the base URL being used
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'https://qaapp.zt02.net/zxPlatformDevAPIs';
+console.log('🔧 BaseService - Mode:', import.meta.env.MODE);
+console.log('🔧 BaseService - DEV:', import.meta.env.DEV);
+console.log('🔧 BaseService - VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+console.log('🔧 BaseService - Using baseURL:', baseURL);
+
 const BaseService = axios.create({
     timeout: 60000,
-    baseURL: import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : 'http://zds-cust-api-01.bo3.e-dialog.com/zxPlatformDevAPIs'),
-    withCredentials: true,
+    baseURL: baseURL,
+    withCredentials: false,
 });
 
 BaseService.interceptors.request.use(

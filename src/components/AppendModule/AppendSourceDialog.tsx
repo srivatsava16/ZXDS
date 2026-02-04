@@ -34,6 +34,7 @@ interface AppendSourceDialogProps {
   sourcesLoading?: boolean;
   editingSource?: InputSource | null;
   appendConfigs?: any[]; // Append configurations to determine appended fields for each source
+  tableDictionary?: any; // Table dictionary data from dictionary.php API
 }
 
 const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
@@ -46,6 +47,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
   sourcesLoading = false,
   editingSource = null,
   appendConfigs = [],
+  tableDictionary = null,
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
@@ -206,7 +208,7 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
       PaperProps={{
         sx: {
           borderRadius: 3,
-          maxHeight: '85vh',
+          maxHeight: sourceType === 'Self' ? '90vh' : '85vh',
         },
       }}
     >
@@ -295,18 +297,10 @@ const AppendSourceDialog: React.FC<AppendSourceDialogProps> = ({
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
             allExistingSources={allExistingSources?.length > 0 ? allExistingSources : availableInputSources}
+            tableDictionary={tableDictionary}
           />
         ) : (
           <>
-            {console.log('[AppendSourceDialog] Rendering SelfSourceConfig with availableInputSources:',
-              availableInputSources?.map(src => ({
-                id: src.id,
-                sourceName: src.sourceName,
-                isVersioned: src.isVersioned,
-                headersCount: src.headers?.length || 0,
-                headers: src.headers
-              }))
-            )}
             <SelfSourceConfig
               data={sourceData}
               onChange={setSourceData}

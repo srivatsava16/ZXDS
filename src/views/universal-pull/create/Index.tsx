@@ -100,11 +100,6 @@ const RequestCreationPage: React.FC = () => {
 
   // Form data state
   const [inputSources, setInputSources] = useState<InputSource[]>([]);
-
-  // Debug: Log inputSources changes
-  useEffect(() => {
-    console.log('=== Index.tsx: inputSources changed ===', inputSources);
-  }, [inputSources]);
   const [requestName, setRequestName] = useState('');
 
   // Validation states
@@ -121,7 +116,7 @@ const RequestCreationPage: React.FC = () => {
   const loadedRequestIdRef = useRef<string | null>(null);
 
   // Custom hooks for data loading
-  const { apiSources, sourcesLoading } = useDataLoading();
+  const { apiSources, tableDictionary, sourcesLoading } = useDataLoading();
 
   // Drag and Drop sensors
   const sensors = useSensors(
@@ -176,28 +171,22 @@ const RequestCreationPage: React.FC = () => {
   const [initialMatchConfigs, setInitialMatchConfigs] = useState<MatchConfig[]>([]);
   const [initialOutputConfigs, setInitialOutputConfigs] = useState<OutputConfig[]>([]);
 
+  // Track if initial configs have been consumed to prevent re-passing them
+  const initialConfigsConsumedRef = useRef(false);
+
   // Current output configurations
   const [outputConfigurations, setOutputConfigurations] = useState<OutputConfig[]>([]);
   const [transformedOutputData, setTransformedOutputData] = useState<OutputAPIPayload | null>(null);
-
-  // Debug: Log output state changes
-  useEffect(() => {
-    console.log('=== Index.tsx: outputConfigurations changed ===', outputConfigurations);
-  }, [outputConfigurations]);
-
-  useEffect(() => {
-    console.log('=== Index.tsx: transformedOutputData changed ===', transformedOutputData);
-  }, [transformedOutputData]);
 
   // Current module configurations (for dependency tracking)
   const [appendConfigurations, setAppendConfigurations] = useState<AppendConfig[]>([]);
   const [suppressConfigurations, setSuppressConfigurations] = useState<SuppressConfig[]>([]);
   const [matchConfigurations, setMatchConfigurations] = useState<MatchConfig[]>([]);
 
-  // Module-level field mappings for Append, Match and Suppress (shared across all configs/versions in that module)
-  const [appendModuleFieldMappings, setAppendModuleFieldMappings] = useState<any[]>([]);
-  const [matchModuleFieldMappings, setMatchModuleFieldMappings] = useState<any[]>([]);
-  const [suppressModuleFieldMappings, setSuppressModuleFieldMappings] = useState<any[]>([]);
+  // Module-level field mappings per module ID (each module instance has its own field mappings)
+  const [appendModuleFieldMappings, setAppendModuleFieldMappings] = useState<Record<string, any[]>>({});
+  const [matchModuleFieldMappings, setMatchModuleFieldMappings] = useState<Record<string, any[]>>({});
+  const [suppressModuleFieldMappings, setSuppressModuleFieldMappings] = useState<Record<string, any[]>>({});
 
   // Shared custom sources across all modules (Append, Match, Suppress)
   const [sharedCustomSources, setSharedCustomSources] = useState<InputSource[]>([]);
@@ -255,13 +244,51 @@ const RequestCreationPage: React.FC = () => {
                           source?.sourceType === 'F' ? 'File' :
                           source?.sourceType === 'self' || source?.isSelfSource === 1 ? 'Self' : 'Self';
 
+        // Helper function to derive subSourceType from fileSourceId
+        const deriveSubSourceTypeForEditMode = (fileSourceId: number | string | undefined): string => {
+          if (!fileSourceId || !apiSources?.fileSource) {
+            return 'SFTP';
+          }
+
+          const numericId = Number(fileSourceId);
+
+          // Check SFTP sources
+          if (apiSources?.fileSource?.sftpSources?.find((s: any) => s?.id === numericId)) {
+            return 'SFTP';
+          }
+
+          // Check NFS sources
+          if (apiSources?.fileSource?.nfsSources?.find((s: any) => s?.id === numericId)) {
+            return 'NFS';
+          }
+
+          // Check AWS S3 sources
+          if (apiSources?.fileSource?.awsSources?.find((s: any) => s?.id === numericId)) {
+            return 'S3';
+          }
+
+          return 'SFTP';
+        };
+
+        // Determine subSourceType based on source type
+        let derivedSubSourceType;
+        if (source?.sourceType === 'T') {
+          // Database sources
+          derivedSubSourceType = source?.isCustomTable === 1 ? 'Custom Database' : 'Database';
+        } else if (source?.sourceType === 'F') {
+          // File sources - derive from fileSourceId
+          const fileSourceId = source?.fileSourceId || source?.dataSourceId;
+          derivedSubSourceType = deriveSubSourceTypeForEditMode(fileSourceId);
+        } else {
+          // Other source types
+          derivedSubSourceType = undefined;
+        }
+
         const transformedSource: any = {
           id: sourceId,
           sourceName: source?.sourceName || '',  // User's custom Table Source Name
           sourceType: sourceType,
-          subSourceType: source?.sourceType === 'T' ?
-                         (source?.isCustomTable === 1 ? 'Custom Database' : 'Database') :
-                         (source?.sourceType === 'F' && source?.fileSource ? source.fileSource : undefined),
+          subSourceType: derivedSubSourceType,
           inputType: source?.inputType || 'I',
           table: actualTableName,  // Actual database table name
           headers: source?.columns || [],
@@ -861,11 +888,13 @@ const RequestCreationPage: React.FC = () => {
               return src;
             });
 
-            // Extract operation fields (match_on_fields for Match)
-            const operationFields = configJson?.match_on_fields || [];
+            // Extract operation fields (match_keys for Match)
+            const operationFields = configJson?.match_keys || [];
 
             // Extract add fields (fields being added from match sources)
-            const addFields = configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
+            // Prefer add_fields at config level, otherwise extract from match_sources[].fields
+            const addFields = configJson?.add_fields ||
+                             configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
 
             // Get combined headers
             const combinedHeaders = addFields;
@@ -952,13 +981,19 @@ const RequestCreationPage: React.FC = () => {
 
             
 
+            // Extract add fields (fields to add from match sources)
+            // Prefer add_fields at config level, otherwise extract from match_sources[].fields
+            const configAddFields = configJson?.add_fields ||
+                                   configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
+
             matchConfigs?.push({
               id: configId,
               inputSources: inputSources, // Array of source IDs
-              matchOnFields: configJson?.match_on_fields || [],
+              matchOnFields: configJson?.match_keys || [],
               matchSources: matchSources, // Array of source IDs (preconfigured or custom)
               expand: configJson?.expand !== undefined ? configJson.expand : false,
               matchType: configJson?.match_type || 'full',
+              addFields: configAddFields, // Fields to add from match sources
               // Flag to indicate if this has an existing ID from API (for update payload)
               hasExistingId: hasExistingId,
               workflowItemId: workflowItemId, // Store original workflow item ID if exists
@@ -1045,18 +1080,18 @@ const RequestCreationPage: React.FC = () => {
         }).filter(mapping => mapping.selectedSources?.length > 0); // Filter out mappings with no valid sources
       };
 
-      // Store module-level field mappings (transformed to UI format)
+      // Store module-level field mappings (transformed to UI format) for the primary panel
       if (appendFieldMappings?.length > 0) {
         transformedData.appendModuleFieldMappings = transformFieldMappingsForUI(appendFieldMappings);
-        
+
       }
       if (matchFieldMappings?.length > 0) {
         transformedData.matchModuleFieldMappings = transformFieldMappingsForUI(matchFieldMappings);
-        
+
       }
       if (suppressFieldMappings?.length > 0) {
         transformedData.suppressModuleFieldMappings = transformFieldMappingsForUI(suppressFieldMappings);
-        
+
       }
     }
 
@@ -1265,34 +1300,159 @@ const RequestCreationPage: React.FC = () => {
 
     // Detect how many duplicate modules were created based on stepOrder
     // Group workflow items by actionType and count unique stepOrders
-    if (apiData?.workflow && Array.isArray(apiData.workflow)) {
+    if (apiData?.workflow && Array.isArray(apiData?.workflow)) {
       const appendStepOrders = new Set<number>();
       const matchStepOrders = new Set<number>();
       const suppressStepOrders = new Set<number>();
 
-      apiData.workflow?.forEach((item: any) => {
+      // Track module order from workflow
+      // Map of stepOrder -> module info
+      const moduleOrderMap = new Map<number, { type: 'A' | 'M' | 'S', moduleId?: string }>();
+
+      apiData.workflow?.forEach((item: any, index: number) => {
         const actionType = item?.actionType;
         const stepOrder = item?.stepOrder;
 
         if (actionType === 'A' && stepOrder) {
           appendStepOrders.add(stepOrder);
+          if (!moduleOrderMap?.has(stepOrder)) {
+            moduleOrderMap?.set(stepOrder, { type: 'A' });
+          }
         } else if (actionType === 'M' && stepOrder) {
           matchStepOrders.add(stepOrder);
+          if (!moduleOrderMap?.has(stepOrder)) {
+            moduleOrderMap?.set(stepOrder, { type: 'M' });
+          }
         } else if (actionType === 'S' && stepOrder) {
           suppressStepOrders.add(stepOrder);
+          if (!moduleOrderMap?.has(stepOrder)) {
+            moduleOrderMap?.set(stepOrder, { type: 'S' });
+          }
         }
       });
 
+      // Convert map to ordered array of module types (sorted by stepOrder)
+      const moduleOrder = Array?.from(moduleOrderMap?.entries())
+        ?.sort((a, b) => a[0] - b[0]) // Sort by stepOrder
+        ?.map(([stepOrder, info]) => ({ stepOrder, type: info?.type }));
+
+      // CRITICAL: Detect empty modules from stepOrder gaps
+      // stepOrder is the ACTUAL step number in the UI
+      // Draggable modules always start at stepOrder 2 (after Input at stepOrder 1)
+      // If stepOrders are 3, 7, 9, we need to fill positions 2, 4, 5, 6, 8 with empty modules
+      const allStepOrders = [...appendStepOrders, ...matchStepOrders, ...suppressStepOrders];
+      const minStepOrder = 2; // Draggable modules always start at step 2
+      const maxStepOrder = allStepOrders?.length > 0 ? Math.max(...allStepOrders) : 2;
+
+      // Fill in ALL positions from step 2 to maxStepOrder, marking empty ones
+      const completeModuleOrder: Array<{ stepOrder: number; type: 'A' | 'M' | 'S'; isEmpty?: boolean }> = [];
+
+      for (let step = minStepOrder; step <= maxStepOrder; step++) {
+        if (moduleOrderMap?.has(step)) {
+          // Module with data exists at this step
+          const moduleInfo = moduleOrderMap?.get(step);
+          completeModuleOrder?.push({ stepOrder: step, type: moduleInfo?.type || 'A' });
+        } else {
+          // Empty module - default to Append type
+          completeModuleOrder?.push({ stepOrder: step, type: 'A', isEmpty: true });
+        }
+      }
+
+
+      // Count modules by type (including empty ones)
+      let totalAppendCount = 0;
+      let totalMatchCount = 0;
+      let totalSuppressCount = 0;
+
+      completeModuleOrder?.forEach(item => {
+        if (item?.type === 'A') totalAppendCount++;
+        else if (item?.type === 'M') totalMatchCount++;
+        else if (item?.type === 'S') totalSuppressCount++;
+      });
+
+      // IMPORTANT: Always ensure at least 1 of each required module (Append, Match, Suppress)
       transformedData.moduleDuplicationInfo = {
-        appendModuleCount: appendStepOrders.size || 0,
-        matchModuleCount: matchStepOrders.size || 0,
-        suppressModuleCount: suppressStepOrders.size || 0
+        appendModuleCount: Math.max(totalAppendCount, 1),
+        matchModuleCount: Math.max(totalMatchCount, 1),
+        suppressModuleCount: Math.max(totalSuppressCount, 1)
       };
 
-      
-      
-      
-      
+      // Store COMPLETE module order (including empty slots) for restoration
+      transformedData.moduleOrder = completeModuleOrder;
+
+      // Create a mapping from stepOrder to moduleId based on completeModuleOrder
+      // This assigns moduleIds in the order they appear, including empty modules
+      const stepOrderToModuleId = new Map<number, string>();
+      let appendInstanceCounter = 0;
+      let matchInstanceCounter = 0;
+      let suppressInstanceCounter = 0;
+
+      completeModuleOrder?.forEach((item) => {
+        const stepOrder = item?.stepOrder;
+        const type = item?.type;
+        let moduleId: string;
+
+        if (type === 'A') {
+          moduleId = appendInstanceCounter === 0 ? 'panel2' : `panel2_${appendInstanceCounter + 1}`;
+          appendInstanceCounter++;
+        } else if (type === 'M') {
+          moduleId = matchInstanceCounter === 0 ? 'panel4' : `panel4_${matchInstanceCounter + 1}`;
+          matchInstanceCounter++;
+        } else if (type === 'S') {
+          moduleId = suppressInstanceCounter === 0 ? 'panel3' : `panel3_${suppressInstanceCounter + 1}`;
+          suppressInstanceCounter++;
+        } else {
+          moduleId = 'panel2'; // Fallback
+        }
+
+        stepOrderToModuleId?.set(stepOrder, moduleId);
+      });
+
+      // Now update configs and versions with createdByModuleId
+      // Access them from transformedData since they're not in local scope
+
+      transformedData?.appendConfigs?.forEach((cfg: any) => {
+        const moduleId = stepOrderToModuleId?.get(cfg?.stepOrder);
+        if (moduleId) {
+          cfg.createdByModuleId = moduleId;
+        }
+      });
+
+      transformedData?.appendVersions?.forEach((v: any) => {
+        const moduleId = stepOrderToModuleId?.get(v?.stepOrder);
+        if (moduleId) {
+          v.createdByModuleId = moduleId;
+        }
+      });
+
+      transformedData?.suppressConfigs?.forEach((cfg: any) => {
+        const moduleId = stepOrderToModuleId?.get(cfg?.stepOrder);
+        if (moduleId) {
+          cfg.createdByModuleId = moduleId;
+        }
+      });
+
+      transformedData?.suppressVersions?.forEach((v: any) => {
+        const moduleId = stepOrderToModuleId?.get(v?.stepOrder);
+        if (moduleId) {
+          v.createdByModuleId = moduleId;
+        }
+      });
+
+      transformedData?.matchConfigs?.forEach((cfg: any) => {
+        const moduleId = stepOrderToModuleId?.get(cfg?.stepOrder);
+        if (moduleId) {
+          cfg.createdByModuleId = moduleId;
+        }
+      });
+
+      transformedData?.matchVersions?.forEach((v: any) => {
+        const moduleId = stepOrderToModuleId?.get(v?.stepOrder);
+        if (moduleId) {
+          v.createdByModuleId = moduleId;
+        }
+      });
+
     }
 
     
@@ -1304,23 +1464,26 @@ const RequestCreationPage: React.FC = () => {
   useEffect(() => {
     const loadEditRequest = async () => {
       const idToLoad = requestId || duplicateId;
-      if (!idToLoad) return;
+
+      if (!idToLoad) {
+        console.log('[BACK] No ID to load, returning');
+        return;
+      }
 
       // Wait for apiSources to load before transforming edit request data
       // This ensures preconfigured table IDs can be properly resolved
       if (sourcesLoading) {
-
         return;
       }
 
       // Prevent duplicate API calls (especially in React StrictMode)
       if (loadedRequestIdRef.current === idToLoad) {
-        console.log('=== Skipping duplicate editRequest.php API call for ID:', idToLoad, '===');
         return;
       }
 
       const isDuplicateMode = !!duplicateId && !requestId;
 
+      
       // Edit/Duplicate mode: Fetch request data from API
       try {
         // Mark this ID as being loaded
@@ -1329,27 +1492,20 @@ const RequestCreationPage: React.FC = () => {
         setEditRequestLoading(true);
         setEditRequestError('');
 
-        console.log('=== Calling editRequest.php API for ID:', idToLoad, '===');
         const response = await getEditRequest(parseInt(idToLoad, 10));
-        console.log('=== editRequest.php API Response ===', response);
-
 
         let dataToLoad: any = null;
 
         // Check if response has the expected structure (direct data format)
-        if (response && (response as any).requestDetails && (response as any).inputSources) {
+        if (response && (response as any)?.requestDetails && (response as any)?.inputSources) {
           // Response is in direct format - transform it
-          
           dataToLoad = transformApiDataToInternalFormat(response, apiSources);
-          
-        } else if (response && (response as any).success && (response as any).data) {
+        } else if (response && (response as any)?.success && (response as any)?.data) {
           // Handle wrapped format if API sometimes returns it
-          
-          dataToLoad = transformApiDataToInternalFormat((response as any).data, apiSources);
-          
+          dataToLoad = transformApiDataToInternalFormat((response as any)?.data, apiSources);
+          dataToLoad = transformApiDataToInternalFormat((response as any)?.data, apiSources);
         } else {
           // API failed or returned no data - show error
-          
           const errorMsg = `Failed to load request data: ${(response as any)?.message || 'Unknown error. Please try again.'}`;
           setEditRequestLoading(false);
           setEditRequestError(errorMsg);
@@ -1363,6 +1519,7 @@ const RequestCreationPage: React.FC = () => {
 
         // Populate form fields with the transformed data
         if (dataToLoad) {
+
           // Load request name (append _duplicate suffix if in duplicate mode)
           if (dataToLoad?.requestName) {
             const name = isDuplicateMode ? `${dataToLoad.requestName}_duplicate` : dataToLoad.requestName;
@@ -1372,7 +1529,7 @@ const RequestCreationPage: React.FC = () => {
           // Load requestDetails ID (for update payload) - NOT in duplicate mode
           if (!isDuplicateMode && dataToLoad?.requestDetailsId) {
             setRequestDetailsId(dataToLoad.requestDetailsId);
-            
+            setRequestDetailsId(dataToLoad.requestDetailsId);
           }
 
           // Load input sources (combine regular sources and Input module versions)
@@ -1381,12 +1538,11 @@ const RequestCreationPage: React.FC = () => {
             ...(dataToLoad?.inputSources || []),
             ...(dataToLoad?.inputVersions || [])
           ];
+
           if (allInputSources?.length > 0) {
-            
             setInputSources(allInputSources);
           }
 
-          // Load custom sources (from Append, Match, Suppress modules)
           if (dataToLoad?.customSources && Array.isArray(dataToLoad.customSources)) {
             setSharedCustomSources(dataToLoad.customSources);
 
@@ -1396,80 +1552,70 @@ const RequestCreationPage: React.FC = () => {
                 const { input_source_names, generated_column } = customSource.selfConfig;
 
                 if (generated_column && input_source_names && input_source_names?.length > 0) {
-                  
-
-                  // Update input sources to add the generated column
-                  setInputSources((prev: InputSource[]) => prev?.map((inputSource: InputSource) => {
-                    if (input_source_names?.includes(inputSource.sourceName)) {
-                      const currentHeaders = inputSource.headers || [];
-                      const currentSelectedHeaders = inputSource.selectedHeaders || inputSource.headers || [];
-
-                      // Add generated column if not already present
-                      if (!currentHeaders?.includes(generated_column)) {
-                        return {
-                          ...inputSource,
-                          headers: [...currentHeaders, generated_column],
-                          selectedHeaders: [...currentSelectedHeaders, generated_column]
-                        };
-                      }
-                    }
-                    return inputSource;
-                  }));
-                }
+                  // IMPORTANT: Do NOT modify input source headers
+                  // Generated columns from self-append sources do not affect original input sources
+ }
               }
             });
           }
 
-          // Load versioned sources (versions from Append, Match, Suppress modules)
-          // These are separate from Input module versions
           const allVersionedSources = [
             ...(dataToLoad?.appendVersions || []),
             ...(dataToLoad?.matchVersions || []),
             ...(dataToLoad?.suppressVersions || [])
           ];
+
           if (allVersionedSources?.length > 0) {
-            
             setVersionedSources(allVersionedSources);
           }
 
-          // Load append configurations
-          if (dataToLoad?.appendConfigs && Array.isArray(dataToLoad.appendConfigs) && dataToLoad.appendConfigs?.length > 0) {
-            setInitialAppendConfigs(dataToLoad.appendConfigs);
+          if (dataToLoad?.appendConfigs && Array.isArray(dataToLoad?.appendConfigs) && dataToLoad?.appendConfigs?.length > 0) {
+            setInitialAppendConfigs(dataToLoad?.appendConfigs);
+          }
+           
+
+          if (dataToLoad?.suppressConfigs && Array.isArray(dataToLoad?.suppressConfigs) && dataToLoad?.suppressConfigs?.length > 0) {
+            setInitialSuppressConfigs(dataToLoad?.suppressConfigs);
           }
 
-          // Load suppress configurations
-          if (dataToLoad?.suppressConfigs && Array.isArray(dataToLoad.suppressConfigs) && dataToLoad.suppressConfigs?.length > 0) {
-            setInitialSuppressConfigs(dataToLoad.suppressConfigs);
+          if (dataToLoad?.matchConfigs && Array.isArray(dataToLoad?.matchConfigs) && dataToLoad?.matchConfigs?.length > 0) {
+            setInitialMatchConfigs(dataToLoad?.matchConfigs);
+            console.log('[BACK] setInitialMatchConfigs called');
           }
 
-          // Load match configurations
-          if (dataToLoad?.matchConfigs && Array.isArray(dataToLoad.matchConfigs) && dataToLoad.matchConfigs?.length > 0) {
-            setInitialMatchConfigs(dataToLoad.matchConfigs);
-          }
+          // Load module-level field mappings (assign to default panel IDs for backward compatibility)
+          console.log('[EDIT] Append field mappings:', dataToLoad?.appendModuleFieldMappings);
+          console.log('[EDIT] Match field mappings:', dataToLoad?.matchModuleFieldMappings);
+          console.log('[EDIT] Suppress field mappings:', dataToLoad?.suppressModuleFieldMappings);
 
-          // Load module-level field mappings
-          if (dataToLoad?.appendModuleFieldMappings && Array.isArray(dataToLoad.appendModuleFieldMappings)) {
-            
-            setAppendModuleFieldMappings(dataToLoad.appendModuleFieldMappings);
+          if (dataToLoad?.appendModuleFieldMappings && Array.isArray(dataToLoad?.appendModuleFieldMappings)) {
+            console.log('[EDIT] Setting append field mappings for panel2');
+            setAppendModuleFieldMappings({ panel2: dataToLoad?.appendModuleFieldMappings });
           }
-          if (dataToLoad?.matchModuleFieldMappings && Array.isArray(dataToLoad.matchModuleFieldMappings)) {
-            
-            setMatchModuleFieldMappings(dataToLoad.matchModuleFieldMappings);
+          if (dataToLoad?.matchModuleFieldMappings && Array.isArray(dataToLoad?.matchModuleFieldMappings)) {
+            console.log('[EDIT] Setting match field mappings for panel4');
+            setMatchModuleFieldMappings({ panel4: dataToLoad?.matchModuleFieldMappings });
           }
-          if (dataToLoad?.suppressModuleFieldMappings && Array.isArray(dataToLoad.suppressModuleFieldMappings)) {
-            
-            setSuppressModuleFieldMappings(dataToLoad.suppressModuleFieldMappings);
+          if (dataToLoad?.suppressModuleFieldMappings && Array.isArray(dataToLoad?.suppressModuleFieldMappings)) {
+            console.log('[EDIT] Setting suppress field mappings for panel3');
+            setSuppressModuleFieldMappings({ panel3: dataToLoad?.suppressModuleFieldMappings });
           }
 
           // Load output configurations
+          console.log('[EDIT] Output configs count:', dataToLoad?.outputConfigs?.length || 0);
+          console.log('[EDIT] Output configs:', dataToLoad?.outputConfigs);
           if (dataToLoad?.outputConfigs && Array.isArray(dataToLoad.outputConfigs) && dataToLoad.outputConfigs?.length > 0) {
             setInitialOutputConfigs(dataToLoad.outputConfigs);
           }
 
           // Load stats configurations
+          console.log('[EDIT] Stats configs count:', dataToLoad?.statsConfigs?.length || 0);
+          console.log('[EDIT] Stats configs:', dataToLoad?.statsConfigs);
           if (dataToLoad?.statsConfigs && Array.isArray(dataToLoad.statsConfigs) && dataToLoad.statsConfigs?.length > 0) {
             setStatsConfigurations(dataToLoad.statsConfigs);
           }
+
+          console.log('[EDIT] ========== DATA LOADING COMPLETE ==========');
 
           // Load schedule configuration
           if (dataToLoad?.scheduleConfig) {
@@ -1483,62 +1629,196 @@ const RequestCreationPage: React.FC = () => {
           }
 
           // Restore duplicate modules based on moduleDuplicationInfo
+          console.log('[BACK] === RESTORING MODULE ORDER ===');
+          console.log('[BACK] moduleDuplicationInfo:', dataToLoad?.moduleDuplicationInfo);
+          console.log('[BACK] moduleOrder:', dataToLoad?.moduleOrder);
+
           if (dataToLoad?.moduleDuplicationInfo) {
-            const duplicationInfo = dataToLoad.moduleDuplicationInfo;
-            
+            const duplicationInfo = dataToLoad?.moduleDuplicationInfo;
+            const moduleOrder = dataToLoad?.moduleOrder;
+
+            console.log('[BACK] Starting module restoration...');
+            console.log('[BACK] Append count:', duplicationInfo?.appendModuleCount);
+            console.log('[BACK] Match count:', duplicationInfo?.matchModuleCount);
+            console.log('[BACK] Suppress count:', duplicationInfo?.suppressModuleCount);
+            console.log('[BACK] Module order:', moduleOrder);
 
             // Get the base module definitions
             const baseModules = createModuleDefinitions();
+            console.log('[BACK] Base modules:', baseModules?.map(m => `${m?.id} (${m?.title})`));
+
             const restoredModules = [...baseModules];
+            console.log('[BACK] Initial restored modules (before modification):', restoredModules?.map(m => `${m?.id} (${m?.title})`));
 
             // Create duplicate Append modules
-            if (duplicationInfo.appendModuleCount > 1) {
-              const appendModule = baseModules?.find(m => m.id === 'panel2');
+            console.log('[BACK] Creating Append modules...');
+            if (duplicationInfo?.appendModuleCount > 1) {
+              const appendModule = baseModules?.find(m => m?.id === 'panel2');
               if (appendModule) {
-                for (let i = 2; i <= duplicationInfo.appendModuleCount; i++) {
-                  restoredModules.splice(restoredModules?.findIndex(m => m.id === 'panel2') + (i - 1), 0, {
-                    ...appendModule,
+                console.log('[BACK] Adding', duplicationInfo?.appendModuleCount - 1, 'additional Append modules');
+                for (let i = 2; i <= duplicationInfo?.appendModuleCount; i++) {
+                  const newModule = {
                     id: `panel2_${i}`,
                     title: `Append Module ${i}`,
-                  });
+                    label: `Append Module ${i}`,
+                    description: appendModule?.description,
+                    icon: appendModule?.icon,
+                    color: appendModule?.color,
+                    isDraggable: appendModule?.isDraggable,
+                  };
+                  restoredModules?.splice(restoredModules?.findIndex(m => m?.id === 'panel2') + (i - 1), 0, newModule);
+                  console.log(`[BACK] Created Append module: ${newModule?.id}`);
                 }
-                setModuleCounter(prev => ({ ...prev, Append: duplicationInfo.appendModuleCount }));
+                setModuleCounter(prev => ({ ...prev, Append: duplicationInfo?.appendModuleCount }));
               }
             }
+            console.log('[BACK] Modules after Append duplication:', restoredModules?.map(m => `${m?.id} (${m?.title})`));
 
             // Create duplicate Suppress modules
-            if (duplicationInfo.suppressModuleCount > 1) {
-              const suppressModule = baseModules?.find(m => m.id === 'panel3');
+            console.log('[BACK] Creating Suppress modules...');
+            if (duplicationInfo?.suppressModuleCount > 1) {
+              const suppressModule = baseModules?.find(m => m?.id === 'panel3');
               if (suppressModule) {
-                for (let i = 2; i <= duplicationInfo.suppressModuleCount; i++) {
-                  restoredModules.splice(restoredModules?.findIndex(m => m.id === 'panel3') + (i - 1), 0, {
-                    ...suppressModule,
+                console.log('[BACK] Adding', duplicationInfo?.suppressModuleCount - 1, 'additional Suppress modules');
+                for (let i = 2; i <= duplicationInfo?.suppressModuleCount; i++) {
+                  const newModule = {
                     id: `panel3_${i}`,
                     title: `Suppression Module ${i}`,
-                  });
+                    label: `Suppression Module ${i}`,
+                    description: suppressModule?.description,
+                    icon: suppressModule?.icon,
+                    color: suppressModule?.color,
+                    isDraggable: suppressModule?.isDraggable,
+                  };
+                  restoredModules?.splice(restoredModules?.findIndex(m => m?.id === 'panel3') + (i - 1), 0, newModule);
+                  console.log(`[BACK] Created Suppress module: ${newModule?.id}`);
                 }
-                setModuleCounter(prev => ({ ...prev, Suppression: duplicationInfo.suppressModuleCount }));
+                setModuleCounter(prev => ({ ...prev, Suppression: duplicationInfo?.suppressModuleCount }));
               }
             }
+            console.log('[BACK] Modules after Suppress duplication:', restoredModules?.map(m => `${m?.id} (${m?.title})`));
 
             // Create duplicate Match modules
-            if (duplicationInfo.matchModuleCount > 1) {
-              const matchModule = baseModules?.find(m => m.id === 'panel4');
+            console.log('[BACK] Creating Match modules...');
+            if (duplicationInfo?.matchModuleCount > 1) {
+              const matchModule = baseModules?.find(m => m?.id === 'panel4');
               if (matchModule) {
-                for (let i = 2; i <= duplicationInfo.matchModuleCount; i++) {
-                  restoredModules.splice(restoredModules?.findIndex(m => m.id === 'panel4') + (i - 1), 0, {
-                    ...matchModule,
+                console.log('[BACK] Adding', duplicationInfo?.matchModuleCount - 1, 'additional Match modules');
+                for (let i = 2; i <= duplicationInfo?.matchModuleCount; i++) {
+                  const newModule = {
                     id: `panel4_${i}`,
                     title: `Match Module ${i}`,
-                  });
+                    label: `Match Module ${i}`,
+                    description: matchModule?.description,
+                    icon: matchModule?.icon,
+                    color: matchModule?.color,
+                    isDraggable: matchModule?.isDraggable,
+                  };
+                  restoredModules?.splice(restoredModules?.findIndex(m => m?.id === 'panel4') + (i - 1), 0, newModule);
+                  console.log(`[BACK] Created Match module: ${newModule?.id}`);
                 }
-                setModuleCounter(prev => ({ ...prev, Match: duplicationInfo.matchModuleCount }));
+                setModuleCounter(prev => ({ ...prev, Match: duplicationInfo?.matchModuleCount }));
               }
             }
+            console.log('[BACK] Modules after Match duplication:', restoredModules?.map(m => `${m?.id} (${m?.title})`));
 
-            if (restoredModules?.length > baseModules?.length) {
-              
-              setModules(restoredModules);
+            // Now reorder the modules based on moduleOrder
+            console.log('[BACK] === APPLYING MODULE ORDER ===');
+            if (moduleOrder && moduleOrder?.length > 0) {
+              console.log('[BACK] Module order to apply:', moduleOrder);
+
+              // Extract the draggable modules (panel2, panel3, panel4) from restoredModules
+              const inputModule = restoredModules?.find(m => m?.id === 'panel1');
+              const statsModule = restoredModules?.find(m => m?.id === 'panel5');
+              const outputModule = restoredModules?.find(m => m?.id === 'panel6');
+              const scheduleModule = restoredModules?.find(m => m?.id === 'panel7');
+
+              const appendModules = restoredModules?.filter(m => m?.id === 'panel2' || m?.id?.startsWith('panel2_'));
+              const suppressModules = restoredModules?.filter(m => m?.id === 'panel3' || m?.id?.startsWith('panel3_'));
+              const matchModules = restoredModules?.filter(m => m?.id === 'panel4' || m?.id?.startsWith('panel4_'));
+
+              console.log('[BACK] Draggable modules found:');
+              console.log('[BACK]   Append:', appendModules?.map(m => m?.id));
+              console.log('[BACK]   Suppress:', suppressModules?.map(m => m?.id));
+              console.log('[BACK]   Match:', matchModules?.map(m => m?.id));
+
+              // Build the new order
+              const reorderedModules: any[] = [];
+
+              // Add Input module first (always position 0)
+              if (inputModule) reorderedModules?.push(inputModule);
+
+              // Add draggable modules in the order specified by moduleOrder
+              // moduleOrder now includes ALL modules (with data and empty placeholders)
+              let appendIndex = 0;
+              let suppressIndex = 0;
+              let matchIndex = 0;
+
+              console.log('[BACK] Processing complete module order (including empty modules)...');
+
+              // Simply follow the moduleOrder which already includes empty slots
+              moduleOrder?.forEach((orderItem: any, idx: number) => {
+                const isEmpty = orderItem?.isEmpty || false;
+                console.log(`[BACK] Item ${idx}: stepOrder ${orderItem?.stepOrder}, type ${orderItem?.type}, isEmpty: ${isEmpty}`);
+
+                if (orderItem?.type === 'A' && appendIndex < appendModules?.length) {
+                  const moduleToAdd = appendModules[appendIndex];
+                  reorderedModules?.push(moduleToAdd);
+                  console.log(`[BACK]   Added Append module: ${moduleToAdd?.id} ${isEmpty ? '(EMPTY)' : '(HAS DATA)'}`);
+                  appendIndex++;
+                } else if (orderItem?.type === 'M' && matchIndex < matchModules?.length) {
+                  const moduleToAdd = matchModules[matchIndex];
+                  reorderedModules?.push(moduleToAdd);
+                  console.log(`[BACK]   Added Match module: ${moduleToAdd?.id} ${isEmpty ? '(EMPTY)' : '(HAS DATA)'}`);
+                  matchIndex++;
+                } else if (orderItem?.type === 'S' && suppressIndex < suppressModules?.length) {
+                  const moduleToAdd = suppressModules[suppressIndex];
+                  reorderedModules?.push(moduleToAdd);
+                  console.log(`[BACK]   Added Suppress module: ${moduleToAdd?.id} ${isEmpty ? '(EMPTY)' : '(HAS DATA)'}`);
+                  suppressIndex++;
+                }
+              });
+
+              // Safety check: Ensure at least one of each required module type exists
+              // This handles edge cases where moduleOrder might be malformed
+              if (appendIndex === 0 && appendModules?.length > 0) {
+                const moduleToAdd = appendModules[0];
+                reorderedModules?.push(moduleToAdd);
+                console.log('[BACK] ⚠️ Safety: Added required Append module (was missing from order):', moduleToAdd?.id);
+                appendIndex++;
+              }
+              if (suppressIndex === 0 && suppressModules?.length > 0) {
+                const moduleToAdd = suppressModules[0];
+                reorderedModules?.push(moduleToAdd);
+                console.log('[BACK] ⚠️ Safety: Added required Suppress module (was missing from order):', moduleToAdd?.id);
+                suppressIndex++;
+              }
+              if (matchIndex === 0 && matchModules?.length > 0) {
+                const moduleToAdd = matchModules[0];
+                reorderedModules?.push(moduleToAdd);
+                console.log('[BACK] ⚠️ Safety: Added required Match module (was missing from order):', moduleToAdd?.id);
+                matchIndex++;
+              }
+
+              // Add fixed modules at the end
+              if (statsModule) reorderedModules?.push(statsModule);
+              if (outputModule) reorderedModules?.push(outputModule);
+              if (scheduleModule) reorderedModules?.push(scheduleModule);
+
+              console.log('[BACK] ✅ MODULE ORDER APPLIED!');
+              console.log('[BACK] New module order:', reorderedModules?.map((m, idx) => `${idx}: ${m?.id} (${m?.label || m?.title})`));
+
+              setModules(reorderedModules);
+            } else {
+              console.log('[BACK] No moduleOrder found, using default order');
+
+              // Even without moduleOrder, we still need to apply duplicates
+              if (restoredModules?.length > baseModules?.length) {
+                console.log('[BACK] Setting restored modules with duplicates (', restoredModules?.length, 'modules)');
+                setModules(restoredModules);
+              } else {
+                console.log('[BACK] No changes needed, keeping default modules');
+              }
             }
           }
 
@@ -1546,9 +1826,22 @@ const RequestCreationPage: React.FC = () => {
           setRequestNameError('');
           setRecipientEmailError('');
           setScheduledDateTimeError('');
+
+          console.log('[BACK] ========== EDIT MODE LOADING COMPLETE ==========');
+          console.log('[BACK] Final state:');
+          console.log('[BACK]   - Input sources loaded:', allInputSources?.length);
+          console.log('[BACK]   - Versioned sources loaded:', allVersionedSources?.length);
+          console.log('[BACK]   - Custom sources loaded:', dataToLoad?.customSources?.length || 0);
+          console.log('[BACK]   - Append configs loaded:', dataToLoad?.appendConfigs?.length || 0);
+          console.log('[BACK]   - Match configs loaded:', dataToLoad?.matchConfigs?.length || 0);
+          console.log('[BACK]   - Suppress configs loaded:', dataToLoad?.suppressConfigs?.length || 0);
+          console.log('[BACK]   - Module order extracted:', dataToLoad?.moduleOrder?.length > 0 ? 'YES' : 'NO');
+          console.log('[BACK]   - Module order applied:', dataToLoad?.moduleOrder?.length > 0 ? 'YES ✅' : 'NO (using default order)');
         }
 
       } catch (error: any) {
+        console.log('[BACK] ========== ERROR DURING LOADING ==========');
+        console.log('[BACK] Error:', error);
         
 
         // Show error message
@@ -1576,6 +1869,18 @@ const RequestCreationPage: React.FC = () => {
     loadEditRequest();
   }, [requestId, duplicateId, sourcesLoading, apiSources]);
 
+  // Mark initial configs as consumed after they have been loaded
+  // This prevents them from being re-passed to child modules on subsequent renders
+  useEffect(() => {
+    if (initialAppendConfigs?.length > 0 || initialSuppressConfigs?.length > 0 || initialMatchConfigs?.length > 0) {
+      console.log('[DELETE] Marking initial configs as consumed after load');
+      console.log('[DELETE] initialAppendConfigs count:', initialAppendConfigs?.length);
+      console.log('[DELETE] initialSuppressConfigs count:', initialSuppressConfigs?.length);
+      console.log('[DELETE] initialMatchConfigs count:', initialMatchConfigs?.length);
+      initialConfigsConsumedRef.current = true;
+    }
+  }, [initialAppendConfigs, initialSuppressConfigs, initialMatchConfigs]);
+
   const handleUpdateVersionCounter = (module: 'Input' | 'Match' | 'Append' | 'Suppress', increment: number) => {
     setVersionCounters(prev => ({
       ...prev,
@@ -1584,23 +1889,91 @@ const RequestCreationPage: React.FC = () => {
   };
 
   const handleUpdateVersionName = (versionId: string, newName: string) => {
-    // Update versioned sources
+    // Update versioned sources - IMPORTANT: Update all three name properties (versionName, versionLabel, sourceName)
+    // to ensure the renamed name is used in the payload transformation
     setVersionedSources(prev => prev?.map(version =>
-      version?.id === versionId ? { ...version, versionLabel: newName, sourceName: newName } : version
+      version?.id === versionId ? {
+        ...version,
+        versionName: newName,    // Used in payload transformation (checked first)
+        versionLabel: newName,   // Display label
+        sourceName: newName      // Source name used in various contexts
+      } : version
     ));
 
     // Update input sources if the version exists there
     setInputSources(prev => prev?.map(source =>
-      source?.id === versionId ? { ...source, sourceName: newName } : source
+      source?.id === versionId ? {
+        ...source,
+        versionName: newName,  // Also update versionName if it exists
+        sourceName: newName
+      } : source
     ));
   };
 
   const handleUpdateVersion = (versionId: string, updatedVersion: any) => {
-    
+
 
     // Update versioned sources with the new configuration
-    setVersionedSources(prev => prev?.map(version =>
-      version?.id === versionId ? {
+    setVersionedSources(prev => prev?.map(version => {
+      if (version?.id !== versionId) return version;
+
+      // Helper to get source name
+      const getSourceName = (sourceId: string): string => {
+        const source = allAvailableInputSources?.find(s => s?.id === sourceId);
+        if (source) return source.sourceName;
+
+        // Check predefined sources
+        if (sourceId?.startsWith('match_')) {
+          const tableId = parseInt(sourceId?.replace('match_', ''));
+          const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
+            (table: any) => table?.tableId === tableId
+          );
+          if (matchTable) return matchTable.tableName;
+        }
+
+        return sourceId;
+      };
+
+      // Helper to determine source type
+      const getSourceType = (sourceId: string, moduleType: string): string => {
+        // Check if it's a versioned source
+        const versionedSource = allAvailableInputSources?.find(s => s?.id === sourceId && s?.isVersioned);
+        if (versionedSource) return 'input';
+
+        // Check if it's a non-versioned input source
+        const inputSource = allAvailableInputSources?.find(s => s?.id === sourceId);
+        if (inputSource && !inputSource?.isVersioned) {
+          const createdByModuleId = (inputSource as any)?.createdByModuleId;
+          const createdByModuleIdStr = String(createdByModuleId || '');
+          if (!createdByModuleId || createdByModuleId === 'panel1' || createdByModuleIdStr?.startsWith('panel1_')) {
+            return 'input';
+          }
+        }
+
+        // Check if it's a custom source (Self)
+        const customSource = sharedCustomSources?.find(s => s?.id === sourceId);
+        if (customSource?.sourceType === 'Self') {
+          return moduleType === 'Match' ? 'self_match' : 'preconfigured';
+        }
+
+        return 'preconfigured';
+      };
+
+      // Rebuild match_sources if operationSources changed
+      let newMatchSources = (version as any).configJson?.match_sources || [];
+      const sourceModule = (version as any).sourceModule;
+
+      if (sourceModule === 'Match' && updatedVersion?.operationSources) {
+        // Rebuild match_sources array based on new operationSources
+        // Note: fields should NOT be included in match_sources items
+        // Note: Match module does not use priority
+        newMatchSources = updatedVersion?.operationSources?.map((sourceId: string) => ({
+          source_type: getSourceType(sourceId, 'Match'),
+          source_name: getSourceName(sourceId)
+        })) || [];
+      }
+
+      return {
         ...version,
         ...updatedVersion,
         // Ensure critical properties are preserved
@@ -1610,23 +1983,27 @@ const RequestCreationPage: React.FC = () => {
         configJson: {
           ...(version as any).configJson,
           ...updatedVersion.configJson,
-          // For Append module - only update match_keys at root level
-          match_keys: updatedVersion.operationFields || updatedVersion.configJson?.match_keys || [],
+          // Update match_keys at root level (used by both Append and Match modules)
+          // For Match module, addFields are the Match Keys selected by user
+          // For Append module, operationFields are the append on fields
+          match_keys: sourceModule === 'Match'
+            ? (updatedVersion.addFields !== undefined
+                ? updatedVersion.addFields
+                : (updatedVersion.configJson?.match_keys || (version as any).configJson?.match_keys || []))
+            : (updatedVersion.operationFields !== undefined
+                ? updatedVersion.operationFields
+                : (updatedVersion.configJson?.match_keys || (version as any).configJson?.match_keys || [])),
           // Update fields within each append_sources item (for Append module)
           append_sources: (version as any).configJson?.append_sources?.map((appendSource: any) => ({
             ...appendSource,
             // Set fields from the appendFields array (all sources get the same fields)
             fields: updatedVersion.appendFields || updatedVersion.configJson?.append_fields || []
           })) || [],
-          // Update fields within each match_sources item (for Match module)
-          match_sources: (version as any).configJson?.match_sources?.map((matchSource: any) => ({
-            ...matchSource,
-            // Set fields from the addFields array (all sources get the same fields)
-            fields: updatedVersion.addFields || updatedVersion.configJson?.add_fields || []
-          })) || []
+          // Use rebuilt match_sources (without fields property, NO add_fields for Match)
+          match_sources: newMatchSources
         }
-      } : version
-    ));
+      };
+    }));
 
     // Also update input sources if the version exists there
     setInputSources(prev => prev?.map(source =>
@@ -1654,61 +2031,49 @@ const RequestCreationPage: React.FC = () => {
 
   // Handlers for shared custom sources - with module tracking
   const handleAddSharedCustomSource = (source: InputSource, createdByModuleId: string) => {
+    console.log('[SELF] ========== handleAddSharedCustomSource START ==========');
+    console.log('[SELF] Received source:', source);
+    console.log('[SELF] source.sourceType:', source?.sourceType);
+    console.log('[SELF] source.sourceName:', source?.sourceName);
+    console.log('[SELF] source.selfConfig:', source?.selfConfig);
+    console.log('[SELF] createdByModuleId:', createdByModuleId);
+
     const newSource = {
       ...source,
       id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       createdByModuleId // Track which module created this source
     };
-    setSharedCustomSources(prev => [...prev, newSource]);
+
+    console.log('[SELF] newSource with ID:', newSource?.id);
+
+    setSharedCustomSources(prev => {
+      const updated = [...prev, newSource];
+      console.log('[SELF] sharedCustomSources updated. New count:', updated?.length);
+      console.log('[SELF] All sharedCustomSources:', updated);
+      return updated;
+    });
 
     // If this is a Self source with a generated column, add the generated column to the input sources
-    if (source.sourceType === 'Self' && source.selfConfig) {
-      const { input_source_names, generated_column } = source.selfConfig;
+    if (source?.sourceType === 'Self' && source?.selfConfig) {
+      console.log('[SELF] This IS a Self-append source!');
+      const { input_source_names, generated_column } = source?.selfConfig;
+
+      console.log('[SELF] generated_column:', generated_column);
+      console.log('[SELF] input_source_names:', input_source_names);
 
       if (generated_column && input_source_names && input_source_names?.length > 0) {
-        // Update input sources to add the generated column to their headers
-        setInputSources(prev => prev?.map(inputSource => {
-          // Check if this input source is one of the sources used in the Self source
-          if (input_source_names?.includes(inputSource.sourceName)) {
-            // Add the generated column to headers if not already present
-            const currentHeaders = inputSource.headers || [];
-            if (!currentHeaders?.includes(generated_column)) {
-              const updatedHeaders = [...currentHeaders, generated_column];
+        console.log('[SELF] Self-append source WITH generated column:', generated_column);
+        console.log('[SELF] Input source names that should get this column:', input_source_names);
 
-              // Also update selectedHeaders if it exists
-              const currentSelectedHeaders = inputSource.selectedHeaders || currentHeaders;
-              const updatedSelectedHeaders = currentSelectedHeaders?.includes(generated_column)
-                ? currentSelectedHeaders
-                : [...currentSelectedHeaders, generated_column];
-
-              return {
-                ...inputSource,
-                headers: updatedHeaders,
-                selectedHeaders: updatedSelectedHeaders,
-              };
-            }
-          }
-          return inputSource;
-        }));
-
-        // Also update versioned sources if any of them match the input source names
-        setVersionedSources(prev => prev?.map(versionedSource => {
-          if (input_source_names?.includes(versionedSource.sourceName)) {
-            const currentHeaders = versionedSource.headers || [];
-            if (!currentHeaders?.includes(generated_column)) {
-              const updatedHeaders = [...currentHeaders, generated_column];
-
-              return {
-                ...versionedSource,
-                headers: updatedHeaders,
-                combinedHeaders: updatedHeaders, // Also update combinedHeaders if present
-              };
-            }
-          }
-          return versionedSource;
-        }));
+        // IMPORTANT: Do NOT modify the original input source headers or versioned source headers
+        // The generated column should be available through self-append source only
+        // Downstream modules will see it through the self-append custom source
+        console.log('[SELF] Input sources will be enhanced in allAvailableInputSources memo');
       }
+    } else {
+      console.log('[SELF] This is NOT a Self-append source');
     }
+    console.log('[SELF] ========== handleAddSharedCustomSource END ==========');
   };
 
   const handleEditSharedCustomSource = (source: InputSource) => {
@@ -1728,74 +2093,10 @@ const RequestCreationPage: React.FC = () => {
       const oldGeneratedColumn = originalSource?.selfConfig?.generated_column;
       const oldInputSourceNames = originalSource?.selfConfig?.input_source_names || [];
 
-      // Remove old generated column from old input sources (if changed)
-      if (oldGeneratedColumn && oldGeneratedColumn !== newGeneratedColumn) {
-        setInputSources(prev => prev?.map(inputSource => {
-          if (oldInputSourceNames?.includes(inputSource.sourceName)) {
-            const updatedHeaders = (inputSource.headers || []).filter(h => h !== oldGeneratedColumn);
-            const updatedSelectedHeaders = (inputSource.selectedHeaders || inputSource.headers || []).filter(h => h !== oldGeneratedColumn);
-
-            return {
-              ...inputSource,
-              headers: updatedHeaders,
-              selectedHeaders: updatedSelectedHeaders,
-            };
-          }
-          return inputSource;
-        }));
-
-        setVersionedSources(prev => prev?.map(versionedSource => {
-          if (oldInputSourceNames?.includes(versionedSource.sourceName)) {
-            const updatedHeaders = (versionedSource.headers || []).filter(h => h !== oldGeneratedColumn);
-
-            return {
-              ...versionedSource,
-              headers: updatedHeaders,
-              combinedHeaders: updatedHeaders,
-            };
-          }
-          return versionedSource;
-        }));
-      }
-
-      // Add new generated column to new input sources
-      if (newGeneratedColumn && newInputSourceNames?.length > 0) {
-        setInputSources(prev => prev?.map(inputSource => {
-          if (newInputSourceNames?.includes(inputSource.sourceName)) {
-            const currentHeaders = inputSource.headers || [];
-            if (!currentHeaders?.includes(newGeneratedColumn)) {
-              const updatedHeaders = [...currentHeaders, newGeneratedColumn];
-              const currentSelectedHeaders = inputSource.selectedHeaders || currentHeaders;
-              const updatedSelectedHeaders = currentSelectedHeaders?.includes(newGeneratedColumn)
-                ? currentSelectedHeaders
-                : [...currentSelectedHeaders, newGeneratedColumn];
-
-              return {
-                ...inputSource,
-                headers: updatedHeaders,
-                selectedHeaders: updatedSelectedHeaders,
-              };
-            }
-          }
-          return inputSource;
-        }));
-
-        setVersionedSources(prev => prev?.map(versionedSource => {
-          if (newInputSourceNames?.includes(versionedSource.sourceName)) {
-            const currentHeaders = versionedSource.headers || [];
-            if (!currentHeaders?.includes(newGeneratedColumn)) {
-              const updatedHeaders = [...currentHeaders, newGeneratedColumn];
-
-              return {
-                ...versionedSource,
-                headers: updatedHeaders,
-                combinedHeaders: updatedHeaders,
-              };
-            }
-          }
-          return versionedSource;
-        }));
-      }
+      // IMPORTANT: Do NOT modify input source headers or versioned source headers
+      // Generated columns are available through self-append custom source only
+      console.log('[handleEditSharedCustomSource] Old generated column:', oldGeneratedColumn, '-> New:', newGeneratedColumn);
+      console.log('[handleEditSharedCustomSource] New input source names:', newInputSourceNames);
     }
   };
 
@@ -1807,40 +2108,11 @@ const RequestCreationPage: React.FC = () => {
       // Remove from shared custom sources
       setSharedCustomSources(prev => prev?.filter(s => s.id !== id));
 
-      // If it's a Self source with a generated column, remove the generated column from input sources
-      if (sourceToDelete?.sourceType === 'Self' && sourceToDelete.selfConfig) {
-        const { generated_column, input_source_names } = sourceToDelete.selfConfig;
-
-        if (generated_column && input_source_names && input_source_names?.length > 0) {
-          // Remove the generated column from input sources
-          setInputSources(prev => prev?.map(inputSource => {
-            if (input_source_names?.includes(inputSource.sourceName)) {
-              const updatedHeaders = (inputSource.headers || []).filter(h => h !== generated_column);
-              const updatedSelectedHeaders = (inputSource.selectedHeaders || inputSource.headers || []).filter(h => h !== generated_column);
-
-              return {
-                ...inputSource,
-                headers: updatedHeaders,
-                selectedHeaders: updatedSelectedHeaders,
-              };
-            }
-            return inputSource;
-          }));
-
-          // Also remove from versioned sources
-          setVersionedSources(prev => prev?.map(versionedSource => {
-            if (input_source_names?.includes(versionedSource.sourceName)) {
-              const updatedHeaders = (versionedSource.headers || []).filter(h => h !== generated_column);
-
-              return {
-                ...versionedSource,
-                headers: updatedHeaders,
-                combinedHeaders: updatedHeaders,
-              };
-            }
-            return versionedSource;
-          }));
-        }
+      // IMPORTANT: Do NOT modify input source headers
+      // Generated columns from self-append sources do not affect original input sources
+      if (sourceToDelete?.sourceType === 'Self' && sourceToDelete?.selfConfig) {
+        console.log('[handleDeleteSharedCustomSource] Deleted self-append source:', sourceToDelete?.sourceName);
+        console.log('[handleDeleteSharedCustomSource] Generated column:', sourceToDelete?.selfConfig?.generated_column);
       }
     }
   };
@@ -1850,88 +2122,118 @@ const RequestCreationPage: React.FC = () => {
   // Memoized to prevent infinite re-render loops
 
   const handleAppendConfigurationsChange = useCallback((moduleId: string, newConfigs: AppendConfig[]) => {
+    console.log('[DELETE] Index.tsx - handleAppendConfigurationsChange called');
+    console.log('[DELETE] Index.tsx - moduleId:', moduleId);
+    console.log('[DELETE] Index.tsx - newConfigs count:', newConfigs?.length);
+    console.log('[DELETE] Index.tsx - newConfigs:', newConfigs);
+
     setAppendConfigurations(prevConfigs => {
+      console.log('[DELETE] Index.tsx - prevConfigs count:', prevConfigs?.length);
+      console.log('[DELETE] Index.tsx - prevConfigs:', prevConfigs);
+
       // Ensure all new configs have the correct createdByModuleId
       const configsWithModuleId = newConfigs?.map(config => ({
         ...config,
-        createdByModuleId: config.createdByModuleId || moduleId
+        createdByModuleId: config?.createdByModuleId || moduleId
       }));
 
       // Remove configurations from this specific module
-      const otherModuleConfigs = prevConfigs?.filter(c => c.createdByModuleId !== moduleId);
+      const otherModuleConfigs = prevConfigs?.filter(c => c?.createdByModuleId !== moduleId);
+      console.log('[DELETE] Index.tsx - otherModuleConfigs count:', otherModuleConfigs?.length);
 
       // Add new configurations from this module
       const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+      console.log('[DELETE] Index.tsx - mergedConfigs count:', mergedConfigs?.length);
 
       // Prevent infinite loops: only update if something actually changed
-      const configsFromThisModule = prevConfigs?.filter(c => c.createdByModuleId === moduleId);
+      const configsFromThisModule = prevConfigs?.filter(c => c?.createdByModuleId === moduleId);
       const hasChanges = configsFromThisModule?.length !== configsWithModuleId?.length ||
         JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
 
       if (!hasChanges) {
+        console.log('[DELETE] Index.tsx - No changes detected, returning prevConfigs');
         return prevConfigs; // No change, return previous state to prevent re-render
       }
 
-      
-
+      console.log('[DELETE] Index.tsx - Changes detected, returning mergedConfigs');
       return mergedConfigs;
     });
   }, []);
 
   const handleSuppressConfigurationsChange = useCallback((moduleId: string, newConfigs: SuppressConfig[]) => {
+    console.log('[DELETE] Index.tsx - handleSuppressConfigurationsChange called');
+    console.log('[DELETE] Index.tsx - moduleId:', moduleId);
+    console.log('[DELETE] Index.tsx - newConfigs count:', newConfigs?.length);
+    console.log('[DELETE] Index.tsx - newConfigs:', newConfigs);
+
     setSuppressConfigurations(prevConfigs => {
+      console.log('[DELETE] Index.tsx - prevConfigs count:', prevConfigs?.length);
+      console.log('[DELETE] Index.tsx - prevConfigs:', prevConfigs);
+
       // Ensure all new configs have the correct createdByModuleId
       const configsWithModuleId = newConfigs?.map(config => ({
         ...config,
-        createdByModuleId: config.createdByModuleId || moduleId
+        createdByModuleId: config?.createdByModuleId || moduleId
       }));
 
       // Remove configurations from this specific module
-      const otherModuleConfigs = prevConfigs?.filter(c => c.createdByModuleId !== moduleId);
+      const otherModuleConfigs = prevConfigs?.filter(c => c?.createdByModuleId !== moduleId);
+      console.log('[DELETE] Index.tsx - otherModuleConfigs count:', otherModuleConfigs?.length);
 
       // Add new configurations from this module
       const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+      console.log('[DELETE] Index.tsx - mergedConfigs count:', mergedConfigs?.length);
 
       // Prevent infinite loops: only update if something actually changed
-      const configsFromThisModule = prevConfigs?.filter(c => c.createdByModuleId === moduleId);
+      const configsFromThisModule = prevConfigs?.filter(c => c?.createdByModuleId === moduleId);
       const hasChanges = configsFromThisModule?.length !== configsWithModuleId?.length ||
         JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
 
       if (!hasChanges) {
+        console.log('[DELETE] Index.tsx - No changes detected, returning prevConfigs');
         return prevConfigs; // No change, return previous state to prevent re-render
       }
 
-      
-
+      console.log('[DELETE] Index.tsx - Changes detected, returning mergedConfigs');
       return mergedConfigs;
     });
   }, []);
 
   const handleMatchConfigurationsChange = useCallback((moduleId: string, newConfigs: MatchConfig[]) => {
+    console.log('[DELETE] Index.tsx - handleMatchConfigurationsChange called');
+    console.log('[DELETE] Index.tsx - moduleId:', moduleId);
+    console.log('[DELETE] Index.tsx - newConfigs count:', newConfigs?.length);
+    console.log('[DELETE] Index.tsx - newConfigs:', newConfigs);
+
     setMatchConfigurations(prevConfigs => {
+      console.log('[DELETE] Index.tsx - prevConfigs count:', prevConfigs?.length);
+      console.log('[DELETE] Index.tsx - prevConfigs:', prevConfigs);
+
       // Ensure all new configs have the correct createdByModuleId
       const configsWithModuleId = newConfigs?.map(config => ({
         ...config,
-        createdByModuleId: config.createdByModuleId || moduleId
+        createdByModuleId: config?.createdByModuleId || moduleId
       }));
 
       // Remove configurations from this specific module
-      const otherModuleConfigs = prevConfigs?.filter(c => c.createdByModuleId !== moduleId);
+      const otherModuleConfigs = prevConfigs?.filter(c => c?.createdByModuleId !== moduleId);
+      console.log('[DELETE] Index.tsx - otherModuleConfigs count:', otherModuleConfigs?.length);
 
       // Add new configurations from this module
       const mergedConfigs = [...otherModuleConfigs, ...configsWithModuleId];
+      console.log('[DELETE] Index.tsx - mergedConfigs count:', mergedConfigs?.length);
 
       // Prevent infinite loops: only update if something actually changed
-      const configsFromThisModule = prevConfigs?.filter(c => c.createdByModuleId === moduleId);
+      const configsFromThisModule = prevConfigs?.filter(c => c?.createdByModuleId === moduleId);
       const hasChanges = configsFromThisModule?.length !== configsWithModuleId?.length ||
         JSON.stringify(configsFromThisModule) !== JSON.stringify(configsWithModuleId);
 
       if (!hasChanges) {
+        console.log('[DELETE] Index.tsx - No changes detected, returning prevConfigs');
         return prevConfigs; // No change, return previous state to prevent re-render
       }
 
-      
-
+      console.log('[DELETE] Index.tsx - Changes detected, returning mergedConfigs');
       return mergedConfigs;
     });
   }, []);
@@ -1977,26 +2279,72 @@ const RequestCreationPage: React.FC = () => {
     return matchHandlersCache.get(moduleId)!;
   }, [matchHandlersCache, getMatchConfigChangeHandler]);
 
-  // Filter custom sources based on module type
+  // Filter custom sources based on module type AND position (upstream only)
   const getAvailableCustomSourcesForModule = (currentModuleId: string): InputSource[] => {
+    // Find the current module's position in the workflow
+    const currentModuleIndex = modules?.findIndex(m => m?.id === currentModuleId);
+
+    if (currentModuleIndex === -1) {
+      console.warn(`[getAvailableCustomSourcesForModule] Module not found: ${currentModuleId}`);
+      return [];
+    }
+
     // Get the type of the current module (Append, Match, Suppress, etc.)
     const currentModuleType = getModuleType(currentModuleId);
 
-    // Return only custom sources created by modules of the same type
+
+
+    // Return only custom sources created by upstream modules of the same type
     return sharedCustomSources?.filter(source => {
-      if (!source.createdByModuleId) return true; // Legacy sources without tracking
+      // Safety check
+      if (!source || typeof source !== 'object') {
+        return false;
+      }
+
+      if (!source?.createdByModuleId) {
+        // Legacy sources without tracking - exclude for safety
+        console.warn('[getAvailableCustomSourcesForModule] Source missing createdByModuleId:', source?.id, source?.sourceName);
+        return false;
+      }
 
       // For Self sources (self-append, self-match, self-suppress), filter by exact moduleId
       // Self sources should only be available to the specific module instance that created them
-      if (source.sourceType === 'Self') {
-        return source.createdByModuleId === currentModuleId;
+      // AND the module must be upstream or the same module
+      if (source?.sourceType === 'Self') {
+        // Self sources are only available to the exact module that created them
+        const isSameModule = source?.createdByModuleId === currentModuleId;
+
+
+        return isSameModule;
       }
 
-      // For non-Self sources (Database, File), filter by module type
+      // For non-Self sources (Database, File), filter by module type AND position
       // These can be shared across module instances of the same type
-      const sourceModuleType = getModuleType(source.createdByModuleId);
-      return sourceModuleType === currentModuleType;
-    });
+      // BUT only from upstream modules (earlier in workflow)
+      const sourceModuleType = getModuleType(source?.createdByModuleId);
+      const isSameType = sourceModuleType === currentModuleType;
+
+      if (!isSameType) {
+        return false;
+      }
+
+      // Find the creator module's position
+      const creatorModuleIndex = modules?.findIndex(m => m?.id === source?.createdByModuleId);
+
+      if (creatorModuleIndex === -1) {
+        // Creator module not found (might have been deleted)
+        console.warn(`[getAvailableCustomSourcesForModule] Creator module not found for source: ${source?.sourceName}, creatorModuleId: ${source?.createdByModuleId}`);
+        return false;
+      }
+
+      // CRITICAL: Allow sources from upstream modules OR the same module
+      // This allows a module to see its own custom sources AND sources from earlier modules of same type
+      const isUpstreamOrSame = creatorModuleIndex <= currentModuleIndex;
+
+
+
+      return isUpstreamOrSame;
+    }) || [];
   };
 
 
@@ -2056,7 +2404,28 @@ const RequestCreationPage: React.FC = () => {
     appendFields?: string[],  // Fields to Append for Append module
     addFields?: string[]      // Add Fields for Match module
   ) => {
-    
+    console.log('[HEADERS-TRACE] ==================== CREATE VERSION START ====================');
+    console.log('[HEADERS-TRACE] Module:', sourceModule, '| Module ID:', moduleId);
+    console.log('[HEADERS-TRACE] Base Input Sources:', baseInputSources);
+    console.log('[HEADERS-TRACE] Operation Sources:', operationSources);
+    console.log('[HEADERS-TRACE] Operation Fields:', operationFields);
+    console.log('[HEADERS-TRACE] Append Fields:', appendFields);
+    console.log('[HEADERS-TRACE] Add Fields:', addFields);
+
+    // Log the CURRENT state of each Input source BEFORE creating version
+    console.log('[HEADERS-TRACE] === BEFORE VERSION CREATION - Input Source Headers ===');
+    baseInputSources?.forEach(sourceId => {
+      const source = allAvailableInputSources?.find(s => s?.id === sourceId);
+      if (source) {
+        console.log(`[HEADERS-TRACE] Input Source: ${source?.sourceName} (ID: ${sourceId})`);
+        console.log(`[HEADERS-TRACE]   - headers:`, source?.headers);
+        console.log(`[HEADERS-TRACE]   - selectedHeaders:`, source?.selectedHeaders);
+        console.log(`[HEADERS-TRACE]   - headers length:`, source?.headers?.length);
+        console.log(`[HEADERS-TRACE]   - selectedHeaders length:`, source?.selectedHeaders?.length);
+      } else {
+        console.log(`[HEADERS-TRACE] Input Source NOT FOUND: ${sourceId}`);
+      }
+    });
 
     // Validation: Must have at least one input source and one operation source
     if (baseInputSources?.length === 0) {
@@ -2141,10 +2510,11 @@ const RequestCreationPage: React.FC = () => {
       if (!inputSource) return;
 
       // Build the list of all operation sources with their details
+      // Note: Match module does not use priority, Append and Suppress do
       const operationSourcesList: Array<{
         source_type: string;
         source_name: string;
-        priority: number;
+        priority?: number; // Optional - only for Append and Suppress
         fields: string[];
       }> = [];
 
@@ -2174,21 +2544,40 @@ const RequestCreationPage: React.FC = () => {
           }
         }
 
-        // Check if it's a custom source (Self) only if not already identified as input
+        // Check if it's a custom source only if not already identified as input
         if (sourceType !== 'input') {
           const customSource = sharedCustomSources?.find(s => s?.id === operationSourceId);
-          if (customSource?.sourceType === 'Self') {
-            sourceType = sourceModule === 'Append' ? 'self_append' :
-                         sourceModule === 'Match' ? 'self_match' : 'self_suppress';
+          if (customSource) {
+            // Self type custom sources get special type identifiers
+            if (customSource?.sourceType === 'Self') {
+              sourceType = sourceModule === 'Append' ? 'self_append' :
+                           sourceModule === 'Match' ? 'self_match' : 'self_suppress';
+            } else {
+              // File or Database custom sources created in any module should be 'input' type
+              sourceType = 'input';
+            }
           }
         }
 
-        operationSourcesList?.push({
+        // Build operation source object
+        // Match module does not use priority
+        const operationSource: {
+          source_type: string;
+          source_name: string;
+          priority?: number;
+          fields: string[];
+        } = {
           source_type: sourceType,
           source_name: operationSourceName,
-          priority: opIndex + 1,  // Sequential priority
           fields: fieldsForThisSource
-        });
+        };
+
+        // Only add priority for Append and Suppress modules
+        if (sourceModule === 'Append' || sourceModule === 'Suppress') {
+          operationSource.priority = opIndex + 1;
+        }
+
+        operationSourcesList?.push(operationSource);
       });
 
       // Build version name with all operation source names
@@ -2204,25 +2593,56 @@ const RequestCreationPage: React.FC = () => {
         versionName = `${sourceModule}_${inputSource.sourceName}_${operationSourceNames}_v${moduleVersionCount}`;
       }
 
-      // Get headers from input source
-      let combinedHeaders = [...(inputSource.headers || [])];
+      // CRITICAL: Version should include selected headers from input source + appended/added fields
+      let combinedHeaders: string[] = [];
 
-      // For Append module: Add appendFields to the headers (these are the new fields being appended)
-      if (sourceModule === 'Append' && appendFields && appendFields?.length > 0) {
-        
-        combinedHeaders = [...combinedHeaders, ...appendFields];
+      console.log(`[handleCreateVersionedSource] Input source ${inputSource?.sourceName}`);
+      console.log(`[handleCreateVersionedSource] Input source selectedHeaders:`, inputSource?.selectedHeaders);
+      console.log(`[handleCreateVersionedSource] operationFields (match/suppress keys):`, operationFields);
+      console.log(`[handleCreateVersionedSource] appendFields:`, appendFields);
+      console.log(`[handleCreateVersionedSource] addFields:`, addFields);
+
+      // Start with selected headers from the input source
+      const inputSourceHeaders = inputSource?.selectedHeaders || inputSource?.headers || [];
+      combinedHeaders = [...inputSourceHeaders];
+      console.log(`[handleCreateVersionedSource] Starting with input source selected headers:`, combinedHeaders);
+
+      // For Append module: Include input source selected headers + appendFields (fields to append)
+      if (sourceModule === 'Append') {
+        // Add appended fields (avoiding duplicates)
+        if (appendFields && appendFields?.length > 0) {
+          appendFields?.forEach(field => {
+            if (!combinedHeaders?.includes(field)) {
+              combinedHeaders?.push(field);
+            }
+          });
+          console.log(`[handleCreateVersionedSource] Append module - added appendFields:`, appendFields);
+        }
       }
 
-      // For Match module: Add addFields to the headers (these are the new fields being added from match)
-      if (sourceModule === 'Match' && addFields && addFields?.length > 0) {
-        
-        combinedHeaders = [...combinedHeaders, ...addFields];
+      // For Match module: Include input source selected headers + addFields (fields to add)
+      if (sourceModule === 'Match') {
+        // Add add fields (avoiding duplicates)
+        if (addFields && addFields?.length > 0) {
+          addFields?.forEach(field => {
+            if (!combinedHeaders?.includes(field)) {
+              combinedHeaders?.push(field);
+            }
+          });
+          console.log(`[handleCreateVersionedSource] Match module - added addFields:`, addFields);
+        }
       }
 
-      
+      // For Suppress module: Include input source selected headers only (no additional fields)
+      if (sourceModule === 'Suppress') {
+        // Already have input source headers, nothing to add
+        console.log(`[handleCreateVersionedSource] Suppress module - using input source selected headers only`);
+      }
+
+      console.log(`[handleCreateVersionedSource] Final combinedHeaders for versioned source:`, combinedHeaders);
 
       // Determine stepOrder based on module - use full moduleId to find exact module instance
-      const stepOrder = modules?.findIndex(m => m.id === moduleId) + 1;
+      const stepOrder = modules?.findIndex(m => m?.id === moduleId) + 1;
       
 
       // Build append_sources/match_sources/suppress_sources based on module
@@ -2258,9 +2678,24 @@ const RequestCreationPage: React.FC = () => {
         
       }
 
-      // For Match versions, log the structure
+      // For Match versions, add match_keys (from input source fields)
       if (sourceModule === 'Match') {
-        
+        // Match Keys are the fields from INPUT sources to match on (stored in operationFields)
+        // operationFields = selectedMatchOnFields = fields from INPUT sources
+        configJson.match_keys = operationFields || [];
+
+        // Add Fields are separate - fields from MATCH sources to add to the output (stored in addFields)
+        // Only include add_fields if there are any selected
+        if (addFields && addFields?.length > 0) {
+          configJson.add_fields = addFields;
+        }
+      }
+
+      // For Suppress versions, add suppress_on_fields
+      if (sourceModule === 'Suppress') {
+        // Suppress On Fields selected by user
+        configJson.suppress_on_fields = operationFields || [];
+
       }
 
       // Create the versioned source
@@ -2305,6 +2740,29 @@ const RequestCreationPage: React.FC = () => {
     // Add all new versions to the list
     setVersionedSources(prev => [...prev, ...newVersions]);
 
+    // Log the FINAL state of each Input source AFTER creating versions
+    console.log('[HEADERS-TRACE] === AFTER VERSION CREATION - Input Source Headers ===');
+    baseInputSources?.forEach(sourceId => {
+      const source = allAvailableInputSources?.find(s => s?.id === sourceId);
+      if (source) {
+        console.log(`[HEADERS-TRACE] Input Source: ${source?.sourceName} (ID: ${sourceId})`);
+        console.log(`[HEADERS-TRACE]   - headers:`, source?.headers);
+        console.log(`[HEADERS-TRACE]   - selectedHeaders:`, source?.selectedHeaders);
+        console.log(`[HEADERS-TRACE]   - headers length:`, source?.headers?.length);
+        console.log(`[HEADERS-TRACE]   - selectedHeaders length:`, source?.selectedHeaders?.length);
+      }
+    });
+
+    // Log the created versions
+    console.log('[HEADERS-TRACE] === CREATED VERSIONS ===');
+    newVersions?.forEach(version => {
+      console.log(`[HEADERS-TRACE] Version: ${version?.versionLabel}`);
+      console.log(`[HEADERS-TRACE]   - headers:`, version?.headers);
+      console.log(`[HEADERS-TRACE]   - selectedHeaders:`, version?.selectedHeaders);
+      console.log(`[HEADERS-TRACE]   - headers length:`, version?.headers?.length);
+    });
+    console.log('[HEADERS-TRACE] ==================== CREATE VERSION END ====================');
+
     // Show success message
     const versionNames = newVersions?.map(v => v.versionLabel).join(', ');
     const summary = `${newVersions?.length} versioned source(s) created:\n\n${versionNames}\n\nThey are now available in all subsequent module dropdowns.`;
@@ -2313,35 +2771,150 @@ const RequestCreationPage: React.FC = () => {
 
   // Combine regular input sources with versioned sources for child modules
   // Memoize to prevent infinite re-renders
-  const allAvailableInputSources = useMemo<InputSource[]>(
-    () => [...inputSources, ...versionedSources],
-    [inputSources, versionedSources]
-  );
+  const allAvailableInputSources = useMemo<InputSource[]>(() => {
+    console.log('[SELF] ========== allAvailableInputSources RECALCULATING ==========');
+    console.log('[SELF] inputSources count:', inputSources?.length);
+    console.log('[SELF] inputSources:', inputSources);
+    console.log('[SELF] sharedCustomSources count:', sharedCustomSources?.length);
+    console.log('[SELF] sharedCustomSources:', sharedCustomSources);
 
-  // Helper function to get all fields for a source (original + appended fields)
+    // Enhance input sources with generated columns from self-append sources for downstream module visibility
+    const enhancedInputSources = inputSources?.map(source => {
+      console.log('[SELF] --- Processing source:', source?.sourceName);
+      console.log('[SELF] Source ID:', source?.id);
+      console.log('[SELF] Source headers:', source?.headers);
+
+      // Find all self-append sources that use this source as input
+      const generatedColumnsForSource: string[] = [];
+
+      sharedCustomSources?.forEach(customSource => {
+        console.log('[SELF] Checking customSource:', customSource?.sourceName, 'Type:', customSource?.sourceType);
+
+        if (customSource?.sourceType === 'Self' && customSource?.selfConfig) {
+          console.log('[SELF] Found Self source!');
+          const { input_source_names, generated_column } = customSource?.selfConfig;
+
+          console.log('[SELF] input_source_names:', input_source_names);
+          console.log('[SELF] generated_column:', generated_column);
+          console.log('[SELF] Current source name:', source?.sourceName);
+
+          // Check if this source is used as input for this self-append source
+          if (input_source_names?.includes(source?.sourceName) && generated_column) {
+            console.log('[SELF] MATCH! Adding generated column:', generated_column, 'to source:', source?.sourceName);
+            generatedColumnsForSource?.push(generated_column);
+          } else {
+            console.log('[SELF] No match. Source not in input_source_names or no generated_column');
+          }
+        }
+      });
+
+      console.log('[SELF] Total generated columns for', source?.sourceName, ':', generatedColumnsForSource);
+
+      // If there are generated columns, enhance the source with them for UI display
+      if (generatedColumnsForSource?.length > 0) {
+        console.log(`[SELF] *** ENHANCING source "${source?.sourceName}" ***`);
+        console.log(`[SELF] Generated columns to add:`, generatedColumnsForSource);
+        console.log(`[SELF] Original headers:`, source?.headers);
+        console.log(`[SELF] Original selectedHeaders:`, source?.selectedHeaders);
+        console.log(`[HEADERS-TRACE] ⚠️ ENHANCEMENT DETECTED - Source: ${source?.sourceName}`);
+        console.log(`[HEADERS-TRACE]   - Original headers (${source?.headers?.length}):`, source?.headers);
+        console.log(`[HEADERS-TRACE]   - Generated columns to add (${generatedColumnsForSource?.length}):`, generatedColumnsForSource);
+
+        // Preserve original headers and selectedHeaders
+        const originalHeaders = source?.headers || [];
+        const originalSelectedHeaders = source?.selectedHeaders || originalHeaders;
+
+        // Add generated columns to both headers and selectedHeaders
+        const enhancedHeaders = [...originalHeaders, ...generatedColumnsForSource];
+        const enhancedSelectedHeaders = [...originalSelectedHeaders, ...generatedColumnsForSource];
+
+        console.log(`[SELF] Enhanced headers:`, enhancedHeaders);
+        console.log(`[SELF] Enhanced selectedHeaders:`, enhancedSelectedHeaders);
+        console.log(`[HEADERS-TRACE]   - Enhanced headers (${enhancedHeaders?.length}):`, enhancedHeaders);
+        console.log(`[HEADERS-TRACE]   - This enhanced source will be visible to ALL modules (not order-aware)`);
+
+        const enhancedSource = {
+          ...source,
+          headers: enhancedHeaders, // Enhanced headers for UI display (includes generated columns)
+          selectedHeaders: enhancedSelectedHeaders, // Enhanced selected headers (preserves user selection + adds generated)
+          originalHeaders: originalHeaders, // Preserve original headers for payload transformation
+          originalSelectedHeaders: originalSelectedHeaders, // Preserve original selected headers for payload
+        };
+
+        console.log(`[SELF] Returning enhanced source:`, enhancedSource);
+        return enhancedSource;
+      }
+
+      console.log(`[SELF] No generated columns for "${source?.sourceName}", returning original`);
+      return source;
+    });
+
+    console.log('[SELF] Enhanced input sources:', enhancedInputSources);
+
+    const result = [...enhancedInputSources, ...versionedSources];
+    console.log('[SELF] Final allAvailableInputSources count:', result?.length);
+    console.log('[SELF] Final allAvailableInputSources:', result);
+    console.log('[SELF] ========== allAvailableInputSources DONE ==========');
+
+    return result;
+  }, [inputSources, versionedSources, sharedCustomSources]);
+
+  // Helper function to get all fields for a source (original + appended fields + self-append generated columns)
   const getSourceFieldsWithAppends = useMemo(() => {
     return (source: InputSource): string[] => {
+      console.log('[SELF] getSourceFieldsWithAppends called for source:', source?.sourceName);
+
       // Start with original headers
-      const originalHeaders = source.selectedHeaders || source.headers || [];
+      const originalHeaders = source?.selectedHeaders || source?.headers || [];
+      console.log('[SELF] Starting headers:', originalHeaders);
       const allFields = new Set<string>(originalHeaders);
 
       // Find all append configurations where this source is an input source
       appendConfigurations?.forEach(config => {
         // Check if this source is one of the input sources for this append config
-        const isInputSource = config.inputSources?.some(inputSourceId => {
-          const inputSource = allAvailableInputSources?.find(s => s.id === inputSourceId);
-          return inputSource?.sourceName === source.sourceName || inputSource?.id === source.id;
+        const isInputSource = config?.inputSources?.some(inputSourceId => {
+          const inputSource = allAvailableInputSources?.find(s => s?.id === inputSourceId);
+          return inputSource?.sourceName === source?.sourceName || inputSource?.id === source?.id;
         });
 
         // If this source is used in the append config, add the appended fields
-        if (isInputSource && config.appendFields) {
-          config.appendFields?.forEach(field => allFields.add(field));
+        if (isInputSource && config?.appendFields) {
+          console.log('[SELF] Adding appended fields:', config?.appendFields);
+          config?.appendFields?.forEach(field => allFields?.add(field));
         }
       });
 
-      return Array.from(allFields);
+      // IMPORTANT: Also add generated columns from self-append sources that use this source as input
+      console.log('[SELF] Checking self-append sources for generated columns...');
+      sharedCustomSources?.forEach(customSource => {
+        console.log('[SELF] Checking customSource:', customSource?.sourceName);
+        // Check if this is a self-append source
+        if (customSource?.sourceType === 'Self' && customSource?.selfConfig) {
+          console.log('[SELF] Found Self source with config');
+          const { input_source_names, generated_column } = customSource?.selfConfig;
+
+          console.log('[SELF] input_source_names:', input_source_names);
+          console.log('[SELF] generated_column:', generated_column);
+          console.log('[SELF] Looking for source:', source?.sourceName);
+
+          // Check if this source is one of the input sources for this self-append source
+          const isInputSource = input_source_names?.includes(source?.sourceName);
+
+          console.log('[SELF] Is input source?', isInputSource);
+
+          // If this source is used in the self-append config, add the generated column
+          if (isInputSource && generated_column) {
+            console.log(`[SELF] *** Adding generated column "${generated_column}" to source "${source?.sourceName}" ***`);
+            allFields?.add(generated_column);
+          }
+        }
+      });
+
+      const result = Array.from(allFields);
+      console.log('[SELF] getSourceFieldsWithAppends result for', source?.sourceName, ':', result);
+      return result;
     };
-  }, [appendConfigurations, allAvailableInputSources]);
+  }, [appendConfigurations, allAvailableInputSources, sharedCustomSources]);
 
   // Memoize stats module calculations to prevent infinite loops
   const availableStatsHeaders = useMemo(() => {
@@ -2405,12 +2978,8 @@ const RequestCreationPage: React.FC = () => {
     return resultFields?.sort();
   }, [selectedInputSources, allAvailableInputSources, getSourceFieldsWithAppends]);
 
-  const filteredStatsInputSources = useMemo(() =>
-    allAvailableInputSources?.filter(source =>
-      source?.sourceName?.toLowerCase().includes(statsInputSourcesSearch.toLowerCase())
-    ),
-    [allAvailableInputSources, statsInputSourcesSearch]
-  );
+  // REMOVED: This was using allAvailableInputSources which bypasses upstream filtering
+  // Now calculated per-module inside renderContent for panel5
 
   const filteredStatsCountsOn = useMemo(() =>
     availableStatsHeaders?.filter(field =>
@@ -2469,8 +3038,19 @@ const RequestCreationPage: React.FC = () => {
   // Helper to transform a single File source to API format (same logic as SourceConfigDialog)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const transformFileSourceToAPI = (source: any) => {
-    const headers = source.headers || [];
-    const selectedHeaders = source.selectedHeaders || source.headers || [];
+    // CRITICAL: Use originalHeaders if available (excludes self-append generated columns)
+    // Otherwise use source headers as-is
+    const headers = source?.originalHeaders || source?.headers || [];
+
+    // CRITICAL: Use originalSelectedHeaders if available (excludes generated columns)
+    // Otherwise fall back to selectedHeaders or headers
+    const selectedHeaders = source?.originalSelectedHeaders || source?.selectedHeaders || headers;
+
+    console.log(`[transformFileSourceToAPI] Source ${source?.sourceName}`);
+    console.log(`[transformFileSourceToAPI] originalHeaders:`, source?.originalHeaders);
+    console.log(`[transformFileSourceToAPI] originalSelectedHeaders:`, source?.originalSelectedHeaders);
+    console.log(`[transformFileSourceToAPI] Using headers:`, headers, `(count: ${headers?.length})`);
+    console.log(`[transformFileSourceToAPI] Using selectedHeaders:`, selectedHeaders, `(count: ${selectedHeaders?.length})`);
 
     // Determine columnSelectionType: "A" if all headers selected, "S" if subset
     const columnSelectionType = selectedHeaders?.length === headers?.length ? 'A' : 'S';
@@ -2539,19 +3119,26 @@ const RequestCreationPage: React.FC = () => {
 
   // Transform input sources to the required API format (only File and Database sources)
   const transformInputSourcesToAPIFormat = (sources: InputSource[]) => {
-    
+    console.log('[transformInputSourcesToAPIFormat] Starting transformation with sources:', sources);
+    console.log('[transformInputSourcesToAPIFormat] Total sources count:', sources?.length);
+
+    // Log each source's headers
+    sources?.forEach((source, idx) => {
+      console.log(`[transformInputSourcesToAPIFormat] Source ${idx}: ${source?.sourceName}, headers:`, source?.headers, 'selectedHeaders:', source?.selectedHeaders);
+    });
 
     // Filter to only include File and Database sources, keeping track of original indices
     // Handle both UI format ('File', 'Database') and API format ('F', 'T')
     const fileAndDatabaseSources = sources
-      .map((source, originalIndex) => ({ source, originalIndex }))
-      .filter(({ source }) => {
+      ?.map((source, originalIndex) => ({ source, originalIndex }))
+      ?.filter(({ source }) => {
         const sourceType = source?.sourceType as any;
         return sourceType === 'File' || sourceType === 'Database' ||
                sourceType === 'F' || sourceType === 'T';
       });
 
-    
+    console.log('[transformInputSourcesToAPIFormat] Filtered file/database sources count:', fileAndDatabaseSources?.length);
+
 
     return fileAndDatabaseSources?.map(({ source, originalIndex }) => {
       // Check if source is already in API format (sourceType is 'F' or 'T' instead of 'File' or 'Database')
@@ -2601,13 +3188,34 @@ const RequestCreationPage: React.FC = () => {
           internalStepOrder: originalIndex + 1 // 1-based index from original position
         };
 
-        // Include ID if this is an existing source (for update payload)
-        // Only include if hasExistingId is true (source.id is the internal ID, not API ID)
-        if ((source as any).hasExistingId && source.id) {
-          result.id = source.id;
-          
+        // CRITICAL: Use originalHeaders for columns if available (excludes self-append generated columns)
+        if ((source as any)?.originalHeaders) {
+          result.columns = (source as any)?.originalHeaders;
+          console.log(`[transformInputSourcesToAPIFormat] Using originalHeaders for columns: ${result?.columns?.length} columns`);
         }
 
+        // CRITICAL: Use originalSelectedHeaders for selectedColumns if available
+        if ((source as any)?.originalSelectedHeaders) {
+          result.selectedColumns = (source as any)?.originalSelectedHeaders?.join(',');
+          console.log(`[transformInputSourcesToAPIFormat] Using originalSelectedHeaders for selectedColumns`);
+        } else if ((source as any)?.originalHeaders && result?.selectedColumns) {
+          // If we have originalHeaders but not originalSelectedHeaders, filter selectedColumns
+          const originalHeadersSet = new Set((source as any)?.originalHeaders);
+          const selectedColsArray = result?.selectedColumns?.split(',') || [];
+          const filteredSelectedCols = selectedColsArray?.filter((col: string) => originalHeadersSet?.has(col));
+          result.selectedColumns = filteredSelectedCols?.join(',');
+          console.log(`[transformInputSourcesToAPIFormat] Filtered selectedColumns to exclude generated columns`);
+        }
+
+        // Include ID if this is an existing source (for update payload)
+        // Only include if hasExistingId is true (source.id is the internal ID, not API ID)
+        if ((source as any)?.hasExistingId && source?.id) {
+          result.id = source?.id;
+          console.log(`[transformInputSourcesToAPIFormat] Including existing ID: ${source?.id}`);
+        }
+
+        console.log(`[transformInputSourcesToAPIFormat] API-format source columns:`, result?.columns, `(count: ${result?.columns?.length})`);
+        console.log(`[transformInputSourcesToAPIFormat] API-format source selectedColumns:`, result?.selectedColumns);
         return result;
       }
 
@@ -2615,7 +3223,9 @@ const RequestCreationPage: React.FC = () => {
       // Note: Sources are now stored in UI format with headers/selectedHeaders arrays
       // This transformation happens only during submission
       if (source?.sourceType === 'File') {
-        
+        console.log(`[transformInputSourcesToAPIFormat] Transforming File source: ${source?.sourceName}`);
+        console.log(`[transformInputSourcesToAPIFormat] originalHeaders:`, (source as any)?.originalHeaders, 'headers:', source?.headers);
+
         const result: any = {
           ...transformFileSourceToAPI(source),
           stepOrder: 1, // Input module sources have stepOrder = 1
@@ -2623,20 +3233,31 @@ const RequestCreationPage: React.FC = () => {
         };
 
         // Include ID if this is an existing source (for update payload)
-        if ((source as any).hasExistingId && source.id) {
-          result.id = source.id;
-          
+        if ((source as any)?.hasExistingId && source?.id) {
+          result.id = source?.id;
+          console.log(`[transformInputSourcesToAPIFormat] Including existing ID: ${source?.id}`);
         }
 
+        console.log(`[transformInputSourcesToAPIFormat] File source result columns:`, result?.columns);
         return result;
       }
 
       // Handle Database sources
       if (source?.sourceType === 'Database') {
-        
-        const selectedHeaders = source?.selectedHeaders || source?.headers || [];
-        const headers = source?.headers || [];
+        console.log(`[transformInputSourcesToAPIFormat] Transforming Database source: ${source?.sourceName}`);
+
+        // CRITICAL: Use originalHeaders if available (excludes self-append generated columns)
+        const headers = (source as any)?.originalHeaders || source?.headers || [];
+
+        // CRITICAL: Use originalSelectedHeaders if available (excludes generated columns)
+        const selectedHeaders = (source as any)?.originalSelectedHeaders || source?.selectedHeaders || headers;
+
         const columnSelectionType = selectedHeaders?.length === headers?.length ? 'A' : 'S';
+
+        console.log(`[transformInputSourcesToAPIFormat] originalHeaders:`, (source as any)?.originalHeaders);
+        console.log(`[transformInputSourcesToAPIFormat] originalSelectedHeaders:`, (source as any)?.originalSelectedHeaders);
+        console.log(`[transformInputSourcesToAPIFormat] Using headers:`, headers, `(count: ${headers?.length})`);
+        console.log(`[transformInputSourcesToAPIFormat] Using selectedHeaders:`, selectedHeaders, `(count: ${selectedHeaders?.length})`);
 
         // Get filters - check filterQuery and extract from filterJson if needed
         let filters = source?.filterQuery || '';
@@ -2744,10 +3365,50 @@ const RequestCreationPage: React.FC = () => {
 
     // Helper to get columns for a source
     const getSourceColumns = (sourceId: string): string[] => {
+      console.log(`[getSourceColumns] Looking for sourceId: ${sourceId}`);
       const source = allAvailableInputSources?.find(s => s?.id === sourceId);
-      if (!source) return [];
+      if (!source) {
+        console.log(`[getSourceColumns] Source not found for ID: ${sourceId}`);
+        return [];
+      }
+      console.log(`[getSourceColumns] Found source: ${source?.sourceName}, isVersioned: ${source?.isVersioned}`);
+      console.log(`[getSourceColumns] Source headers:`, source?.headers);
+      console.log(`[getSourceColumns] Source selectedHeaders:`, source?.selectedHeaders);
+      console.log(`[getSourceColumns] Source originalHeaders:`, (source as any)?.originalHeaders);
+      console.log(`[getSourceColumns] Source originalSelectedHeaders:`, (source as any)?.originalSelectedHeaders);
+
+      // CRITICAL: For payload, use originalSelectedHeaders if available (excludes self-append generated columns)
+      if ((source as any)?.originalSelectedHeaders || (source as any)?.originalHeaders) {
+        const columns = (source as any)?.originalSelectedHeaders || (source as any)?.originalHeaders || [];
+        console.log(`[getSourceColumns] Using original columns (excludes generated):`, columns, `(count: ${columns?.length})`);
+        return columns;
+      }
+
       // Return selected headers if available, otherwise all headers
-      return source?.selectedHeaders || source?.headers || [];
+      const columns = source?.selectedHeaders || source?.headers || [];
+      console.log(`[getSourceColumns] Returning columns:`, columns, `(count: ${columns?.length})`);
+      return columns;
+    };
+
+    // Helper function to get fields/columns for a match source (for match_keys)
+    const getMatchSourceFields = (sourceId: string): string[] => {
+      // Check if it's a predefined match source (from API)
+      if (sourceId?.startsWith('match_')) {
+        const tableId = parseInt(sourceId?.replace('match_', ''));
+        const matchTable = apiSources?.dbSource?.preconfiguredTables?.match?.find(
+          (table: any) => table?.tableId === tableId
+        );
+        if (matchTable?.columns) {
+          return matchTable?.columns?.map((col: any) => col?.name || col) || [];
+        }
+      } else {
+        // Check if it's a custom match source or input source
+        const source = allAvailableInputSources?.find(s => s?.id === sourceId);
+        if (source) {
+          return source?.selectedHeaders || source?.headers || [];
+        }
+      }
+      return [];
     };
 
     // Helper function to transform field mappings to workflow format
@@ -2775,8 +3436,8 @@ const RequestCreationPage: React.FC = () => {
     appendConfigurations?.forEach((config, index) => {
       const stepOrder = getStepOrder('panel2') - 1; // Subtract 1 to start from 1
 
-      // Use module-level field mappings (not config-level)
-      const fieldMappingsForConfig = transformFieldMappingsInline(appendModuleFieldMappings);
+      // Use module-level field mappings (not config-level) - use panel2 for backward compatibility
+      const fieldMappingsForConfig = transformFieldMappingsInline(appendModuleFieldMappings?.['panel2'] || []);
 
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
@@ -2816,23 +3477,57 @@ const RequestCreationPage: React.FC = () => {
     matchConfigurations?.forEach((config, index) => {
       const stepOrder = getStepOrder('panel4') - 1; // Subtract 1 to start from 1
 
-      // Use module-level field mappings (not config-level)
-      const fieldMappingsForConfig = transformFieldMappingsInline(matchModuleFieldMappings);
+      // Use module-level field mappings (not config-level) - use panel4 for backward compatibility
+      const fieldMappingsForConfig = transformFieldMappingsInline(matchModuleFieldMappings?.['panel4'] || []);
 
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
           source_id: getSourceName(sourceId),
           columns: getSourceColumns(sourceId)
         })),
-        match_on_fields: config?.matchOnFields || [],
-        match_sources: (config?.matchSources || []).map((sourceId: string) =>
-          getSourceName(sourceId)
-        ),
+        // Match Keys go to match_keys only (addFields are the Match Keys selected by user)
+        match_keys: config?.addFields || config?.matchOnFields || [],
+        match_sources: (config?.matchSources || []).map((sourceId: string) => {
+          const matchSourceName = getSourceName(sourceId);
+
+          // Determine source_type
+          let sourceType = 'preconfigured';
+
+          // Check if it's a versioned source
+          const versionedSource = allAvailableInputSources?.find(s => s?.id === sourceId && s?.isVersioned);
+          if (versionedSource) {
+            sourceType = 'input';
+          } else {
+            // Check if it's a non-versioned input source
+            const inputSource = allAvailableInputSources?.find(s => s?.id === sourceId);
+            if (inputSource && !inputSource?.isVersioned) {
+              const createdByModuleId = (inputSource as any)?.createdByModuleId;
+              const createdByModuleIdStr = String(createdByModuleId || '');
+              if (!createdByModuleId || createdByModuleId === 'panel1' || createdByModuleIdStr?.startsWith('panel1_')) {
+                sourceType = 'input';
+              }
+            }
+          }
+
+          // Check if it's a custom source
+          if (sourceType !== 'input') {
+            const customSource = sharedCustomSources?.find(s => s?.id === sourceId);
+            if (customSource) {
+              if (customSource?.sourceType === 'Self') {
+                sourceType = 'self_match';
+              } else {
+                sourceType = 'input';
+              }
+            }
+          }
+
+          return {
+            source_type: sourceType,
+            source_name: matchSourceName
+          };
+        }),
         expand: config?.expand || false,
         match_type: config?.matchType || 'full',
-        ...(config?.addFields && config.addFields?.length > 0 && {
-          add_fields: config.addFields
-        }),
         field_mappings: fieldMappingsForConfig
       };
 
@@ -2850,8 +3545,8 @@ const RequestCreationPage: React.FC = () => {
     suppressConfigurations?.forEach((config, index) => {
       const stepOrder = getStepOrder('panel3') - 1; // Subtract 1 to start from 1
 
-      // Use module-level field mappings (not config-level)
-      const fieldMappingsForConfig = transformFieldMappingsInline(suppressModuleFieldMappings);
+      // Use module-level field mappings (not config-level) - use panel3 for backward compatibility
+      const fieldMappingsForConfig = transformFieldMappingsInline(suppressModuleFieldMappings?.['panel3'] || []);
 
       const configJson = {
         input_sources: (config?.inputSources || []).map((sourceId: string) => ({
@@ -3999,10 +4694,11 @@ const RequestCreationPage: React.FC = () => {
           });
 
           // Transform append sources to the required format
-          const appendSourcesForConfig = (config.appendSources || [])
+          const configModuleId = config?.createdByModuleId || 'panel2';
+          const appendSourcesForConfig = (config?.appendSources || [])
             .map((sourceId) => {
               // Get fields specific to this source from module-level field mappings or appendFields
-              const sourceFields = getFieldsForSource(sourceId, appendModuleFieldMappings, config.appendFields);
+              const sourceFields = getFieldsForSource(sourceId, appendModuleFieldMappings?.[configModuleId] || [], config?.appendFields);
 
               // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
               const versionedSource = allAvailableInputSources?.find(s => s.id === sourceId && s.isVersioned);
@@ -4042,8 +4738,8 @@ const RequestCreationPage: React.FC = () => {
               if (isCustomAppendSource) {
                 const isSelfAppend = customSource?.sourceType === 'Self';
                 return {
-                  source_type: isSelfAppend ? 'self_append' : 'preconfigured',
-                  source_name: customSource.sourceName,
+                  source_type: isSelfAppend ? 'self_append' : 'input',
+                  source_name: customSource?.sourceName,
                   fields: sourceFields
                 };
               }
@@ -4071,8 +4767,9 @@ const RequestCreationPage: React.FC = () => {
               priority: index + 1
             }));
 
-          // Use module-level field mappings (not config-level)
-          const fieldMappingsForConfig = transformFieldMappings(appendModuleFieldMappings);
+          // Use module-level field mappings (not config-level) specific to this module
+          const moduleId = config?.createdByModuleId || 'panel2';
+          const fieldMappingsForConfig = transformFieldMappings(appendModuleFieldMappings?.[moduleId] || []);
 
           
           
@@ -4128,7 +4825,8 @@ const RequestCreationPage: React.FC = () => {
           
 
           // Inject module-level field mappings into the version (override any stored field mappings)
-          const fieldMappingsForVersion = transformFieldMappings(appendModuleFieldMappings);
+          const versionModuleId = createdByModuleId || 'panel2';
+          const fieldMappingsForVersion = transformFieldMappings(appendModuleFieldMappings?.[versionModuleId] || []);
           const updatedConfigJson = {
             ...configJson,
             field_mappings: fieldMappingsForVersion
@@ -4279,8 +4977,8 @@ const RequestCreationPage: React.FC = () => {
               if (isCustomSuppressSource) {
                 const isSelfSuppress = customSource?.sourceType === 'Self';
                 return {
-                  source_type: isSelfSuppress ? 'self_suppress' : 'preconfigured',
-                  source_name: customSource.sourceName
+                  source_type: isSelfSuppress ? 'self_suppress' : 'input',
+                  source_name: customSource?.sourceName
                 };
               }
 
@@ -4301,12 +4999,13 @@ const RequestCreationPage: React.FC = () => {
             })
             .filter(Boolean);
 
-          // Use module-level field mappings (not config-level)
-          const fieldMappingsForConfig = transformFieldMappings(suppressModuleFieldMappings);
+          // Use module-level field mappings (not config-level) specific to this module
+          const moduleId = config?.createdByModuleId || 'panel3';
+          const fieldMappingsForConfig = transformFieldMappings(suppressModuleFieldMappings?.[moduleId] || []);
 
           const configJson = {
             input_sources: inputSourcesForConfig,
-            suppress_on_fields: config.suppressOnFields || [],
+            suppress_on_fields: config?.suppressOnFields || [],
             suppress_sources: suppressSourcesForConfig,
             field_mappings: fieldMappingsForConfig
           };
@@ -4350,10 +5049,13 @@ const RequestCreationPage: React.FC = () => {
           
 
           // Inject module-level field mappings into the version (override any stored field mappings)
-          const fieldMappingsForVersion = transformFieldMappings(suppressModuleFieldMappings);
+          const versionModuleId = createdByModuleId || 'panel3';
+          const fieldMappingsForVersion = transformFieldMappings(suppressModuleFieldMappings?.[versionModuleId] || []);
           const updatedConfigJson = {
             ...configJson,
-            field_mappings: fieldMappingsForVersion
+            field_mappings: fieldMappingsForVersion,
+            // Ensure suppress_on_fields is included from version's operationFields or existing configJson
+            suppress_on_fields: configJson?.suppress_on_fields || (source as any)?.operationFields || []
           };
 
           suppressItems?.push({
@@ -4448,49 +5150,46 @@ const RequestCreationPage: React.FC = () => {
             };
           });
 
-          // Transform match sources to the required format with priority
-          const matchSourcesForConfig = (config.matchSources || [])
-            .map((sourceId, priority) => {
+          // Transform match sources to the required format (no priority for Match module)
+          const matchSourcesForConfig = (config?.matchSources || [])
+            .map((sourceId) => {
               // First check if it's a versioned source (from Input, Append, Match, or Suppress modules)
-              const versionedSource = allAvailableInputSources?.find(s => s.id === sourceId && s.isVersioned);
+              const versionedSource = allAvailableInputSources?.find(s => s?.id === sourceId && s?.isVersioned);
               if (versionedSource) {
                 // All versioned sources are treated as 'input' type
                 // Use versionName/versionLabel for display name, not sourceName (which may be internal ID)
-                const displayName = (versionedSource as any).versionName || (versionedSource as any).versionLabel || versionedSource.sourceName;
+                const displayName = (versionedSource as any)?.versionName || (versionedSource as any)?.versionLabel || versionedSource?.sourceName;
                 return {
                   source_type: 'input',
-                  source_name: displayName,
-                  priority: priority + 1
+                  source_name: displayName
                 };
               }
 
               // Check if it's a non-versioned input source
-              const inputSource = allAvailableInputSources?.find(s => s.id === sourceId);
-              if (inputSource && !inputSource.isVersioned) {
-                const createdByModuleId = (inputSource as any).createdByModuleId;
+              const inputSource = allAvailableInputSources?.find(s => s?.id === sourceId);
+              if (inputSource && !inputSource?.isVersioned) {
+                const createdByModuleId = (inputSource as any)?.createdByModuleId;
                 const createdByModuleIdStr = String(createdByModuleId || '');
                 if (!createdByModuleId || createdByModuleId === 'panel1' || createdByModuleIdStr?.startsWith('panel1_')) {
                   return {
                     source_type: 'input',
-                    source_name: inputSource.sourceName,
-                    priority: priority + 1
+                    source_name: inputSource?.sourceName
                   };
                 }
               }
 
-              const customSource = sharedCustomSources?.find(s => s.id === sourceId);
+              const customSource = sharedCustomSources?.find(s => s?.id === sourceId);
               const customCreatedByModuleIdStr = String(customSource?.createdByModuleId || '');
               const isCustomMatchSource = customSource &&
-                                         customSource.createdByModuleId &&
-                                         (customSource.createdByModuleId === 'panel4' ||
+                                         customSource?.createdByModuleId &&
+                                         (customSource?.createdByModuleId === 'panel4' ||
                                           customCreatedByModuleIdStr?.startsWith('panel4_'));
 
               if (isCustomMatchSource) {
                 const isSelfMatch = customSource?.sourceType === 'Self';
                 return {
-                  source_type: isSelfMatch ? 'self_match' : 'preconfigured',
-                  source_name: customSource.sourceName,
-                  priority: priority + 1
+                  source_type: isSelfMatch ? 'self_match' : 'input',
+                  source_name: customSource?.sourceName
                 };
               }
 
@@ -4499,32 +5198,37 @@ const RequestCreationPage: React.FC = () => {
                 const predefined = apiSources?.dbSource?.preconfiguredTables?.match?.find(
                   (table: any) => `match_${table?.tableId}` === sourceIdStr
                 );
-                const sourceName = predefined ? predefined.tableName : sourceIdStr;
+                const sourceName = predefined ? predefined?.tableName : sourceIdStr;
                 return {
                   source_type: 'preconfigured',
-                  source_name: sourceName,
-                  priority: priority + 1
+                  source_name: sourceName
                 };
               }
 
-              
+
               return null;
             })
             .filter(Boolean);
 
-          // Use module-level field mappings (not config-level)
-          const fieldMappingsForConfig = transformFieldMappings(matchModuleFieldMappings);
+          // Use module-level field mappings (not config-level) specific to this module
+          const moduleId = config?.createdByModuleId || 'panel4';
+          const fieldMappingsForConfig = transformFieldMappings(matchModuleFieldMappings?.[moduleId] || []);
 
-          const configJson = {
+          const configJson: any = {
             input_sources: inputSourcesForConfig,
+            // Match Keys are fields from INPUT sources to match on
+            match_keys: config?.matchOnFields || [],
             match_sources: matchSourcesForConfig,
-            expand: config.expand || false,
-            match_type: config.matchType || 'full',
-            ...(config.addFields && config.addFields?.length > 0 && {
-              add_fields: config.addFields
-            }),
+            expand: config?.expand || false,
+            match_type: config?.matchType || 'full',
             field_mappings: fieldMappingsForConfig
           };
+
+          // Add Fields are separate - fields from MATCH sources to add to output
+          // Only include if addFields is defined and has items
+          if (config?.addFields && config?.addFields?.length > 0) {
+            configJson.add_fields = config?.addFields;
+          }
 
           // Calculate stepOrder based on the config's createdByModuleId
           const configStepOrder = config.createdByModuleId ? getStepOrder(config.createdByModuleId) : getStepOrder('panel4');
@@ -4565,11 +5269,21 @@ const RequestCreationPage: React.FC = () => {
           
 
           // Inject module-level field mappings into the version (override any stored field mappings)
-          const fieldMappingsForVersion = transformFieldMappings(matchModuleFieldMappings);
-          const updatedConfigJson = {
+          const versionModuleId = createdByModuleId || 'panel4';
+          const fieldMappingsForVersion = transformFieldMappings(matchModuleFieldMappings?.[versionModuleId] || []);
+          const updatedConfigJson: any = {
             ...configJson,
-            field_mappings: fieldMappingsForVersion
+            field_mappings: fieldMappingsForVersion,
+            // Ensure match_keys is present (fields from INPUT sources to match on)
+            match_keys: configJson?.match_keys || (source as any)?.operationFields || []
           };
+
+          // Include add_fields if present (fields from MATCH sources to add to output)
+          if ((source as any)?.addFields && (source as any)?.addFields?.length > 0) {
+            updatedConfigJson.add_fields = (source as any)?.addFields;
+          } else if (configJson?.add_fields && configJson?.add_fields?.length > 0) {
+            updatedConfigJson.add_fields = configJson?.add_fields;
+          }
 
           matchItems?.push({
             stepOrder: versionStepOrder, // Use recalculated stepOrder
@@ -4629,16 +5343,132 @@ const RequestCreationPage: React.FC = () => {
         return workflowItems;
       };
 
+      // Extract self-append sources for workflow
+      const extractSelfAppendSourcesForWorkflow = () => {
+        const selfAppendItems: any[] = [];
+
+        // Filter self-append sources created in Append modules
+        const selfAppendSources = sharedCustomSources?.filter(source => {
+          const sourceType = source?.sourceType;
+          const isSelfSource = sourceType === 'Self';
+
+          // Check if source was created by Append module (panel2 or duplicates)
+          const createdByModuleIdStr = String(source?.createdByModuleId || '');
+          const createdByAppend = source?.createdByModuleId &&
+                                 (source?.createdByModuleId === 'panel2' ||
+                                  createdByModuleIdStr?.startsWith('panel2_'));
+
+          return isSelfSource && createdByAppend;
+        }) || [];
+
+
+
+        // Create workflow items for each self-append source
+        selfAppendSources?.forEach((source, index) => {
+          const selfSource = source as any;
+
+
+          // Get assignment_sets and tiering_on directly from selfConfig
+          const assignmentSets = selfSource?.selfConfig?.assignment_sets || [];
+          const tieringOn = selfSource?.selfConfig?.tiering_on ?? null;
+
+          // Transform assignment_sets: rename filter_config to filterJson
+          const transformedAssignmentSets = assignmentSets?.map((set: any) => {
+            const transformed: any = {
+              value_to_assign: set?.value_to_assign || '',
+              filter_sql: set?.filter_sql || ''
+            };
+
+            // Rename filter_config to filterJson if it exists
+            if (set?.filter_config) {
+              transformed.filterJson = set?.filter_config;
+            }
+
+            return transformed;
+          });
+
+          // Build configJson for self-append source
+          const configJson = {
+            input_source_names: selfSource?.selfConfig?.input_source_names || [],
+            generated_column: selfSource?.selfConfig?.generated_column || '',
+            generated_datatype: selfSource?.selfConfig?.generated_datatype || 'STRING',
+            assignment_sets: transformedAssignmentSets,
+            tiering_on: tieringOn
+          };
+
+          // Calculate stepOrder based on the source's createdByModuleId
+          const sourceStepOrder = selfSource?.createdByModuleId ? getStepOrder(selfSource?.createdByModuleId) : getStepOrder('panel2');
+
+
+
+          selfAppendItems?.push({
+            stepOrder: sourceStepOrder,
+            actionType: 'A', // SA = Self-Append,
+            sourceType: 'Self',
+            source_type: 'self', // Explicitly send source_type for backend
+            sourceName: selfSource?.sourceName || 'Self_Append_Source',
+            configJson: configJson,
+            createdAt: (selfSource as any)?.createdAt || Date?.now(),
+            itemType: 'self_append_source',
+            moduleId: selfSource?.createdByModuleId || 'panel2',
+            // Include ID if this is an existing source (for update payload)
+            ...((selfSource as any)?.hasExistingId && selfSource?.id && { id: selfSource?.id })
+          });
+        });
+
+        // Group items by stepOrder and assign internalStepOrder per module
+        const itemsByStepOrder = new Map<number, any[]>();
+        selfAppendItems?.forEach(item => {
+          const stepOrder = item?.stepOrder;
+          if (!itemsByStepOrder?.has(stepOrder)) {
+            itemsByStepOrder?.set(stepOrder, []);
+          }
+          itemsByStepOrder?.get(stepOrder)?.push(item);
+        });
+
+        // Sort each group by createdAt and assign internalStepOrder starting from 1
+        const workflowItems: any[] = [];
+        itemsByStepOrder?.forEach((items, stepOrder) => {
+          // Sort by creation time within this module
+          items?.sort((a, b) => (a?.createdAt || 0) - (b?.createdAt || 0));
+
+          // Assign internalStepOrder starting from 1 for this module
+          items?.forEach((item, indexInModule) => {
+            const workflowItem: any = {
+              stepOrder: item?.stepOrder,
+              internalStepOrder: indexInModule + 1, // Reset to 1 for each module
+              actionType: item?.actionType,
+              sourceName: item?.sourceName,
+              source_type: 'self', // Explicitly include source_type for backend
+              configJson: item?.configJson
+            };
+
+            // Include ID if this is an existing workflow item (for update payload)
+            if (item?.id) {
+              workflowItem.id = item?.id;
+            }
+
+
+
+            workflowItems?.push(workflowItem);
+          });
+        });
+
+        return workflowItems;
+      };
+
       // Build workflow array with all configurations and versions
       // IMPORTANT: Maintain creation order - sources and versions are interleaved as they were created
       const inputSourcesAndVersions = extractInputSourcesAndVersionsForWorkflow();
       const appendItems = extractAppendItemsForWorkflow();
       const suppressItems = extractSuppressItemsForWorkflow();
       const matchItems = extractMatchItemsForWorkflow();
+      const selfAppendSources = extractSelfAppendSourcesForWorkflow(); // NEW: Self-append sources
 
       const workflowArray = [
         ...inputSourcesAndVersions,  // All input sources and versions in creation order
         ...appendItems,              // Append configs and versions sorted by creation order
+        ...selfAppendSources,        // Self-append sources (NEW)
         ...suppressItems,            // Suppress configs and versions sorted by creation order
         ...matchItems                // Match configs and versions sorted by creation order
       ];
@@ -4657,31 +5487,51 @@ const RequestCreationPage: React.FC = () => {
       
 
       // Show Append items grouped by stepOrder
-      const appendWorkflowItems = workflowArray?.filter(w => w.actionType === 'A');
+      const appendWorkflowItems = workflowArray?.filter(w => w?.actionType === 'A');
       if (appendWorkflowItems?.length > 0) {
-        
+
         const appendByStep = new Map<number, any[]>();
         appendWorkflowItems?.forEach(item => {
-          if (!appendByStep.has(item.stepOrder)) {
-            appendByStep.set(item.stepOrder, []);
+          if (!appendByStep?.has(item?.stepOrder)) {
+            appendByStep?.set(item?.stepOrder, []);
           }
-          appendByStep.get(item.stepOrder)!.push(item);
+          appendByStep?.get(item?.stepOrder)?.push(item);
         });
         appendByStep?.forEach((items, stepOrder) => {
           const moduleIndex = stepOrder - 1;
-          const module = modules[moduleIndex];
-          
+          const module = modules?.[moduleIndex];
+
+        });
+      }
+
+      // Show Self-Append items grouped by stepOrder
+      const selfAppendWorkflowItems = workflowArray?.filter(w => w?.actionType === 'A' && w.sourceType === 'Self');
+      if (selfAppendWorkflowItems?.length > 0) {
+
+        const selfAppendByStep = new Map<number, any[]>();
+        selfAppendWorkflowItems?.forEach(item => {
+          if (!selfAppendByStep?.has(item?.stepOrder)) {
+            selfAppendByStep?.set(item?.stepOrder, []);
+          }
+          selfAppendByStep?.get(item?.stepOrder)?.push(item);
+        });
+        selfAppendByStep?.forEach((items, stepOrder) => {
+          const moduleIndex = stepOrder - 1;
+          const module = modules?.[moduleIndex];
+
         });
       }
 
       workflowArray?.forEach((item, index) => {
         let itemType = '';
-        if (item.actionType === 'I') {
+        if (item?.actionType === 'I') {
           itemType = 'Input Source';
-        } else if (item.saveAsVersion) {
-          itemType = `${item.actionType === 'I' ? 'Input' : item.actionType === 'A' ? 'Append' : item.actionType === 'M' ? 'Match' : 'Suppress'} Version`;
+        } else if (item?.actionType === 'A' && item?.sourceType === 'Self') {
+          itemType = 'Self-Append Source';
+        } else if (item?.saveAsVersion) {
+          itemType = `${item?.actionType === 'I' ? 'Input' : item?.actionType === 'A' ? 'Append' : item?.actionType === 'M' ? 'Match' : 'Suppress'} Version`;
         } else {
-          itemType = `${item.actionType === 'A' ? 'Append' : item.actionType === 'M' ? 'Match' : 'Suppress'} Config`;
+          itemType = `${item?.actionType === 'A' ? 'Append' : item?.actionType === 'M' ? 'Match' : 'Suppress'} Config`;
         }
 
         
@@ -4911,59 +5761,191 @@ const RequestCreationPage: React.FC = () => {
   const [moduleCounter, setModuleCounter] = useState({ Append: 1, Suppression: 1, Match: 1 });
 
   // Helper function to filter available sources based on module position in workflow
-  // Ensures versions are only available to downstream modules (data flows top to bottom)
+  // Ensures versions are available to the module that created them AND all downstream modules
+  // This allows modules to see their own versions even after reordering (data flows top to bottom)
   const getAvailableSourcesForModule = useCallback((currentModuleId: string): InputSource[] => {
-    // Always include regular input sources (from Input module)
-    const availableSources: InputSource[] = [...inputSources];
+    console.log('[INPUT-VERSION] getAvailableSourcesForModule called for module:', currentModuleId);
+    console.log('[ORDER] ========== GET AVAILABLE SOURCES FOR MODULE ==========');
+    console.log('[ORDER] Current Module ID:', currentModuleId);
+    console.log('[ORDER] All modules:', modules?.map((m, idx) => `${idx}: ${m?.id} (${m?.label})`));
+
+    // CRITICAL: Separate Input module sources/versions from other sources
+    // Input module versions should be available to ALL downstream modules
+    // Other module versions should be available to the module that created them AND modules that come after them
+
+    const inputModuleSources: InputSource[] = [];
+    const otherModuleVersions: InputSource[] = [];
+
+    allAvailableInputSources?.forEach(source => {
+      const createdByModuleId = (source as any)?.createdByModuleId;
+      const createdByModuleIdStr = String(createdByModuleId || '');
+
+      console.log('[ORDER] Processing source:', source?.sourceName);
+      console.log('[ORDER]   - isVersioned:', source?.isVersioned);
+      console.log('[ORDER]   - createdByModuleId:', createdByModuleId);
+      console.log('[ORDER]   - headers:', source?.headers);
+      console.log('[ORDER]   - selectedHeaders:', source?.selectedHeaders);
+      console.log('[ORDER]   - Number of headers:', source?.headers?.length);
+      console.log('[ORDER]   - Number of selectedHeaders:', source?.selectedHeaders?.length);
+
+      console.log('[DRAG] Processing source:', source?.sourceName);
+      console.log('[DRAG]   - isVersioned:', source?.isVersioned);
+      console.log('[DRAG]   - sourceModule:', (source as any)?.sourceModule);
+      console.log('[DRAG]   - createdByModuleId:', createdByModuleId);
+
+      // Check if this is from Input module (panel1)
+      const isFromInputModule = !createdByModuleId ||
+                                createdByModuleId === 'panel1' ||
+                                createdByModuleIdStr?.startsWith('panel1');
+
+      if (isFromInputModule) {
+        // Include ALL Input module sources and versions (no filtering)
+        console.log('[INPUT-VERSION] Including Input module source/version:', source?.sourceName, 'isVersioned:', source?.isVersioned);
+        console.log('[ORDER]   ✓ INCLUDED - Input module source/version (always available)');
+        console.log('[DRAG]   ✓ INCLUDED - Input module source/version');
+        inputModuleSources?.push(source);
+      } else if (source?.isVersioned) {
+        // This is a version from another module (Append/Match/Suppress)
+        // Will apply upstream filtering logic below
+        console.log('[INPUT-VERSION] Found other module version:', source?.sourceName, 'createdBy:', createdByModuleId);
+        console.log('[ORDER]   → Will check if upstream (deferred)');
+        console.log('[DRAG]   → Will check if upstream or same module');
+        otherModuleVersions?.push(source);
+      } else {
+        console.log('[ORDER]   ✗ SKIPPED - Not from Input module and not a version');
+        console.log('[DRAG]   ✗ SKIPPED - Not from Input module and not a version');
+      }
+    });
+
+    console.log('[INPUT-VERSION] Input module sources (including versions):', inputModuleSources?.length);
+    console.log('[INPUT-VERSION] Other module versions:', otherModuleVersions?.length);
+
+    // Always include ALL input module sources and versions
+    const availableSources: InputSource[] = [...inputModuleSources];
 
     // Find the current module's position in the workflow
     const currentModuleIndex = modules?.findIndex(m => m?.id === currentModuleId);
 
     if (currentModuleIndex === -1) {
-      // Module not found, return only input sources
+      // Module not found, return input sources only
+      console.warn(`[INPUT-VERSION] Module not found: ${currentModuleId}`);
       return availableSources;
     }
 
-    // Filter versioned sources to only include those from upstream modules
-    // A version is available if it was created by a module that appears BEFORE the current module
-    const upstreamVersions = versionedSources?.filter((version: any) => {
-      // Find the module that created this version
-      const creatorModuleId = version?.createdByModuleId;
-      if (!creatorModuleId) {
-        // Legacy version without creator tracking - include it for backward compatibility
-        return true;
-      }
-
-      // Find the creator module's position
-      const creatorModuleIndex = modules?.findIndex(m => m?.id === creatorModuleId);
-
-      if (creatorModuleIndex === -1) {
-        // Creator module not found, exclude this version
+    // Filter other module versions to include those from upstream modules AND the current module itself
+    // CRITICAL: A version is available if it was created by a module that appears AT OR BEFORE the current module
+    // This allows modules to see their own versions even after reordering
+    const upstreamVersions = otherModuleVersions?.filter((version: any) => {
+      // Safety check: ensure version has required properties
+      if (!version || typeof version !== 'object') {
         return false;
       }
 
-      // Include version only if it was created by an upstream module (earlier in the workflow)
-      return creatorModuleIndex < currentModuleIndex;
+      // Find the module that created this version
+      const creatorModuleId = version?.createdByModuleId;
+
+      if (!creatorModuleId) {
+        // Already filtered out in the loop above, but double-check
+        console.warn('[INPUT-VERSION] Version missing createdByModuleId:', version?.id, version?.versionName);
+        return false;
+      }
+
+      // Find the creator module's current position in the workflow
+      const creatorModuleIndex = modules?.findIndex(m => m?.id === creatorModuleId);
+
+      if (creatorModuleIndex === -1) {
+        // Creator module not found (might have been deleted)
+        console.warn(`[INPUT-VERSION] Creator module not found for version: ${version?.versionName}, creatorModuleId: ${creatorModuleId}`);
+        return false;
+      }
+
+      // CRITICAL FILTERING LOGIC:
+      // Include version if creator module appears at OR BEFORE current module
+      // This allows modules to see their own versions AND versions from upstream modules
+      const isUpstreamOrSame = creatorModuleIndex <= currentModuleIndex;
+
+      console.log('[INPUT-VERSION] Version:', version?.versionName, 'creatorIndex:', creatorModuleIndex, 'currentIndex:', currentModuleIndex, 'isUpstreamOrSame:', isUpstreamOrSame);
+      console.log('[ORDER] Checking version:', version?.versionName);
+      console.log('[ORDER]   - Creator module:', creatorModuleId, 'at index:', creatorModuleIndex);
+      console.log('[ORDER]   - Current module:', currentModuleId, 'at index:', currentModuleIndex);
+      console.log('[ORDER]   - Is upstream or same?', creatorModuleIndex, '<=', currentModuleIndex, '=', isUpstreamOrSame);
+
+      console.log('[DRAG] === VERSION FILTER CHECK ===');
+      console.log('[DRAG] Version:', version?.versionName);
+      console.log('[DRAG] Version ID:', version?.id);
+      console.log('[DRAG] Creator module:', creatorModuleId, '| Creator index:', creatorModuleIndex);
+      console.log('[DRAG] Current module:', currentModuleId, '| Current index:', currentModuleIndex);
+      console.log('[DRAG] Comparison:', creatorModuleIndex, '<=', currentModuleIndex, '=', isUpstreamOrSame);
+
+      if (isUpstreamOrSame) {
+        if (creatorModuleIndex === currentModuleIndex) {
+          console.log('[ORDER]   ✓ INCLUDED - Version from same module (own version)');
+          console.log('[DRAG]   ✓✓✓ INCLUDED - Own version (same module)');
+        } else {
+          console.log('[ORDER]   ✓ INCLUDED - Version from upstream module');
+          console.log('[DRAG]   ✓ INCLUDED - Upstream version');
+        }
+      } else {
+        console.log('[ORDER]   ✗ EXCLUDED - Version from downstream module');
+        console.log('[DRAG]   ✗✗✗ EXCLUDED - Downstream version');
+      }
+
+      return isUpstreamOrSame;
+    }) || [];
+
+    // Return combined sources: ALL input module sources/versions + filtered upstream versions from other modules
+    const result = [...availableSources, ...upstreamVersions];
+
+    console.log('[INPUT-VERSION] getAvailableSourcesForModule result for', currentModuleId, ':', result?.length, 'sources');
+    console.log('[ORDER] ========== FINAL RESULT ==========');
+    console.log('[ORDER] Available sources for module', currentModuleId, '(', result?.length, 'total):');
+    result?.forEach(s => {
+      console.log('[INPUT-VERSION] - Source:', s?.sourceName, 'isVersioned:', s?.isVersioned, 'Headers:', s?.headers?.length);
+      console.log('[ORDER]   -', s?.sourceName, '| isVersioned:', s?.isVersioned, '| createdBy:', (s as any)?.createdByModuleId, '| headers:', s?.headers);
     });
 
-    return [...availableSources, ...upstreamVersions];
-  }, [inputSources, versionedSources, modules]);
+    return result;
+  }, [allAvailableInputSources, versionedSources, modules]);
 
   // Memoize available sources for each module to prevent infinite re-render loops
   // This ensures stable array references across renders when contents haven't changed
+  // CRITICAL: This recalculates whenever modules, inputSources, or versionedSources change
   const memoizedModuleAvailableSources = useMemo(() => {
-    console.log('=== Index.tsx: Recalculating memoizedModuleAvailableSources ===');
-    console.log('modules:', modules);
-    console.log('inputSources:', inputSources);
-    console.log('versionedSources:', versionedSources);
+    console.log('[SELF] === memoizedModuleAvailableSources RECALCULATING ===');
+    console.log('[SELF] Total modules:', modules?.length);
+    console.log('[SELF] Total inputSources:', inputSources?.length);
+    console.log('[SELF] Total versionedSources:', versionedSources?.length);
+
+    console.log('[DRAG] ========== RECALCULATING AVAILABLE SOURCES ==========');
+    console.log('[DRAG] Current module order:', modules?.map((m, idx) => `${idx}: ${m?.id} (${m?.label})`));
+    console.log('[DRAG] Total versioned sources:', versionedSources?.length);
+    versionedSources?.forEach(v => {
+      console.log(`[DRAG]   Version: ${v?.sourceName}`);
+      console.log(`[DRAG]     - ID: ${v?.id}`);
+      console.log(`[DRAG]     - createdByModuleId: ${(v as any)?.createdByModuleId}`);
+      console.log(`[DRAG]     - sourceModule: ${(v as any)?.sourceModule}`);
+      console.log(`[DRAG]     - isVersioned: ${v?.isVersioned}`);
+    });
 
     const sourcesMap: Record<string, InputSource[]> = {};
-    modules?.forEach(module => {
+
+    modules?.forEach((module, index) => {
       if (module?.id) {
-        sourcesMap[module.id] = getAvailableSourcesForModule(module.id);
+        console.log(`[DRAG] --- Processing module: ${module?.id} (${module?.label}) at index ${index} ---`);
+        const availableSources = getAvailableSourcesForModule(module?.id);
+        sourcesMap[module?.id] = availableSources;
+
+        console.log(`[SELF] Module ${module?.id} (index ${index}): ${availableSources?.length} available sources`);
+        console.log(`[DRAG] Module ${module?.id} has ${availableSources?.length} available sources`);
+        availableSources?.forEach(s => {
+          console.log(`[SELF]   - ${s?.sourceName}: ${s?.headers?.length} headers`, s?.headers);
+          console.log(`[DRAG]     - ${s?.sourceName} | isVersioned: ${s?.isVersioned} | createdBy: ${(s as any)?.createdByModuleId}`);
+        });
       }
     });
-    console.log('=== Index.tsx: sourcesMap result ===', sourcesMap);
+
+    console.log('[SELF] === memoizedModuleAvailableSources DONE ===');
+    console.log('[DRAG] ========== RECALCULATION COMPLETE ==========');
     return sourcesMap;
   }, [modules, getAvailableSourcesForModule]);
 
@@ -4996,12 +5978,14 @@ const RequestCreationPage: React.FC = () => {
       return; // Not a duplicatable module
     }
 
-    // Create duplicated module with default data only
-    const duplicatedModule = {
-      ...originalModule,
+    // Create duplicated module with only structural properties (no data/config)
+    const duplicatedModule: any = {
       id: newId,
       title: newTitle,
-      description: originalModule.description,
+      description: originalModule?.description,
+      icon: originalModule?.icon,
+      color: originalModule?.color,
+      isDraggable: originalModule?.isDraggable,
     };
 
     // Insert the duplicated module right after the original
@@ -5020,21 +6004,51 @@ const RequestCreationPage: React.FC = () => {
     }
 
     // Remove the module from the modules array
-    const newModules = modules?.filter(module => module.id !== moduleId);
+    const newModules = modules?.filter(module => module?.id !== moduleId);
     setModules(newModules);
 
     // Remove from expanded state if it was expanded
     setExpanded(prev => prev?.filter(id => id !== moduleId));
+
+    // Clean up module-specific field mappings to avoid memory leaks
+    const moduleIdStr = String(moduleId || '');
+    if (moduleIdStr?.startsWith('panel2_')) {
+      setAppendModuleFieldMappings(prev => {
+        const newMappings = { ...prev };
+        delete newMappings?.[moduleId];
+        return newMappings;
+      });
+    } else if (moduleIdStr?.startsWith('panel3_')) {
+      setSuppressModuleFieldMappings(prev => {
+        const newMappings = { ...prev };
+        delete newMappings?.[moduleId];
+        return newMappings;
+      });
+    } else if (moduleIdStr?.startsWith('panel4_')) {
+      setMatchModuleFieldMappings(prev => {
+        const newMappings = { ...prev };
+        delete newMappings?.[moduleId];
+        return newMappings;
+      });
+    }
   };
 
   // Handle drag end for draggable modules (panels 2, 3, 4)
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (over && active.id !== over.id) {
+    console.log('[DRAG] ========== DRAG OPERATION START ==========');
+    console.log('[DRAG] Active module:', active?.id);
+    console.log('[DRAG] Over module:', over?.id);
+
+    if (over && active?.id !== over?.id) {
       setModules((items) => {
-        const oldIndex = items?.findIndex((item) => item.id === active.id);
-        const newIndex = items?.findIndex((item) => item.id === over.id);
+        const oldIndex = items?.findIndex((item) => item?.id === active?.id);
+        const newIndex = items?.findIndex((item) => item?.id === over?.id);
+
+        console.log('[DRAG] Old index:', oldIndex, '| Module:', items?.[oldIndex]?.label);
+        console.log('[DRAG] New index:', newIndex, '| Module:', items?.[newIndex]?.label);
+        console.log('[DRAG] Current module order:', items?.map((m, idx) => `${idx}: ${m?.id} (${m?.label})`));
 
         // Only allow dragging within the draggable modules
         const isDraggableModule = (moduleId: string) => {
@@ -5042,13 +6056,22 @@ const RequestCreationPage: React.FC = () => {
           return moduleIdStr?.startsWith('panel2') || moduleIdStr?.startsWith('panel3') || moduleIdStr?.startsWith('panel4');
         };
 
-        if (isDraggableModule(active.id as string) && isDraggableModule(over.id as string)) {
+        if (isDraggableModule(active?.id as string) && isDraggableModule(over?.id as string)) {
+          console.log('[DRAG] Both modules are draggable - proceeding with validations');
+
+          // Log all versioned sources BEFORE the move
+          console.log('[DRAG] === VERSIONED SOURCES BEFORE MOVE ===');
+          versionedSources?.forEach(v => {
+            console.log(`[DRAG]   - ${v?.sourceName} | createdBy: ${(v as any)?.createdByModuleId} | sourceModule: ${(v as any)?.sourceModule}`);
+          });
+
           // Validate the move before executing - check versioned sources
           const versionValidation = validateModuleMove(oldIndex, newIndex, modules, versionedSources);
 
-          if (!versionValidation.canMove) {
+          if (!versionValidation?.canMove) {
+            console.log('[DRAG] ❌ VALIDATION FAILED - Version dependencies:', versionValidation?.error);
             // Show error message with better formatting
-            const errorMessage = `🚫 Module Reordering Not Allowed\n\n${versionValidation.error}\n\n💡 Tip: You can edit or delete the dependent versions first, then reorder the modules.`;
+            const errorMessage = `🚫 Module Reordering Not Allowed\n\n${versionValidation?.error}\n\n💡 Tip: You can edit or delete the dependent versions first, then reorder the modules.`;
             alert(errorMessage);
             return items; // Return unchanged items
           }
@@ -5066,17 +6089,25 @@ const RequestCreationPage: React.FC = () => {
             }
           );
 
-          if (!customSourceValidation.canMove) {
+          if (!customSourceValidation?.canMove) {
+            console.log('[DRAG] ❌ VALIDATION FAILED - Custom source dependencies:', customSourceValidation?.error);
             // Show error message with better formatting
-            const errorMessage = `🚫 Module Reordering Not Allowed\n\n${customSourceValidation.error}\n\n💡 Tip: You can remove the custom source from the dependent module first, then reorder the modules.`;
+            const errorMessage = `🚫 Module Reordering Not Allowed\n\n${customSourceValidation?.error}\n\n💡 Tip: You can remove the custom source from the dependent module first, then reorder the modules.`;
             alert(errorMessage);
             return items; // Return unchanged items
           }
 
-          return arrayMove(items, oldIndex, newIndex);
+          console.log('[DRAG] ✓ All validations passed - executing reorder');
+          const newItems = arrayMove(items, oldIndex, newIndex);
+          console.log('[DRAG] NEW module order:', newItems?.map((m, idx) => `${idx}: ${m?.id} (${m?.label})`));
+          console.log('[DRAG] ========== DRAG OPERATION COMPLETE ==========');
+          return newItems;
         }
+        console.log('[DRAG] Not draggable modules - no change');
         return items;
       });
+    } else {
+      console.log('[DRAG] No drag operation (same position or no target)');
     }
   };
 
@@ -5090,25 +6121,49 @@ const RequestCreationPage: React.FC = () => {
   const renderModuleContent = (moduleId: string) => {
     if (moduleId === 'panel1') {
       return (
-        <InputModule 
-          hideButton={true} 
-          onSourcesChange={setInputSources} 
+        <InputModule
+          hideButton={true}
+          onSourcesChange={setInputSources}
           initialSources={inputSources}
           apiSources={apiSources}
           sourcesLoading={sourcesLoading}
           versionCounters={versionCounters}
           onUpdateVersionCounter={handleUpdateVersionCounter}
+          tableDictionary={tableDictionary}
         />
       );
     } else if (moduleId === 'panel2' || String(moduleId || '').startsWith('panel2_')) {
-      // Calculate the stepOrder for this module based on its position in the modules array
-      const moduleStepOrder = modules?.findIndex(m => m?.id === moduleId) + 1;
+      // IMPORTANT: Filter configs by createdByModuleId, NOT by stepOrder
+      // stepOrder changes after module reordering, but createdByModuleId is permanent
+      const moduleInitialConfigs = initialAppendConfigs?.filter(c => c?.createdByModuleId === moduleId);
+      const configsToPass = initialConfigsConsumedRef.current ? undefined : moduleInitialConfigs;
 
-      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
-      const moduleInitialConfigs = initialAppendConfigs?.filter(c => c?.stepOrder === moduleStepOrder);
+      console.log('[DELETE] Rendering AppendModule for', moduleId);
+      console.log('[BACK] Filtering Append configs for module:', moduleId, '| Found:', moduleInitialConfigs?.length, 'configs');
+      console.log('[DELETE] initialConfigsConsumedRef.current:', initialConfigsConsumedRef.current);
+      console.log('[DELETE] moduleInitialConfigs count:', moduleInitialConfigs?.length);
+      console.log('[DELETE] configsToPass:', configsToPass);
 
       // Filter available sources to only include upstream sources (versions from earlier modules)
       const moduleAvailableSources = memoizedModuleAvailableSources[moduleId] || [];
+
+      console.log('[DRAG] === APPEND MODULE RENDERING ===');
+      console.log('[DRAG] Module ID:', moduleId);
+      console.log('[DRAG] All versioned sources:', versionedSources?.length);
+      console.log('[DRAG] Append versions before filter:', versionedSources?.filter(v => v?.sourceModule === 'Append')?.length);
+
+      // CRITICAL: Filter versions by createdByModuleId, NOT by stepOrder
+      // stepOrder is stale after reordering - use createdByModuleId to match this module instance
+      const filteredAppendVersions = versionedSources?.filter(v => {
+        const match = v?.sourceModule === 'Append' && (v as any)?.createdByModuleId === moduleId;
+        console.log(`[DRAG]   Version: ${v?.sourceName} | sourceModule: ${v?.sourceModule} | createdByModuleId: ${(v as any)?.createdByModuleId} | moduleId: ${moduleId} | match: ${match}`);
+        return match;
+      });
+
+      console.log('[DRAG] Filtered Append versions for', moduleId, ':', filteredAppendVersions?.length);
+      filteredAppendVersions?.forEach(v => {
+        console.log(`[DRAG]   - ${v?.sourceName} | stepOrder: ${(v as any)?.stepOrder} | createdByModuleId: ${(v as any)?.createdByModuleId}`);
+      });
 
       return <AppendModule
         moduleId={moduleId}
@@ -5116,10 +6171,10 @@ const RequestCreationPage: React.FC = () => {
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, fieldMappings, appendFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, fieldMappings, appendFields)
         }
-        initialConfigs={moduleInitialConfigs}
+        initialConfigs={configsToPass}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources?.filter(v => v?.sourceModule === 'Append' && v?.stepOrder === moduleStepOrder)}
+        versionedSources={filteredAppendVersions}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onUpdateVersion={handleUpdateVersion}
@@ -5129,18 +6184,38 @@ const RequestCreationPage: React.FC = () => {
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
         onConfigurationsChange={getCachedAppendHandler(moduleId)}
-        moduleFieldMappings={appendModuleFieldMappings}
-        onModuleFieldMappingsChange={setAppendModuleFieldMappings}
+        moduleFieldMappings={appendModuleFieldMappings?.[moduleId] || []}
+        onModuleFieldMappingsChange={(mappings: any[]) => {
+          setAppendModuleFieldMappings(prev => ({ ...prev, [moduleId]: mappings }));
+        }}
+        tableDictionary={tableDictionary}
       />;
     } else if (moduleId === 'panel3' || String(moduleId || '').startsWith('panel3_')) {
-      // Calculate the stepOrder for this module based on its position in the modules array
-      const moduleStepOrder = modules?.findIndex(m => m?.id === moduleId) + 1;
-
-      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
-      const moduleInitialConfigs = initialSuppressConfigs?.filter(c => c?.stepOrder === moduleStepOrder);
+      // IMPORTANT: Filter configs by createdByModuleId, NOT by stepOrder
+      // stepOrder changes after module reordering, but createdByModuleId is permanent
+      const moduleInitialConfigs = initialSuppressConfigs?.filter(c => c?.createdByModuleId === moduleId);
 
       // Filter available sources to only include upstream sources (versions from earlier modules)
       const moduleAvailableSources = memoizedModuleAvailableSources[moduleId] || [];
+
+      console.log('[DRAG] === SUPPRESS MODULE RENDERING ===');
+      console.log('[DRAG] Module ID:', moduleId);
+      console.log('[BACK] Filtering Suppress configs for module:', moduleId, '| Found:', moduleInitialConfigs?.length, 'configs');
+      console.log('[DRAG] All versioned sources:', versionedSources?.length);
+      console.log('[DRAG] Suppress versions before filter:', versionedSources?.filter(v => v?.sourceModule === 'Suppress')?.length);
+
+      // CRITICAL: Filter versions by createdByModuleId, NOT by stepOrder
+      // stepOrder is stale after reordering - use createdByModuleId to match this module instance
+      const filteredSuppressVersions = versionedSources?.filter(v => {
+        const match = v?.sourceModule === 'Suppress' && (v as any)?.createdByModuleId === moduleId;
+        console.log(`[DRAG]   Version: ${v?.sourceName} | sourceModule: ${v?.sourceModule} | createdByModuleId: ${(v as any)?.createdByModuleId} | moduleId: ${moduleId} | match: ${match}`);
+        return match;
+      });
+
+      console.log('[DRAG] Filtered Suppress versions for', moduleId, ':', filteredSuppressVersions?.length);
+      filteredSuppressVersions?.forEach(v => {
+        console.log(`[DRAG]   - ${v?.sourceName} | stepOrder: ${(v as any)?.stepOrder} | createdByModuleId: ${(v as any)?.createdByModuleId}`);
+      });
 
       return <SuppressModule
         moduleId={moduleId}
@@ -5148,10 +6223,10 @@ const RequestCreationPage: React.FC = () => {
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields)
         }
-        initialConfigs={moduleInitialConfigs}
+        initialConfigs={initialConfigsConsumedRef.current ? undefined : moduleInitialConfigs}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources?.filter(v => v?.sourceModule === 'Suppress' && v?.stepOrder === moduleStepOrder)}
+        versionedSources={filteredSuppressVersions}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onUpdateVersion={handleUpdateVersion}
@@ -5162,18 +6237,38 @@ const RequestCreationPage: React.FC = () => {
         onAddSharedCustomSource={(source) => handleAddSharedCustomSource(source, moduleId)}
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
-        moduleFieldMappings={suppressModuleFieldMappings}
-        onModuleFieldMappingsChange={setSuppressModuleFieldMappings}
+        moduleFieldMappings={suppressModuleFieldMappings?.[moduleId] || []}
+        onModuleFieldMappingsChange={(mappings: any[]) => {
+          setSuppressModuleFieldMappings(prev => ({ ...prev, [moduleId]: mappings }));
+        }}
+        tableDictionary={tableDictionary}
       />;
     } else if (moduleId === 'panel4' || String(moduleId || '').startsWith('panel4_')) {
-      // Calculate the stepOrder for this module based on its position in the modules array
-      const moduleStepOrder = modules?.findIndex(m => m?.id === moduleId) + 1;
-
-      // For edit mode: filter configs by stepOrder to show only configs belonging to this module
-      const moduleInitialConfigs = initialMatchConfigs?.filter(c => c?.stepOrder === moduleStepOrder);
+      // IMPORTANT: Filter configs by createdByModuleId, NOT by stepOrder
+      // stepOrder changes after module reordering, but createdByModuleId is permanent
+      const moduleInitialConfigs = initialMatchConfigs?.filter(c => c?.createdByModuleId === moduleId);
 
       // Filter available sources to only include upstream sources (versions from earlier modules)
       const moduleAvailableSources = memoizedModuleAvailableSources[moduleId] || [];
+
+      console.log('[DRAG] === MATCH MODULE RENDERING ===');
+      console.log('[DRAG] Module ID:', moduleId);
+      console.log('[BACK] Filtering Match configs for module:', moduleId, '| Found:', moduleInitialConfigs?.length, 'configs');
+      console.log('[DRAG] All versioned sources:', versionedSources?.length);
+      console.log('[DRAG] Match versions before filter:', versionedSources?.filter(v => v?.sourceModule === 'Match')?.length);
+
+      // CRITICAL: Filter versions by createdByModuleId, NOT by stepOrder
+      // stepOrder is stale after reordering - use createdByModuleId to match this module instance
+      const filteredMatchVersions = versionedSources?.filter(v => {
+        const match = v?.sourceModule === 'Match' && (v as any)?.createdByModuleId === moduleId;
+        console.log(`[DRAG]   Version: ${v?.sourceName} | sourceModule: ${v?.sourceModule} | createdByModuleId: ${(v as any)?.createdByModuleId} | moduleId: ${moduleId} | match: ${match}`);
+        return match;
+      });
+
+      console.log('[DRAG] Filtered Match versions for', moduleId, ':', filteredMatchVersions?.length);
+      filteredMatchVersions?.forEach(v => {
+        console.log(`[DRAG]   - ${v?.sourceName} | stepOrder: ${(v as any)?.stepOrder} | createdByModuleId: ${(v as any)?.createdByModuleId}`);
+      });
 
       return <MatchModule
         moduleId={moduleId}
@@ -5181,10 +6276,10 @@ const RequestCreationPage: React.FC = () => {
         onCreateVersionedSource={(sourceModule, baseInputSources, operationSources, operationFields, addFields) =>
           handleCreateVersionedSource(sourceModule, moduleId, baseInputSources, operationSources, operationFields, undefined, undefined, addFields)
         }
-        initialConfigs={moduleInitialConfigs}
+        initialConfigs={initialConfigsConsumedRef.current ? undefined : moduleInitialConfigs}
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
-        versionedSources={versionedSources?.filter(v => v?.sourceModule === 'Match' && v?.stepOrder === moduleStepOrder)}
+        versionedSources={filteredMatchVersions}
         getSourceNameById={getSourceNameById}
         onUpdateVersionName={handleUpdateVersionName}
         onDeleteVersion={handleDeleteVersion}
@@ -5195,14 +6290,24 @@ const RequestCreationPage: React.FC = () => {
         onEditSharedCustomSource={handleEditSharedCustomSource}
         onDeleteSharedCustomSource={handleDeleteSharedCustomSource}
         onConfigurationsChange={getCachedMatchHandler(moduleId)}
-        moduleFieldMappings={matchModuleFieldMappings}
-        onModuleFieldMappingsChange={setMatchModuleFieldMappings}
+        moduleFieldMappings={matchModuleFieldMappings?.[moduleId] || []}
+        onModuleFieldMappingsChange={(mappings: any[]) => {
+          setMatchModuleFieldMappings(prev => ({ ...prev, [moduleId]: mappings }));
+        }}
+        tableDictionary={tableDictionary}
       />;
     } else if (moduleId === 'panel5') {
       // Stats Module Content - Redesigned to match other modules
 
-      // Filter available sources to only include upstream sources (versions from earlier modules)
-      const moduleAvailableSources = memoizedModuleAvailableSources[moduleId] || [];
+      // CRITICAL: Filter available sources to only include upstream sources (versions from earlier modules)
+      // This ensures versions from downstream modules (Step 6, 7, etc.) don't appear in Stats (Step 5)
+      const moduleAvailableSources = memoizedModuleAvailableSources?.[moduleId] || [];
+
+      // Filter sources based on search text
+      // IMPORTANT: Use moduleAvailableSources (filtered upstream only), NOT allAvailableInputSources
+      const filteredStatsInputSources = moduleAvailableSources?.filter(source =>
+        source?.sourceName?.toLowerCase()?.includes(statsInputSourcesSearch?.toLowerCase())
+      ) || [];
 
       // Check if input sources are available
       if (moduleAvailableSources?.length === 0) {
@@ -6131,7 +7236,7 @@ const RequestCreationPage: React.FC = () => {
           </Box>
           <Stack direction="row" spacing={1.5} alignItems="center">
             {/* View Mode Toggle - Simplified */}
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.secondary' }}>
+            {/* <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.secondary' }}>
               Step View
             </Typography>
             <Switch
@@ -6147,7 +7252,7 @@ const RequestCreationPage: React.FC = () => {
                   backgroundColor: '#296695',
                 },
               }}
-            />
+            /> */}
             <Button
               variant="outlined"
               size="small"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -193,7 +193,15 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   const [versionName, setVersionName] = useState('');
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [availableHeaders, setAvailableHeaders] = useState<string[]>([]);
-  const [selectedHeaders, setSelectedHeaders] = useState<string[]>([]);
+  const [selectedHeaders, setSelectedHeadersInternal] = useState<string[]>([]);
+
+  // Wrapper to log all setSelectedHeaders calls
+  const setSelectedHeaders = (value: string[] | ((prev: string[]) => string[])) => {
+    const stack = new Error().stack;
+    const caller = stack?.split('\n')[2]?.trim();
+    setSelectedHeadersInternal(value);
+  };
+
   const [orderedHeaders, setOrderedHeaders] = useState<string[]>([]);
   const [combineAs, setCombineAs] = useState<'merge' | 'union' | 'intersect'>('merge');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
@@ -220,7 +228,8 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
     // API format: selectedColumns (comma-separated string) or columns (array)
     if (source?.selectedColumns && typeof source?.selectedColumns === 'string') {
-      return source.selectedColumns?.split(',').map((h: string) => h?.trim()).filter((h: string) => h?.length > 0);
+      const headers = source.selectedColumns?.split(',').map((h: string) => h?.trim()).filter((h: string) => h?.length > 0);
+      return headers;
     }
     if (source?.columns && Array.isArray(source?.columns)) {
       return source.columns;
@@ -244,6 +253,11 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   const [mappingSelectedColumns, setMappingSelectedColumns] = useState<string[]>([]);
   const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
+  // Track if we're loading initial data in edit mode to prevent stale state reads
+  const isLoadingEditDataRef = useRef(false);
+  // Track which version we've already loaded to prevent re-loading on availableSources changes
+  const loadedVersionIdRef = useRef<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -254,37 +268,47 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
   // Prefill form when editing existing version
   useEffect(() => {
     if (open && editingVersion) {
-      setVersionName(editingVersion.sourceName);
+      // Check if we've already loaded this version to prevent re-loading
+      const versionId = editingVersion?.id || editingVersion?.sourceName;
+
+      if (loadedVersionIdRef.current === versionId) {
+        return;
+      }
+
+      loadedVersionIdRef.current = versionId; // Mark this version as loaded
+
+      isLoadingEditDataRef.current = true; // Set flag to prevent stale reads in other useEffects
+
+      setVersionName(editingVersion?.sourceName);
 
       // Handle versionConfig if it exists
-      if (editingVersion.versionConfig) {
+      if (editingVersion?.versionConfig) {
         const config = editingVersion.versionConfig;
-        setSelectedSources(config.selectedSources || []);
-        setCombineAs(config.combineAs || 'merge');
-        setFieldMappings(config.fieldMappings || []);
+        setSelectedSources(config?.selectedSources || []);
+        setCombineAs(config?.combineAs || 'merge');
+        setFieldMappings(config?.fieldMappings || []);
       }
 
       // Handle configJson from API format
-      if ((editingVersion as any).configJson) {
+      if ((editingVersion as any)?.configJson) {
         const configJson = (editingVersion as any).configJson;
-        const inputSources = configJson.input_sources || [];
+        const inputSources = configJson?.input_sources || [];
 
         // Map input sources to IDs
         const sourceIds = inputSources?.map((src: any) => {
-          const found = availableSources?.find(s => s.sourceName === src.source_name);
-          return found?.id || src.source_name;
+          const found = availableSources?.find(s => s?.sourceName === src?.source_name);
+          return found?.id || src?.source_name;
         });
         setSelectedSources(sourceIds);
 
         // Set operation/combineAs
         // IMPORTANT: Use combine_as if available (preserves exact UI state), otherwise infer from operation
-        const operation = configJson.operation;
-        const storedCombineAs = configJson.combine_as;
+        const operation = configJson?.operation;
+        const storedCombineAs = configJson?.combine_as;
 
         if (storedCombineAs) {
           // Use the stored UI value directly (most accurate)
           setCombineAs(storedCombineAs);
-          console.log('[InputVersionModal] Using stored combine_as value:', storedCombineAs);
         } else {
           // Fallback: Infer from operation (backward compatibility)
           // Map API operations to UI values:
@@ -303,11 +327,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
             // Direct mapping for any other value (like 'merge')
             setCombineAs(operation);
           }
-          console.log('[InputVersionModal] Inferred combine_as from operation:', operation, '→', combineAs);
-        }
+          }
 
         // Set merge_keys as selected and ordered headers
-        const mergeKeys = configJson.merge_keys || [];
+        const mergeKeys = configJson?.merge_keys || [];
         setSelectedHeaders(mergeKeys);
         setOrderedHeaders(mergeKeys);
 
@@ -356,6 +379,18 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         setSelectedHeaders(headers);
         setOrderedHeaders(headers);
       }
+
+      // Clear the loading flag after a short delay to ensure state updates have processed
+      setTimeout(() => {
+        isLoadingEditDataRef.current = false;
+      }, 100);
+    } else if (open && !editingVersion) {
+      // Reset flags when opening in create mode
+      isLoadingEditDataRef.current = false;
+      loadedVersionIdRef.current = null;
+    } else if (!open) {
+      // Reset loaded version when modal closes
+      loadedVersionIdRef.current = null;
     }
   }, [open, editingVersion, availableSources]);
 
@@ -406,8 +441,10 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
   // Update available headers when sources change or nested fields are added
   useEffect(() => {
+
     if (selectedSources?.length > 0) {
-      const sources = availableSources?.filter(s => selectedSources?.includes(s.id));
+      const sources = availableSources?.filter(s => selectedSources?.includes(s?.id));
+
       const headersSet = new Set<string>();
 
       if (sources?.length === 1) {
@@ -471,7 +508,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                   headerMap.delete(columnLower);
                   // Add the mapped field name instead
                   headerMap.set(mapping.fieldName?.toLowerCase(), mapping.fieldName);
-                  console.log(`[InputVersionModal] Applied mapping for source "${source.sourceName}": "${columnName}" → "${mapping.fieldName}"`);
                 }
               }
             });
@@ -493,30 +529,30 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
 
           if (existsInAllSources) {
             headersSet.add(header);
-            console.log(`[InputVersionModal] Common header found: "${header}"`);
           }
         });
       }
 
       const headers = Array.from(headersSet).sort();
-
-      // Log for debugging
-      console.log('Version Modal - Selected Sources:', selectedSources?.length);
-      console.log('Version Modal - Field Mappings:', fieldMappings);
-      console.log('Version Modal - Common Headers (including nested and mappings):', headers);
-
       setAvailableHeaders(headers);
 
       // IMPORTANT FIX: Only auto-select all headers if NOT in edit mode
       // In edit mode, preserve the previously selected headers
       if (!editingVersion) {
-        // Create mode: Auto-select all available headers
+      // Create mode: Auto-select all available headers
         setSelectedHeaders(headers);
         setOrderedHeaders(headers);
       } else {
+        
+        // Skip filtering if we're still loading edit data (prevents stale state reads)
+        if (isLoadingEditDataRef.current) {
+          return;
+        }
+
         // Edit mode: Only update if current selection is invalid
         // Keep headers that are still available, remove headers that are no longer available
         const validSelectedHeaders = selectedHeaders?.filter(h => headers?.includes(h));
+
         if (validSelectedHeaders?.length !== selectedHeaders?.length) {
           setSelectedHeaders(validSelectedHeaders);
           setOrderedHeaders(orderedHeaders?.filter(h => validSelectedHeaders?.includes(h)));
@@ -568,15 +604,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return columns;
     }
 
-    // Debug logging
-    console.log('🔍 Field Mapping - getAvailableColumns Debug:');
-    console.log('  mappingSelectedSources:', mappingSelectedSources);
-    console.log('  nestedFields:', nestedFields);
-    console.log('  nestedFields filtered by sourceId:', mappingSelectedSources?.map(sid => ({
-      sourceId: sid,
-      matchingNestedFields: nestedFields?.filter(nf => nf.sourceId === sid)
-    })));
-
     if (mappingSelectedSources?.length === 1) {
       // If only one source selected, show all columns from that source (including nested fields)
       const sourceId = mappingSelectedSources[0];
@@ -592,10 +619,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         });
         // Add nested fields for this source
         const matchingNestedFields = nestedFields?.filter(nf => nf.sourceId === sourceId);
-        console.log('  Source:', source.sourceName, '(ID:', sourceId, ')');
-        console.log('  Regular headers count:', sourceHeaders?.length);
-        console.log('  Matching nested fields:', matchingNestedFields);
-
         matchingNestedFields?.forEach(nf => {
           columns?.push({
             value: `${sourceId}::${nf.fieldName}`,
@@ -603,7 +626,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
           });
         });
 
-        console.log('  Total columns (after nested):', columns?.length);
       }
     } else {
       // If multiple sources selected, show ALL columns from ALL sources (union - including nested fields)
@@ -799,8 +821,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
       return;
     }
 
-    console.log('✅ Version name is unique:', versionName?.trim());
-
     if (selectedSources?.length < 1) {
       setError('Please select at least 1 input source');
       return;
@@ -903,69 +923,6 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
         priority_order: orderedSelectedHeaders
       }
     };
-
-    console.log('');
-    console.log('===============================================');
-    console.log('📤 SAVING INPUT VERSION');
-    console.log('===============================================');
-    console.log('Version Name:', versionName);
-    console.log('Selected Sources:', selectedSources);
-    console.log('Selected Sources Details:', selectedSources?.map(srcId => {
-      const src = availableSources?.find(s => s.id === srcId);
-      return {
-        id: srcId,
-        name: src?.sourceName,
-        type: src?.sourceType,
-        headers: getSourceHeaders(src as any)
-      };
-    }));
-    console.log('');
-    console.log('Available Headers (before mapping):', availableHeaders);
-    console.log('Selected Headers:', selectedHeaders);
-    console.log('Ordered Headers:', orderedHeaders?.filter(h => selectedHeaders?.includes(h)));
-    console.log('');
-    console.log('Field Mappings (UI format):', fieldMappings?.length > 0 ? fieldMappings : 'None');
-    if (fieldMappings?.length > 0) {
-      fieldMappings?.forEach((mapping, idx) => {
-        console.log(`  Mapping ${idx + 1}:`, {
-          fieldName: mapping.fieldName,
-          selectedSources: mapping.selectedSources,
-          selectedColumns: mapping.selectedColumns
-        });
-      });
-    }
-    console.log('');
-    console.log('Field Mappings (API format):', field_mappings?.length > 0 ? field_mappings : 'None');
-    if (field_mappings?.length > 0) {
-      field_mappings?.forEach((mapping, idx) => {
-        console.log(`  Mapping ${idx + 1}:`, mapping);
-      });
-    }
-    console.log('');
-    console.log('Nested Fields:', nestedFields?.length > 0 ? nestedFields : 'None');
-    if (nestedFields?.length > 0) {
-      nestedFields?.forEach((field, idx) => {
-        console.log(`  Nested Field ${idx + 1}:`, {
-          sourceId: field.sourceId,
-          fieldName: field.fieldName,
-          dataType: field.dataType,
-          defaultValue: field.defaultValue
-        });
-      });
-    }
-    console.log('');
-    console.log('Combine As:', combineAs);
-    console.log('');
-    console.log('Merge Keys:', orderedSelectedHeaders);
-    console.log('Priority Order:', orderedSelectedHeaders);
-    console.log('');
-    console.log('Version Count:', currentVersionCount);
-    console.log('Internal Step Order:', internalStepOrder);
-    console.log('');
-    console.log('📦 TRANSFORMED VERSION DATA:');
-    console.log(JSON.stringify(versionData, null, 2));
-    console.log('===============================================');
-    console.log('');
 
     onSave(versionData);
 
@@ -1616,6 +1573,7 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
               <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
                 Select Headers
               </Typography>
+              {/* Debug logging at render time */}
               {selectedSources?.length > 1 && (
                 <Alert
                   key={`alert-${selectedSources?.length}-${availableHeaders?.length}`}

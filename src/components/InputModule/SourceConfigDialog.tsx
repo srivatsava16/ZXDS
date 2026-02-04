@@ -32,6 +32,7 @@ interface SourceConfigDialogProps {
   allExistingSources?: InputSource[]; // All sources from all modules for validation
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
+  tableDictionary?: any; // Table dictionary data from dictionary.php API
 }
 
 const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
@@ -43,11 +44,13 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   allExistingSources = [],
   apiSources = null,
   sourcesLoading = false,
+  tableDictionary = null,
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database' | 'Self'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
   const [sourceNameError, setSourceNameError] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [customHeadersError, setCustomHeadersError] = useState(''); // Track custom headers validation errors
 
   // Track the initial sourceType from edit mode to avoid clearing on first load
   const initialSourceTypeRef = useRef<'File' | 'Database' | 'Self' | null>(null);
@@ -55,14 +58,33 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
   const isLoadingInitialDataRef = useRef<boolean>(false);
 
   useEffect(() => {
+    console.log('[EDIT-SOURCE] SourceConfigDialog useEffect triggered');
+    console.log('[EDIT-SOURCE] open:', open);
+    console.log('[EDIT-SOURCE] initialSource:', initialSource);
+    console.log('[subSourceType] apiSources available:', !!apiSources);
+    console.log('[subSourceType] apiSources.fileSource available:', !!apiSources?.fileSource);
+
     if (initialSource) {
+      console.log('[EDIT-SOURCE] Loading initialSource data');
+      console.log('[EDIT-SOURCE] initialSource.fileSourceId:', (initialSource as any)?.fileSourceId);
+      console.log('[EDIT-SOURCE] initialSource.dataSourceId:', (initialSource as any)?.dataSourceId);
+      console.log('[EDIT-SOURCE] initialSource.subSourceType:', (initialSource as any)?.subSourceType);
+      console.log('[EDIT-SOURCE] initialSource.headers:', initialSource?.headers);
+      console.log('[EDIT-SOURCE] initialSource.selectedHeaders:', (initialSource as any)?.selectedHeaders);
+
       isLoadingInitialDataRef.current = true; // Set flag before loading
 
       // Check if this is API format (sourceType: "F") and transform it
       let sourceToLoad = initialSource;
       if ((initialSource as any).sourceType === 'F') {
+        console.log('[EDIT-SOURCE] Transforming from API format');
+        console.log('[subSourceType] About to transform, apiSources:', apiSources);
         sourceToLoad = transformFileSourceFromAPI(initialSource) as InputSource;
+        console.log('[subSourceType] After transform, sourceToLoad.subSourceType:', (sourceToLoad as any)?.subSourceType);
       }
+
+      console.log('[EDIT-SOURCE] sourceToLoad.sourceType:', sourceToLoad?.sourceType);
+      console.log('[EDIT-SOURCE] sourceToLoad:', sourceToLoad);
 
       // Only set source type if it's one of the supported dialog types
       if (sourceToLoad.sourceType === 'File' || sourceToLoad.sourceType === 'Database') {
@@ -72,15 +94,18 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       }
       setSourceData(sourceToLoad);
       setSourceNameError('');
+      setCustomHeadersError(''); // Clear custom headers error
 
       // Clear flag after a short delay to ensure all state updates are processed
       setTimeout(() => {
         isLoadingInitialDataRef.current = false;
       }, 100);
     } else {
+      console.log('[EDIT-SOURCE] No initialSource, resetting');
       setSourceType('File');
       setSourceData({});
       setSourceNameError('');
+      setCustomHeadersError(''); // Clear custom headers error
       prevSourceTypeRef.current = 'File';
       initialSourceTypeRef.current = null;
       isLoadingInitialDataRef.current = false;
@@ -107,6 +132,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     if (prevSourceTypeRef.current !== sourceType && Object.keys(sourceData).length > 0) {
       setSourceData({}); // Clear all data including source name
       setSourceNameError('');
+      setCustomHeadersError(''); // Clear custom headers error
     }
 
     prevSourceTypeRef.current = sourceType;
@@ -132,14 +158,55 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     return extension || 'CSV';
   };
 
+  // Helper function to determine subSourceType from fileSourceId
+  const getSubSourceTypeFromFileSourceId = (fileSourceId: number | string | undefined): string => {
+    if (!fileSourceId || !apiSources?.fileSource) {
+      console.log('[subSourceType] getSubSourceTypeFromFileSourceId - no fileSourceId or apiSources, returning SFTP');
+      return 'SFTP'; // Default fallback
+    }
+
+    console.log('[subSourceType] getSubSourceTypeFromFileSourceId - looking up fileSourceId:', fileSourceId);
+    const numericId = Number(fileSourceId);
+
+    // Check SFTP sources
+    const sftpSource = apiSources?.fileSource?.sftpSources?.find((s: any) => s?.id === numericId);
+    if (sftpSource) {
+      console.log('[subSourceType] Found in sftpSources, type: SFTP');
+      return 'SFTP';
+    }
+
+    // Check NFS sources
+    const nfsSource = apiSources?.fileSource?.nfsSources?.find((s: any) => s?.id === numericId);
+    if (nfsSource) {
+      console.log('[subSourceType] Found in nfsSources, type: NFS');
+      return 'NFS';
+    }
+
+    // Check AWS S3 sources
+    const awsSource = apiSources?.fileSource?.awsSources?.find((s: any) => s?.id === numericId);
+    if (awsSource) {
+      console.log('[subSourceType] Found in awsSources, type: S3');
+      return 'S3';
+    }
+
+    console.log('[subSourceType] Source not found in any category, defaulting to SFTP');
+    return 'SFTP';
+  };
+
   // Helper function to transform File source from API format to UI format (for edit mode)
   const transformFileSourceFromAPI = (apiSource: any) => {
+    console.log('[subSourceType] transformFileSourceFromAPI called');
+    console.log('[subSourceType] apiSource:', apiSource);
+    console.log('[subSourceType] apiSource.dataSourceId:', apiSource?.dataSourceId);
+    console.log('[subSourceType] apiSource.subSourceType:', apiSource?.subSourceType);
+
     // Ensure both fileName and filePath are set, using either as fallback
     const filePathValue = apiSource.filePath || apiSource.fileName || '';
     const fileNameValue = apiSource.fileName || apiSource.filePath || '';
 
     // Check if this is already in UI format
     if (apiSource.sourceType === 'File' || !apiSource.sourceType || apiSource.sourceType !== 'F') {
+      console.log('[subSourceType] Already in UI format, returning as-is');
       // Already in UI format, but ensure fileName/filePath are both set
       return {
         ...apiSource,
@@ -153,9 +220,18 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       ? apiSource.selectedColumns?.split(',').map((col: string) => col?.trim()).filter((col: string) => col?.length > 0)
       : apiSource.columns || [];
 
-      
+    // Determine subSourceType: use provided value, or derive from fileSourceId
+    let subSourceType = apiSource?.subSourceType;
+    if (!subSourceType || subSourceType?.trim() === '') {
+      console.log('[subSourceType] transformFileSourceFromAPI - subSourceType missing, deriving from dataSourceId:', apiSource?.dataSourceId);
+      console.log('[subSourceType] apiSources at transform time:', apiSources);
+      subSourceType = getSubSourceTypeFromFileSourceId(apiSource?.dataSourceId);
+      console.log('[subSourceType] Derived subSourceType:', subSourceType);
+    } else {
+      console.log('[subSourceType] transformFileSourceFromAPI - using existing subSourceType:', subSourceType);
+    }
 
-    return {
+    const transformedSource = {
       id: apiSource.id || Date.now().toString(),
       sourceType: 'File',
       sourceName: apiSource.sourceName,
@@ -171,8 +247,13 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       //extras
       filterJson: apiSource?.filterJson || null, // Use as-is (field names already in correct format)
       customHeaders: apiSource?.customHeaders || '',
-      subSourceType: apiSource?.subSourceType || ''
+      subSourceType: subSourceType
     };
+
+    console.log('[subSourceType] transformedSource.subSourceType:', transformedSource.subSourceType);
+    console.log('[subSourceType] transformedSource.fileSourceId:', transformedSource.fileSourceId);
+
+    return transformedSource;
   };
 
   // Helper function to transform File source to API format
@@ -217,6 +298,12 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     setSourceNameError(nameError);
 
     if (nameError) {
+      return;
+    }
+
+    // Validation: Check for custom headers errors
+    if (customHeadersError) {
+      setValidationError(`Custom Headers Error: ${customHeadersError}`);
       return;
     }
 
@@ -293,6 +380,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
       setSourceData({});
       setSourceType('File');
       setSourceNameError('');
+      setCustomHeadersError(''); // Clear custom headers error
     }
   };
 
@@ -384,6 +472,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
             sourceNameError={sourceNameError}
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
+            onValidationError={setCustomHeadersError} // Track custom headers validation errors
           />
         ) : (
           <DatabaseSourceConfig
@@ -400,6 +489,7 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
             sourcesLoading={sourcesLoading}
             sourceNameError={sourceNameError}
             allExistingSources={allExistingSources?.length > 0 ? allExistingSources : existingSources}
+            tableDictionary={tableDictionary}
           />
         )}
       </DialogContent>

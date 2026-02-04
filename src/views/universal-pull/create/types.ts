@@ -96,9 +96,9 @@ export interface VersionedSource extends InputSource {
   createdByModuleId: string;
   baseInputSources: string[];
   operationSources: string[];
-  operationFields?: string[];
-  appendFields?: string[];  // Fields to Append for Append module
-  addFields?: string[];     // Add Fields for Match module
+  operationFields?: string[];  // Match Keys (Match), Suppress On Fields (Suppress), or general operation fields
+  appendFields?: string[];     // Fields to Append for Append module
+  addFields?: string[];         // Add Fields for Match module
   combinedHeaders?: string[];
   createdAt?: number; // Timestamp for sorting by creation order
   stepOrder?: number; // Module position in workflow (1-based)

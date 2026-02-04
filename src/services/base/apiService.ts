@@ -4,7 +4,7 @@ export class BaseApiService {
   private baseUrl: string
   private defaultHeaders: Record<string, string>
 
-  constructor(baseUrl: string = import.meta.env?.VITE_API_BASE_URL || (import.meta.env.DEV ? '/api' : 'https://qaapp.zt02.net/zxPlatformDevAPIs')) {
+  constructor(baseUrl: string = import.meta.env?.VITE_API_BASE_URL || (import.meta.env.DEV || import.meta.env.MODE === 'qa' || import.meta.env.MODE === 'production' ? '/zxPlatformQAAPIs' : 'https://qaapp.zt02.net/zxPlatformDevAPIs')) {
     this.baseUrl = baseUrl
     this.defaultHeaders = {
       'Content-Type': 'application/json',

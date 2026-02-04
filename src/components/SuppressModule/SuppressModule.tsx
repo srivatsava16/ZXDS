@@ -84,6 +84,8 @@ interface SuppressModuleProps {
   // Module-level field mappings (shared across all configs/versions in this module)
   moduleFieldMappings?: any[];
   onModuleFieldMappingsChange?: (mappings: any[]) => void;
+  // Table dictionary data from dictionary.php API
+  tableDictionary?: any;
 }
 
 // Get predefined suppress sources from API or fallback to default
@@ -99,6 +101,7 @@ const getPredefinedSources = (apiSources?: RequestInputsResponse | null) => {
 };
 
 const SuppressModule: React.FC<SuppressModuleProps> = ({
+  moduleId,
   availableInputSources,
   onCreateVersionedSource,
   initialConfigs,
@@ -116,7 +119,8 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   onDeleteSharedCustomSource,
   appendConfigurations = [],
   moduleFieldMappings = [],
-  onModuleFieldMappingsChange
+  onModuleFieldMappingsChange,
+  tableDictionary = null
 }) => {
   const [configs, setConfigs] = useState<SuppressConfig[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -255,26 +259,46 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     );
   };
 
+  // Track if initial configs have been loaded to prevent re-loading on every render
+  const initialConfigsLoadedRef = useRef(false);
+
   // Load initial configurations if provided (for edit mode)
+  // Only load once to allow user deletions to persist
   useEffect(() => {
-    if (initialConfigs && initialConfigs?.length > 0) {
+    console.log('[DELETE] SuppressModule - initialConfigs useEffect triggered');
+    console.log('[DELETE] SuppressModule - initialConfigs:', initialConfigs);
+    console.log('[DELETE] SuppressModule - initialConfigs count:', initialConfigs?.length);
+    console.log('[DELETE] SuppressModule - initialConfigsLoadedRef.current:', initialConfigsLoadedRef.current);
+    console.log('[DELETE] SuppressModule - moduleId:', moduleId);
+    console.log('[DELETE] SuppressModule - Current configs count:', configs?.length);
+
+    if (initialConfigs && initialConfigs?.length > 0 && !initialConfigsLoadedRef.current) {
+      console.log('[DELETE] SuppressModule - Loading initial configs (first time)');
       setConfigs(initialConfigs);
+      initialConfigsLoadedRef.current = true;
+    } else if (initialConfigs && initialConfigs?.length > 0 && initialConfigsLoadedRef.current) {
+      console.log('[DELETE] SuppressModule - Skipping initialConfigs reload (already loaded once)');
     }
-  }, [initialConfigs]);
+  }, [initialConfigs, moduleId, configs?.length]);
 
   // Track previous configs to prevent infinite loops
   const prevConfigsRef = useRef<string>('');
 
   // Notify parent component when configurations change
   useEffect(() => {
+    console.log('[DELETE] SuppressModule - configs changed, count:', configs?.length);
+    console.log('[DELETE] SuppressModule - configs:', configs);
     if (onConfigurationsChange) {
       // Use JSON.stringify to compare deep equality
       const currentConfigsString = JSON.stringify(configs);
 
       // Only call callback if configs actually changed
       if (currentConfigsString !== prevConfigsRef.current) {
+        console.log('[DELETE] SuppressModule - Notifying parent of config change');
         prevConfigsRef.current = currentConfigsString;
         onConfigurationsChange(configs);
+      } else {
+        console.log('[DELETE] SuppressModule - Configs same as previous, not notifying parent');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -460,11 +484,19 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   };
 
   const handleDeleteConfig = (id: string) => {
+    console.log('[DELETE] SuppressModule - handleDeleteConfig called for id:', id);
+    console.log('[DELETE] SuppressModule - Current configs count:', configs?.length);
+    console.log('[DELETE] SuppressModule - Current configs:', configs);
     if (window.confirm('Are you sure you want to delete this suppress configuration?')) {
-      setConfigs(configs?.filter(c => c.id !== id));
+      const newConfigs = configs?.filter(c => c?.id !== id);
+      console.log('[DELETE] SuppressModule - Deleting config, new count:', newConfigs?.length);
+      console.log('[DELETE] SuppressModule - New configs after delete:', newConfigs);
+      setConfigs(newConfigs);
       if (editingConfigId === id) {
         handleCancelEdit();
       }
+    } else {
+      console.log('[DELETE] SuppressModule - Delete cancelled by user');
     }
   };
 
@@ -2000,6 +2032,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
         apiSources={apiSources}
         sourcesLoading={sourcesLoading}
         editingSource={editingSource}
+        tableDictionary={tableDictionary}
       />
 
       {/* Field Mapping Dialog */}

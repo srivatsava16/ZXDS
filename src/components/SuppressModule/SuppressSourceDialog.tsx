@@ -32,6 +32,7 @@ interface SuppressSourceDialogProps {
   apiSources?: RequestInputsResponse | null;
   sourcesLoading?: boolean;
   editingSource?: InputSource | null;
+  tableDictionary?: any; // Table dictionary data from dictionary.php API
 }
 
 const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
@@ -43,6 +44,7 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
   apiSources = null,
   sourcesLoading = false,
   editingSource = null,
+  tableDictionary = null,
 }) => {
   const [sourceType, setSourceType] = useState<'File' | 'Database'>('File');
   const [sourceData, setSourceData] = useState<Partial<InputSource>>({});
@@ -250,6 +252,7 @@ const SuppressSourceDialog: React.FC<SuppressSourceDialogProps> = ({
             apiSources={apiSources}
             sourcesLoading={sourcesLoading}
             allExistingSources={allExistingSources?.length > 0 ? allExistingSources : existingSources}
+            tableDictionary={tableDictionary}
           />
         )}
       </DialogContent>

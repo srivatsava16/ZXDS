@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -76,6 +76,10 @@ import {
   CloudUpload,
   FilterList,
   AccountTree,
+  Download,
+  FilterAltOff,
+  Search,
+  CalendarToday,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import StatsConfigDialog from '../../../components/StatsConfigDialog/StatsConfigDialog';
@@ -93,7 +97,7 @@ export interface FieldMapping {
 export interface OutputDestination {
   id: string;
   name: string;
-  type: 'SFTP' | 'S3' | 'NFS';
+  type: 'SFTP' | 'S3';
   host?: string;
   port?: string;
   path?: string;
@@ -102,6 +106,7 @@ export interface OutputDestination {
   username?: string;
   password?: string;
   accessKey?: string;
+  secretKey?: string;
 }
 
 interface ReportData {
@@ -265,6 +270,17 @@ const ReportPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter state
+  const [searchText, setSearchText] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [dateFilter, setDateFilter] = useState('');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [showCustomDatePickers, setShowCustomDatePickers] = useState(false);
+
+  // Ref for debounce timer
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
   // File Generation Dialog state
   const [fileGenLoading, setFileGenLoading] = useState(false);
   const [availableInputSources, setAvailableInputSources] = useState<Array<{ id: number; inputSource: string; headers: string[] }>>([]);
@@ -302,6 +318,7 @@ const ReportPage: React.FC = () => {
   const [destUsername, setDestUsername] = useState('');
   const [destPassword, setDestPassword] = useState('');
   const [destAccessKey, setDestAccessKey] = useState('');
+  const [destSecretKey, setDestSecretKey] = useState('');
   const [savedConfigurations, setSavedConfigurations] = useState<Array<{
     id: string;
     inputSources: string[];
@@ -323,13 +340,103 @@ const ReportPage: React.FC = () => {
     }>;
   }>>([]);
 
-  // Load reports from API with pagination
+  // Helper function to calculate date ranges
+  const getDateRange = (filterType: string) => {
+    const now = new Date();
+    let startDate = '';
+    let endDate = '';
+
+    try {
+      switch (filterType) {
+        case 'Today':
+          startDate = `${now?.toISOString()?.split('T')?.[0] || ''} 00:00:00`;
+          endDate = `${now?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Yesterday':
+          const yesterday = new Date(now);
+          yesterday?.setDate(yesterday?.getDate() - 1);
+          startDate = `${yesterday?.toISOString()?.split('T')?.[0] || ''} 00:00:00`;
+          endDate = `${yesterday?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Last 7 Days':
+          const sevenDaysAgo = new Date(now);
+          sevenDaysAgo?.setDate(sevenDaysAgo?.getDate() - 7);
+          startDate = `${sevenDaysAgo?.toISOString()?.split('T')?.[0] || ''} 00:00:00`;
+          endDate = `${now?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Current Month':
+          startDate = `${now?.getFullYear() || ''}-${String(now?.getMonth() + 1)?.padStart(2, '0')}-01 00:00:00`;
+          endDate = `${now?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Last Month':
+          const lastMonth = new Date(now?.getFullYear(), now?.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now?.getFullYear(), now?.getMonth(), 0);
+          startDate = `${lastMonth?.toISOString()?.split('T')?.[0] || ''} 00:00:00`;
+          endDate = `${lastMonthEnd?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Last 30 Days':
+          const thirtyDaysAgo = new Date(now);
+          thirtyDaysAgo?.setDate(thirtyDaysAgo?.getDate() - 30);
+          startDate = `${thirtyDaysAgo?.toISOString()?.split('T')?.[0] || ''} 00:00:00`;
+          endDate = `${now?.toISOString()?.split('T')?.[0] || ''} 23:59:59`;
+          break;
+        case 'Custom Range':
+          if (customStartDate && customEndDate) {
+            startDate = `${customStartDate} 00:00:00`;
+            endDate = `${customEndDate} 23:59:59`;
+          }
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error('Error calculating date range:', err);
+    }
+
+    return { startDate, endDate };
+  };
+
+  // Load reports from API with pagination and filters
   const loadReports = async (offset: number = 0, limit: number = 10) => {
     try {
       setLoading(true);
       setError(null);
 
-      const response: any = await getAllReports({ offset, limit });
+      // Build filters object
+      const filters: any = {};
+
+      // Add search filter
+      if (searchText?.trim()) {
+        filters.search = searchText?.trim();
+      }
+
+      // Add status filter (convert to lowercase as per API requirements)
+      if (selectedStatuses?.length > 0) {
+        filters.status = selectedStatuses?.map((s) => s?.toLowerCase()) || [];
+      }
+
+      // Add date range filter
+      if (dateFilter && dateFilter !== 'Custom Range') {
+        const { startDate, endDate } = getDateRange(dateFilter);
+        if (startDate && endDate) {
+          filters.dateRange = [{ start_date: startDate, end_date: endDate }];
+        }
+      } else if (dateFilter === 'Custom Range' && customStartDate && customEndDate) {
+        const { startDate, endDate } = getDateRange('Custom Range');
+        if (startDate && endDate) {
+          filters.dateRange = [{ start_date: startDate, end_date: endDate }];
+        }
+      }
+
+      // Build request payload
+      const payload: any = { offset, limit };
+
+      // Only add filters if at least one filter is set
+      if (Object.keys(filters)?.length > 0) {
+        payload.filters = filters;
+      }
+
+      const response: any = await getAllReports(payload);
 
       // Handle API response format
       if (response && response.success) {
@@ -386,6 +493,51 @@ const ReportPage: React.FC = () => {
     loadReports(offset, rowsPerPage);
   }, [page, rowsPerPage]);
 
+  // Debounced search text - triggers API call after 500ms of no typing
+  useEffect(() => {
+    // Clear any existing debounce timer
+    if (searchDebounceRef?.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    // Set up debounce timer for search text (500ms delay)
+    searchDebounceRef.current = setTimeout(() => {
+      // Reset to first page and reload when search text changes
+      if (page !== 0) {
+        setPage(0);
+      } else {
+        // Trigger reload for any active filters
+        const hasActiveFilters = searchText || selectedStatuses?.length > 0 || dateFilter;
+        if (hasActiveFilters) {
+          loadReports(0, rowsPerPage);
+        }
+      }
+    }, 500);
+
+    // Cleanup function to clear timeout when component unmounts or searchText changes
+    return () => {
+      if (searchDebounceRef?.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText]);
+
+  // Reload reports immediately when status or date filters change
+  useEffect(() => {
+    // Reset to first page and reload when filters change
+    if (page !== 0) {
+      setPage(0);
+    } else {
+      // Trigger reload for any active filters
+      const hasActiveFilters = searchText || selectedStatuses?.length > 0 || dateFilter;
+      if (hasActiveFilters) {
+        loadReports(0, rowsPerPage);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStatuses?.length, dateFilter]);
+
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
   };
@@ -406,6 +558,15 @@ const ReportPage: React.FC = () => {
 
   const handleNewRequest = () => {
     navigate('/dataPullRequests/new');
+  };
+
+  const handleClearFilters = () => {
+    setSearchText('');
+    setSelectedStatuses([]);
+    setDateFilter('');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setShowCustomDatePickers(false);
   };
 
   const handleDuplicate = (requestId: number) => {
@@ -600,6 +761,7 @@ const ReportPage: React.FC = () => {
           region: customDestination.region,
           path: customDestination.path,
           accesskey: customDestination.accessKey,
+          secretkey: customDestination?.secretKey,
         };
       } else if (customDestination.type === 'NFS') {
         outputConfig.destinationConfig = {
@@ -768,6 +930,7 @@ const ReportPage: React.FC = () => {
     setDestUsername('');
     setDestPassword('');
     setDestAccessKey('');
+    setDestSecretKey('');
     setDestinationType('SFTP');
   };
 
@@ -783,6 +946,7 @@ const ReportPage: React.FC = () => {
     setDestUsername(destination.username || '');
     setDestPassword(destination.password || '');
     setDestAccessKey(destination.accessKey || '');
+    setDestSecretKey(destination?.secretKey || '');
 
     // Scroll to the form
     const formElement = document.getElementById('destination-form');
@@ -806,8 +970,8 @@ const ReportPage: React.FC = () => {
       alert('Please enter bucket and region for S3 destination');
       return;
     }
-    if (destinationType === 'NFS' && (!destHost || !destPath)) {
-      alert('Please enter host and path for NFS destination');
+    if (destinationType === 'S3' && !destSecretKey?.trim()) {
+      alert('Please enter secret key for S3 destination');
       return;
     }
 
@@ -823,6 +987,7 @@ const ReportPage: React.FC = () => {
       username: destUsername || undefined,
       password: destPassword || undefined,
       accessKey: destAccessKey || undefined,
+      secretKey: destSecretKey || undefined,
     };
 
     if (editingDestinationId) {
@@ -976,7 +1141,7 @@ const ReportPage: React.FC = () => {
           </Stack>
         </Box>
 
-        {/* Stats Cards */}
+        {/* Stats Cards - COMMENTED OUT
         <Stack direction="row" spacing={3}>
           {stats?.map((stat, index) => (
             <Card
@@ -1016,6 +1181,351 @@ const ReportPage: React.FC = () => {
             </Card>
           ))}
         </Stack>
+        */}
+
+        {/* Filter Section */}
+        <Box
+          sx={{
+            background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFB 100%)',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 3,
+            p: 3,
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+          }}
+        >
+          {/* Filter Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2.5, gap: 1.5 }}>
+            <FilterList sx={{ color: 'primary.main', fontSize: 20 }} />
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 600,
+                color: '#2D3748',
+                fontSize: '0.9rem',
+              }}
+            >
+              Filters
+            </Typography>
+            {(searchText || selectedStatuses?.length > 0 || dateFilter) && (
+              <Chip
+                label={`${(searchText ? 1 : 0) + (selectedStatuses?.length > 0 ? 1 : 0) + (dateFilter ? 1 : 0)} Active`}
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  backgroundColor: 'primary.main',
+                  color: 'white',
+                }}
+              />
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+            {/* Left side - Filter inputs */}
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap', flex: 1 }}>
+              {/* Search Text Box */}
+              <TextField
+                size="small"
+                placeholder="Search by ID or Request Name"
+                value={searchText}
+                onChange={(e) => setSearchText(e?.target?.value)}
+                InputProps={{
+                  startAdornment: (
+                    <Search sx={{ color: 'text.secondary', fontSize: 18, mr: 0.5 }} />
+                  ),
+                }}
+                
+                sx={{
+                  flex: '0 1 220px',
+                  minWidth: 350,
+                  maxWidth: 700,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: '#FAFBFC',
+                    },
+                    '&.Mui-focused': {
+                      backgroundColor: 'white',
+                      boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
+                    },
+                  },
+                }}
+              />
+
+              {/* Status Dropdown */}
+              <FormControl size="small" sx={{ flex: '0 1 170px', minWidth: 160 }}>
+                <Select
+                  multiple
+                  value={selectedStatuses}
+                  onChange={(e) => setSelectedStatuses(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                  displayEmpty
+                  renderValue={(selected) => {
+                    if (selected?.length === 0) {
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Schedule sx={{ fontSize: 18, color: 'text.secondary' }} />
+                          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Status</Typography>
+                        </Box>
+                      );
+                    }
+                    if (selected?.length === 1) {
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Schedule sx={{ fontSize: 18, color: 'primary.main' }} />
+                          <Typography sx={{ fontSize: '0.875rem' }}>{selected[0]}</Typography>
+                        </Box>
+                      );
+                    }
+                    // Multiple selections: show first + count
+                    return (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Schedule sx={{ fontSize: 18, color: 'primary.main' }} />
+                        <Typography sx={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                          {selected[0]} +{selected?.length - 1} more
+                        </Typography>
+                      </Box>
+                    );
+                  }}
+                  sx={{
+                    backgroundColor: 'white',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: '#FAFBFC',
+                    },
+                    '&.Mui-focused': {
+                      backgroundColor: 'white',
+                      boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
+                    },
+                  }}
+                >
+                  <MenuItem value="Waiting">
+                    <Checkbox checked={selectedStatuses?.indexOf('Waiting') > -1} />
+                    <ListItemText primary="Waiting" />
+                  </MenuItem>
+                  <MenuItem value="Stopped">
+                    <Checkbox checked={selectedStatuses?.indexOf('Stopped') > -1} />
+                    <ListItemText primary="Stopped" />
+                  </MenuItem>
+                  <MenuItem value="Inprogress">
+                    <Checkbox checked={selectedStatuses?.indexOf('Inprogress') > -1} />
+                    <ListItemText primary="In Progress" />
+                  </MenuItem>
+                  <MenuItem value="Failed">
+                    <Checkbox checked={selectedStatuses?.indexOf('Failed') > -1} />
+                    <ListItemText primary="Error" />
+                  </MenuItem>
+                  <MenuItem value="Completed">
+                    <Checkbox checked={selectedStatuses?.indexOf('Completed') > -1} />
+                    <ListItemText primary="Completed" />
+                  </MenuItem>
+                </Select>
+              </FormControl>
+
+              {/* Date Filter Dropdown */}
+              <FormControl size="small" sx={{ flex: '0 1 170px', minWidth: 160 }}>
+                <Select
+                  value={dateFilter}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setDateFilter(value);
+                    setShowCustomDatePickers(value === 'Custom Range');
+                  }}
+                  displayEmpty
+                  renderValue={(selected) => {
+                    if (!selected) {
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <CalendarToday sx={{ fontSize: 18, color: 'text.secondary' }} />
+                          <Typography sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>Date Range</Typography>
+                        </Box>
+                      );
+                    }
+                    return (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <CalendarToday sx={{ fontSize: 18, color: 'primary.main' }} />
+                        <Typography sx={{ fontSize: '0.875rem' }}>{selected}</Typography>
+                      </Box>
+                    );
+                  }}
+                  sx={{
+                    backgroundColor: 'white',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: '#FAFBFC',
+                    },
+                    '&.Mui-focused': {
+                      backgroundColor: 'white',
+                      boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
+                    },
+                  }}
+                >
+                  <MenuItem value="">
+                    <Typography sx={{ color: 'text.secondary' }}>None</Typography>
+                  </MenuItem>
+                  <MenuItem value="Today">Today</MenuItem>
+                  <MenuItem value="Yesterday">Yesterday</MenuItem>
+                  <MenuItem value="Last 7 Days">Last 7 Days</MenuItem>
+                  <MenuItem value="Current Month">Current Month</MenuItem>
+                  <MenuItem value="Last Month">Last Month</MenuItem>
+                  <MenuItem value="Last 30 Days">Last 30 Days</MenuItem>
+                  <Divider />
+                  <MenuItem value="Custom Range">Custom Range</MenuItem>
+                </Select>
+              </FormControl>
+
+              {/* Custom Date Range Pickers */}
+              {showCustomDatePickers && (
+                <>
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="Start Date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{
+                      flex: '0 1 150px',
+                      minWidth: 145,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          backgroundColor: '#FAFBFC',
+                        },
+                        '&.Mui-focused': {
+                          backgroundColor: 'white',
+                          boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
+                        },
+                      },
+                    }}
+                  />
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="End Date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{
+                      flex: '0 1 150px',
+                      minWidth: 145,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          backgroundColor: '#FAFBFC',
+                        },
+                        '&.Mui-focused': {
+                          backgroundColor: 'white',
+                          boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
+                        },
+                      },
+                    }}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => loadReports(0, rowsPerPage)}
+                    disabled={!customStartDate || !customEndDate}
+                    sx={{
+                      alignSelf: 'center',
+                      px: 2.5,
+                      boxShadow: '0 2px 8px rgba(41, 102, 149, 0.25)',
+                      '&:hover': {
+                        boxShadow: '0 4px 12px rgba(41, 102, 149, 0.35)',
+                      },
+                    }}
+                  >
+                    Apply
+                  </Button>
+                </>
+              )}
+
+              {/* Clear Filters Button - Show when any filter is active */}
+              {(searchText || selectedStatuses?.length > 0 || dateFilter) && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FilterAltOff sx={{ fontSize: 18 }} />}
+                  onClick={handleClearFilters}
+                  sx={{
+                    alignSelf: 'center',
+                    px: 2,
+                    borderColor: 'divider',
+                    color: 'text.secondary',
+                    fontWeight: 500,
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      borderColor: 'error.main',
+                      backgroundColor: 'rgba(211, 47, 47, 0.04)',
+                      color: 'error.main',
+                    },
+                  }}
+                >
+                  Clear All
+                </Button>
+              )}
+            </Box>
+
+            {/* Right side - Action buttons */}
+            {/* <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'center' }}>
+              <Tooltip title="Refresh Results" arrow>
+                <IconButton
+                  onClick={() => loadReports(page * rowsPerPage, rowsPerPage)}
+                  disabled={loading}
+                  size="small"
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: 'white',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: 'primary.main',
+                      borderColor: 'primary.main',
+                      color: 'white',
+                      transform: 'rotate(180deg)',
+                    },
+                    '&:disabled': {
+                      backgroundColor: '#FAFBFC',
+                    },
+                  }}
+                >
+                  <Refresh fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Download Reports" arrow>
+                <IconButton
+                  onClick={() => {
+                    // TODO: Implement download functionality
+                    console.log('Download reports');
+                  }}
+                  size="small"
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: 'white',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: 'primary.main',
+                      borderColor: 'primary.main',
+                      color: 'white',
+                      transform: 'translateY(-2px)',
+                    },
+                  }}
+                >
+                  <Download fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box> */}
+          </Box>
+        </Box>
       </Box>
 
       {/* Table Section */}
@@ -1334,7 +1844,7 @@ const ReportPage: React.FC = () => {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 4,
+            borderRadius: 3,
             maxHeight: '85vh',
           },
         }}
@@ -1344,29 +1854,29 @@ const ReportPage: React.FC = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            py: 2,
-            px: 3,
+            py: 1.5,
+            px: 2,
           }}
         >
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2D3748' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2D3748', fontSize: '1.1rem' }}>
               Generate Files
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', mt: 0.25 }}>
               Configure output settings for Request #{selectedRequestId}
             </Typography>
           </Box>
-          <IconButton onClick={handleCloseFileGeneration} size="small">
-            <Close />
+          <IconButton onClick={handleCloseFileGeneration} size="small" sx={{ p: 0.5 }}>
+            <Close sx={{ fontSize: '1.25rem' }} />
           </IconButton>
         </DialogTitle>
 
         <Divider />
 
-        <DialogContent sx={{ py: 3, px: 3, backgroundColor: '#FAFBFC' }}>
+        <DialogContent sx={{ py: 2, px: 2, backgroundColor: '#FAFBFC' }}>
           {fileGenLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-              <CircularProgress size={48} />
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+              <CircularProgress size={40} />
             </Box>
           ) : (
             <>
@@ -1374,7 +1884,7 @@ const ReportPage: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  mb: 3,
+                  mb: 2,
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 2,
@@ -1387,7 +1897,7 @@ const ReportPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    p: 2,
+                    p: 1.5,
                     backgroundColor: '#FFFFFF',
                     cursor: 'pointer',
                     borderBottom: addDestinationExpanded ? '1px solid' : 'none',
@@ -1396,23 +1906,21 @@ const ReportPage: React.FC = () => {
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <CloudUpload sx={{ color: '#296695', fontSize: 20 }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <CloudUpload sx={{ color: '#296695', fontSize: 18 }} />
                     <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-                        Manage Custom Destinations
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
+                        Manage Custom Output Destinations
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                        Create and manage custom output destinations
-                      </Typography>
+                    
                     </Box>
                     {customDestinations?.length > 0 && (
                       <Chip
                         label={`${customDestinations?.length} created`}
                         size="small"
                         sx={{
-                          height: 22,
-                          fontSize: '0.7rem',
+                          height: 20,
+                          fontSize: '0.65rem',
                           fontWeight: 600,
                           backgroundColor: '#E0F2FE',
                           color: '#0369A1',
@@ -1449,7 +1957,7 @@ const ReportPage: React.FC = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Settings sx={{ fontSize: 18, color: '#296695' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.875rem' }}>
-                            {editingDestinationId ? 'Edit Destination' : 'Create New Destination'}
+                            {editingDestinationId ? 'Edit Output Destination' : 'Add Output Destination'}
                           </Typography>
                         </Box>
                         {editingDestinationId && (
@@ -1507,6 +2015,7 @@ const ReportPage: React.FC = () => {
                               setDestUsername('');
                               setDestPassword('');
                               setDestAccessKey('');
+                              setDestSecretKey('');
                             }}
                             sx={{
                               gap: 1,
@@ -1532,11 +2041,6 @@ const ReportPage: React.FC = () => {
                               value="S3"
                               control={<Radio size="small" />}
                               label={<Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>AWS S3</Typography>}
-                            />
-                            <FormControlLabel
-                              value="NFS"
-                              control={<Radio size="small" />}
-                              label={<Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>NFS</Typography>}
                             />
                           </RadioGroup>
                         </FormControl>
@@ -1670,7 +2174,7 @@ const ReportPage: React.FC = () => {
                               sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#FAFBFC' } }}
                             />
                           </Box>
-                          <Box>
+                          <Box sx={{ mb: 2 }}>
                             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1, color: '#374151' }}>
                               Access Key
                             </Typography>
@@ -1683,38 +2187,17 @@ const ReportPage: React.FC = () => {
                               sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#FAFBFC' } }}
                             />
                           </Box>
-                        </Box>
-                      )}
-
-                      {/* NFS Configuration */}
-                      {destinationType === 'NFS' && (
-                        <Box>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#374151', display: 'block', mb: 2, fontSize: '0.85rem' }}>
-                            NFS Configuration
-                          </Typography>
-                          <Box sx={{ mb: 2 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1, color: '#374151' }}>
-                              Host/Server<Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
-                            </Typography>
-                            <TextField
-                              size="small"
-                              fullWidth
-                              placeholder="nfs.example.com"
-                              value={destHost}
-                              onChange={(e) => setDestHost(e.target.value)}
-                              sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#FAFBFC' } }}
-                            />
-                          </Box>
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1, color: '#374151' }}>
-                              Mount Path<Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
+                              Secret Key<Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                             </Typography>
                             <TextField
                               size="small"
                               fullWidth
-                              placeholder="/mnt/output"
-                              value={destPath}
-                              onChange={(e) => setDestPath(e.target.value)}
+                              type="password"
+                              placeholder="Enter secret key"
+                              value={destSecretKey}
+                              onChange={(e) => setDestSecretKey(e.target.value)}
                               sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#FAFBFC' } }}
                             />
                           </Box>
@@ -1864,7 +2347,6 @@ const ReportPage: React.FC = () => {
                                     <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
                                       {dest.type === 'SFTP' && dest.host && `${dest.host}:${dest.port}`}
                                       {dest.type === 'S3' && dest.bucket && `Bucket: ${dest.bucket}`}
-                                      {dest.type === 'NFS' && dest.host && `Host: ${dest.host}`}
                                     </Typography>
                                   </Box>
                                   {isEditing && (
@@ -1921,7 +2403,7 @@ const ReportPage: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  mb: 3,
+                  mb: 2,
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 2,
@@ -1934,7 +2416,7 @@ const ReportPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    p: 2,
+                    p: 1.5,
                     backgroundColor: '#FFFFFF',
                     cursor: 'pointer',
                     borderBottom: fieldMappingExpanded ? '1px solid' : 'none',
@@ -1943,14 +2425,11 @@ const ReportPage: React.FC = () => {
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <AccountTree sx={{ color: '#296695', fontSize: 20 }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <AccountTree sx={{ color: '#296695', fontSize: 18 }} />
                     <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.9rem' }}>
-                        Field Mapping (Optional)
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                        Rename or unify fields from multiple sources
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem' }}>
+                        Field Mapping
                       </Typography>
                     </Box>
                     {fieldMappings?.length > 0 && (
@@ -1958,8 +2437,8 @@ const ReportPage: React.FC = () => {
                         label={`${fieldMappings?.length} mapping${fieldMappings?.length !== 1 ? 's' : ''}`}
                         size="small"
                         sx={{
-                          height: 22,
-                          fontSize: '0.7rem',
+                          height: 20,
+                          fontSize: '0.65rem',
                           fontWeight: 600,
                           backgroundColor: '#E0F2FE',
                           color: '#0369A1',
@@ -2329,8 +2808,8 @@ const ReportPage: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  mb: 3,
-                  p: 3,
+                  mb: 2,
+                  p: 2,
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 2,
@@ -2338,21 +2817,21 @@ const ReportPage: React.FC = () => {
                 }}
               >
                 {/* Section Header */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                  <Settings sx={{ color: '#296695', fontSize: 22 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 2 }}>
+                  <Settings sx={{ color: '#296695', fontSize: 20 }} />
                   <Box>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1F2937', fontSize: '1rem' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1F2937', fontSize: '0.95rem' }}>
                       File Generation Configuration
                     </Typography>
-                    <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
+                    <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.7rem' }}>
                       Configure input sources, output fields, and processing options
                     </Typography>
                   </Box>
                 </Box>
 
                 {/* Input Sources Dropdown (Multi-select) */}
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.825rem' }}>
                     Input Sources
                     <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
                   </Typography>
@@ -2401,7 +2880,7 @@ const ReportPage: React.FC = () => {
 
               {/* Combine Sources Checkbox (shown when multiple sources selected) */}
               {selectedInputSources?.length > 1 && (
-                <Box sx={{ mb: 3, ml: 2 }}>
+                <Box sx={{ mb: 2, ml: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Checkbox
                       checked={combineSources}
@@ -2419,7 +2898,7 @@ const ReportPage: React.FC = () => {
               )}
 
                 {/* Output Fields Dropdown */}
-                <Box sx={{ mb: 3 }}>
+                <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
                     Output Fields
                     <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
@@ -2547,7 +3026,7 @@ const ReportPage: React.FC = () => {
 
                 {/* Priority Order (shown when combine sources is checked) */}
                 {combineSources && selectedInputSources?.length > 1 && (
-                  <Box sx={{ mb: 3 }}>
+                  <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
                       Priority Order
                       <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
@@ -2587,7 +3066,7 @@ const ReportPage: React.FC = () => {
 
                 {/* Field Priority Order (shown when combine sources is checked) */}
                 {combineSources && selectedInputSources?.length > 1 && (
-                  <Box sx={{ mb: 3 }}>
+                  <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#374151', fontSize: '0.875rem' }}>
                       Field Priority Order
                       <Typography component="span" sx={{ color: 'error.main', ml: 0.5 }}>*</Typography>
@@ -2633,7 +3112,7 @@ const ReportPage: React.FC = () => {
 
                 {/* Limitation Section (shown when at least one source is selected) */}
                 {selectedInputSources?.length > 0 && (
-                  <Box sx={{ mb: 3 }}>
+                  <Box sx={{ mb: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                       <FilterList sx={{ fontSize: 18, color: '#296695' }} />
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#374151', fontSize: '0.875rem' }}>
@@ -3155,16 +3634,16 @@ const ReportPage: React.FC = () => {
 
         <Divider />
 
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button
             variant="outlined"
             onClick={handleCloseFileGeneration}
-            startIcon={<Close />}
+            startIcon={<Close sx={{ fontSize: '1rem' }} />}
             sx={{
-              px: 3,
-              py: 0.75,
+              px: 2.5,
+              py: 0.625,
               textTransform: 'none',
-              fontSize: '0.875rem',
+              fontSize: '0.8rem',
             }}
           >
             Close

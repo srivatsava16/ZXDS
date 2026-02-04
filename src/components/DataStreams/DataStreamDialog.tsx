@@ -19,6 +19,7 @@ import {
   RadioGroup,
   FormControlLabel,
   FormLabel,
+  Chip,
 } from '@mui/material';
 import { Close, Visibility, VisibilityOff } from '@mui/icons-material';
 
@@ -34,6 +35,7 @@ interface DataStream {
   accessKey?: string;
   secretKey?: string;
   defaultBucket?: string;
+  region?: string;
   createdBy?: string;
   createdDate?: string;
   processStatus?: string;
@@ -63,21 +65,23 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
   const [accessKey, setAccessKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [defaultBucket, setDefaultBucket] = useState('');
+  const [region, setRegion] = useState('us-east-1');
   const [showPassword, setShowPassword] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
 
   useEffect(() => {
     if (editingStream) {
-      setName(editingStream.name);
-      setSourceType(editingStream.sourceType);
-      setHost(editingStream.host || '');
-      setPort(editingStream.port || '22');
-      setUsername(editingStream.username || '');
-      setPassword(editingStream.password || '');
-      setDefaultPath(editingStream.defaultPath || '');
-      setAccessKey(editingStream.accessKey || '');
-      setSecretKey(editingStream.secretKey || '');
-      setDefaultBucket(editingStream.defaultBucket || '');
+      setName(editingStream?.name || '');
+      setSourceType(editingStream?.sourceType || 'AWS S3');
+      setHost(editingStream?.host || '');
+      setPort(editingStream?.port || '22');
+      setUsername(editingStream?.username || '');
+      setPassword(editingStream?.password || '');
+      setDefaultPath(editingStream?.defaultPath || '');
+      setAccessKey(editingStream?.accessKey || '');
+      setSecretKey(editingStream?.secretKey || '');
+      setDefaultBucket(editingStream?.defaultBucket || '');
+      setRegion(editingStream?.region || 'us-east-1');
     } else {
       // Reset form
       setName('');
@@ -90,6 +94,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       setAccessKey('');
       setSecretKey('');
       setDefaultBucket('');
+      setRegion('us-east-1');
     }
   }, [editingStream, open]);
 
@@ -99,13 +104,13 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       return;
     }
 
-    if (sourceType === 'SFTP' || sourceType === 'NFS') {
-      if (!defaultPath?.trim()) {
-        alert(`Please complete all ${sourceType} fields`);
+    if (sourceType === 'SFTP') {
+      if (!host?.trim() || !port?.trim() || !username?.trim() || !password?.trim() || !defaultPath?.trim()) {
+        alert('Please complete all SFTP fields');
         return;
       }
     } else if (sourceType === 'AWS S3') {
-      if (!accessKey?.trim() || !secretKey?.trim() || !defaultBucket?.trim()) {
+      if (!accessKey?.trim() || !secretKey?.trim() || !defaultBucket?.trim() || !region?.trim()) {
         alert('Please complete all AWS S3 fields');
         return;
       }
@@ -115,9 +120,9 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       id: editingStream?.id || Date.now().toString(),
       name,
       sourceType,
-      ...(sourceType === 'SFTP' || sourceType === 'NFS'
+      ...(sourceType === 'SFTP'
         ? { host, port, username, password, defaultPath }
-        : { accessKey, secretKey, defaultBucket, defaultPath }),
+        : { accessKey, secretKey, defaultBucket, region, defaultPath }),
       createdBy: editingStream?.createdBy || 'Current User',
       createdDate: editingStream?.createdDate || new Date().toISOString(),
       processStatus: editingStream?.processStatus || 'Active',
@@ -139,6 +144,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
     setAccessKey('');
     setSecretKey('');
     setDefaultBucket('');
+    setRegion('us-east-1');
     setShowPassword(false);
     setShowSecretKey(false);
     onClose();
@@ -199,36 +205,73 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
             >
               Source Type <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
             </FormLabel>
-            <RadioGroup
-              row
-              value={sourceType}
-              onChange={(e) => setSourceType(e.target.value as 'AWS S3' | 'SFTP' | 'NFS')}
-            >
-              <FormControlLabel
-                value="AWS S3"
-                control={<Radio size="small" />}
-                label="AWS S3"
-                sx={{ mr: 3 }}
-              />
-              <FormControlLabel
-                value="SFTP"
-                control={<Radio size="small" />}
-                label="SFTP"
-                sx={{ mr: 3 }}
-              />
-              <FormControlLabel
-                value="NFS"
-                control={<Radio size="small" />}
-                label="NFS"
-              />
-            </RadioGroup>
+            {sourceType === 'NFS' ? (
+              // Read-only display for NFS
+              <Box sx={{ py: 1 }}>
+                <Chip
+                  label="NFS"
+                  size="small"
+                  sx={{
+                    backgroundColor: '#29669520',
+                    color: '#296695',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    px: 1,
+                  }}
+                />
+              </Box>
+            ) : (
+              // Editable for AWS S3 and SFTP
+              <RadioGroup
+                row
+                value={sourceType}
+                onChange={(e) => setSourceType(e.target.value as 'AWS S3' | 'SFTP' | 'NFS')}
+              >
+                <FormControlLabel
+                  value="AWS S3"
+                  control={<Radio size="small" />}
+                  label="AWS S3"
+                  sx={{ mr: 3 }}
+                />
+                <FormControlLabel
+                  value="SFTP"
+                  control={<Radio size="small" />}
+                  label="SFTP"
+                />
+              </RadioGroup>
+            )}
           </FormControl>
         </Box>
 
         <Divider sx={{ my: 2 }} />
 
         {/* Conditional Fields based on Source Type */}
-        {sourceType === 'SFTP' || sourceType === 'NFS' ? (
+        {sourceType === 'NFS' ? (
+          <>
+            {/* NFS Fields - Read-only, only defaultPath */}
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, fontSize: '0.9rem' }}>
+                
+                              Default Path <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
+
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="/path/to/directory"
+                value={defaultPath || ''}
+                InputProps={{
+                  readOnly: true,
+                }}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    backgroundColor: '#F8FAFB',
+                  },
+                }}
+              />
+            </Box>
+          </>
+        ) : sourceType === 'SFTP' ? (
           <>
             {/* SFTP Fields */}
             <Box sx={{ mb: 2.5 }}>
@@ -246,20 +289,15 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
 
             <Box sx={{ mb: 2.5 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, fontSize: '0.9rem' }}>
-                Port
+                Port <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
               </Typography>
               <TextField
                 fullWidth
                 size="small"
+                type="number"
+                placeholder="22"
                 value={port}
-                InputProps={{
-                  readOnly: true,
-                }}
-                sx={{
-                  '& .MuiInputBase-input': {
-                    backgroundColor: '#F8FAFB',
-                  },
-                }}
+                onChange={(e) => setPort(e.target.value)}
               />
             </Box>
 
@@ -307,7 +345,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
 
             <Box sx={{ mb: 2.5 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, fontSize: '0.9rem' }}>
-                Default Path
+                              Default Path <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
               </Typography>
               <TextField
                 fullWidth
@@ -376,7 +414,20 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
 
             <Box sx={{ mb: 2.5 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, fontSize: '0.9rem' }}>
-                Default Path
+                Region <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="us-east-1"
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+              />
+            </Box>
+
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, fontSize: '0.9rem' }}>
+                              Default Path <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
               </Typography>
               <TextField
                 fullWidth
@@ -407,6 +458,7 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
         <Button
           variant="contained"
           onClick={handleSave}
+          disabled={sourceType === 'NFS'}
           sx={{
             px: 3,
             textTransform: 'none',
@@ -414,6 +466,10 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
             backgroundColor: '#296695',
             '&:hover': {
               backgroundColor: '#1e4d6f',
+            },
+            '&.Mui-disabled': {
+              backgroundColor: '#E5E7EB',
+              color: '#9CA3AF',
             },
           }}
         >

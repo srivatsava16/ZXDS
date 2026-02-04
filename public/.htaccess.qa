@@ -1,0 +1,15 @@
+# .htaccess for QA Environment
+# Copy this file to your QA deployment directory as .htaccess
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Set base directory for QA
+RewriteBase /zxPlatformQAEnvironment/
+
+# Don't rewrite files or directories that exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Rewrite everything else to index.html for client-side routing
+RewriteRule . /zxPlatformQAEnvironment/index.html [L]

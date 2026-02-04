@@ -20,7 +20,6 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
   const [selectedAppendFields, setSelectedAppendFields] = useState<string[]>([]);
 
   const handleAddOrUpdateConfig = useCallback((availableAppendSources?: any[], apiSources?: any) => {
-    console.log('🔍 [DEBUG - useAppendConfig Hook] Step 7: handleAddOrUpdateConfig called (field mappings are module-level)');
 
     if (selectedInputSources?.length === 0) {
       alert('Please select at least one Input Source');
@@ -90,12 +89,10 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
         // Note: fieldMappings are now managed at module level
       };
 
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8: Updating config, updatedConfig =', updatedConfig);
 
       const updatedConfigsArray = configs?.map(config =>
         config.id === editingConfigId ? updatedConfig : config
       );
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', updatedConfigsArray);
 
       setConfigs(updatedConfigsArray);
 
@@ -113,12 +110,8 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
         createdByModuleId: moduleId, // Track which module instance created this config
       };
 
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8: Creating new config, newConfig =', newConfig);
 
       const newConfigsArray = [...configs, newConfig];
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8b: Updated configs array =', newConfigsArray);
-      console.log('🔍 [DEBUG - useAppendConfig Hook] Step 8c: Total configs in new array =', newConfigsArray?.length);
-
       setConfigs(newConfigsArray);
     }
 
@@ -153,8 +146,9 @@ export const useAppendConfig = (initialConfigs?: AppendConfig[], moduleId?: stri
   }, []);
 
   const handleDeleteConfig = useCallback((id: string) => {
-    if (window.confirm('Are you sure you want to delete this append configuration?')) {
-      setConfigs(configs?.filter(c => c.id !== id));
+ if (window.confirm('Are you sure you want to delete this append configuration?')) {
+      const newConfigs = configs?.filter(c => c?.id !== id);
+      setConfigs(newConfigs);
       if (editingConfigId === id) {
         handleCancelEdit();
       }

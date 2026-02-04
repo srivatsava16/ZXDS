@@ -33,6 +33,7 @@ export interface OutputDestination {
   password?: string;
   // AWS specific fields
   accessKey?: string;
+  secretKey?: string;
 }
 
 interface OutputDestinationDialogProps {
@@ -63,6 +64,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [accessKey, setAccessKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
 
   useEffect(() => {
     if (open && (mode === 'edit' || mode === 'view') && editingDestination) {
@@ -78,6 +80,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       setUsername(editingDestination.username || '');
       setPassword(editingDestination.password || '');
       setAccessKey(editingDestination.accessKey || '');
+      setSecretKey(editingDestination?.secretKey || '');
     } else if (!open) {
       // Reset form when dialog closes
       setDestinationType('SFTP');
@@ -91,6 +94,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       setUsername('');
       setPassword('');
       setAccessKey('');
+      setSecretKey('');
     }
   }, [open, mode, editingDestination]);
 
@@ -107,6 +111,10 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
     }
     if (destinationType === 'S3' && (!bucket || !region)) {
       alert('Please enter bucket and region for S3 destination');
+      return;
+    }
+    if (destinationType === 'S3' && !secretKey?.trim()) {
+      alert('Please enter secret key for S3 destination');
       return;
     }
     if (destinationType === 'NFS' && (!host || !path)) {
@@ -127,6 +135,7 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
       username: username || undefined,
       password: password || undefined,
       accessKey: accessKey || undefined,
+      secretKey: secretKey || undefined,
     };
 
     if (mode === 'edit' && onUpdate) {
@@ -230,19 +239,6 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 control={<Radio size="small" />}
                 label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>S3</Typography>}
                 sx={{ mr: 3 }}
-                disabled={isReadOnly}
-              />
-              <FormControlLabel
-                value="NFS"
-                control={<Radio size="small" />}
-                label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>NFS</Typography>}
-                sx={{ mr: 3 }}
-                disabled={isReadOnly}
-              />
-              <FormControlLabel
-                value="Other"
-                control={<Radio size="small" />}
-                label={<Typography variant="body2" sx={{ fontSize: '0.875rem' }}>Other</Typography>}
                 disabled={isReadOnly}
               />
             </RadioGroup>
@@ -428,19 +424,10 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
                 sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
               />
             </Box>
-          </Box>
-        )}
-
-        {/* NFS Configuration */}
-        {destinationType === 'NFS' && (
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 2 }}>
-              NFS Configuration
-            </Typography>
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                  Host/Server
+                  Secret Key
                 </Typography>
                 <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.8rem' }}>
                   *
@@ -449,29 +436,10 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
               <TextField
                 size="small"
                 fullWidth
-                placeholder="nfs.example.com"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                disabled={isReadOnly}
-                InputProps={{ readOnly: isReadOnly }}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
-              />
-            </Box>
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                  Mount Path
-                </Typography>
-                <Typography component="span" sx={{ color: 'error.main', ml: 0.5, fontSize: '0.8rem' }}>
-                  *
-                </Typography>
-              </Box>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="/mnt/output"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
+                type="password"
+                placeholder="Enter secret key"
+                value={secretKey}
+                onChange={(e) => setSecretKey(e.target.value)}
                 disabled={isReadOnly}
                 InputProps={{ readOnly: isReadOnly }}
                 sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
@@ -480,61 +448,6 @@ const OutputDestinationDialog: React.FC<OutputDestinationDialogProps> = ({
           </Box>
         )}
 
-        {/* Other Configuration */}
-        {destinationType === 'Other' && (
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#2D3748', fontSize: '0.85rem', mb: 2 }}>
-              Custom Configuration
-            </Typography>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-                Host/Endpoint
-              </Typography>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="custom.endpoint.com"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                disabled={isReadOnly}
-                InputProps={{ readOnly: isReadOnly }}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
-              />
-            </Box>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-                Path/Location
-              </Typography>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="/path/to/output"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                disabled={isReadOnly}
-                InputProps={{ readOnly: isReadOnly }}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
-              />
-            </Box>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-                Configuration Details
-              </Typography>
-              <TextField
-                size="small"
-                fullWidth
-                multiline
-                rows={3}
-                placeholder="Additional configuration details..."
-                value={credentials}
-                onChange={(e) => setCredentials(e.target.value)}
-                disabled={isReadOnly}
-                InputProps={{ readOnly: isReadOnly }}
-                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: isReadOnly ? '#F9FAFB' : 'white' } }}
-              />
-            </Box>
-          </Box>
-        )}
       </DialogContent>
 
       <Divider />

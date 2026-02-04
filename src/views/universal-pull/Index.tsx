@@ -200,7 +200,7 @@ const UniversalPullRequestPage: React.FC = () => {
           </Box>
           <Stack direction="row" spacing={1.5} alignItems="center">
             {/* View Mode Toggle */}
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.secondary' }}>
+            {/* <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem', color: 'text.secondary' }}>
               Step View
             </Typography>
             <Switch
@@ -215,7 +215,7 @@ const UniversalPullRequestPage: React.FC = () => {
                   backgroundColor: '#296695',
                 },
               }}
-            />
+            /> */}
             <Button
               variant="outlined"
               size="small"

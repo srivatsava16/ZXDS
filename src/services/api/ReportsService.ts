@@ -272,6 +272,7 @@ export interface ReportInsertsRequest {
             bucketname?: string;
             region?: string;
             accesskey?: string;
+            secretkey?: string;
             // NFS fields
             hostserver?: string;
             mountpath?: string;

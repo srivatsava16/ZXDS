@@ -149,11 +149,19 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
   }, []);
 
   const handleDeleteConfig = useCallback((id: string) => {
+    console.log('[DELETE] MatchModule - handleDeleteConfig called for id:', id);
+    console.log('[DELETE] MatchModule - Current configs count:', configs?.length);
+    console.log('[DELETE] MatchModule - Current configs:', configs);
     if (window.confirm('Are you sure you want to delete this match configuration?')) {
-      setConfigs(configs?.filter(c => c.id !== id));
+      const newConfigs = configs?.filter(c => c?.id !== id);
+      console.log('[DELETE] MatchModule - Deleting config, new count:', newConfigs?.length);
+      console.log('[DELETE] MatchModule - New configs after delete:', newConfigs);
+      setConfigs(newConfigs);
       if (editingConfigId === id) {
         handleCancelEdit();
       }
+    } else {
+      console.log('[DELETE] MatchModule - Delete cancelled by user');
     }
   }, [configs, editingConfigId, handleCancelEdit]);
 

@@ -58,22 +58,9 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   onDeleteSharedCustomSource,
   onConfigurationsChange,
   moduleFieldMappings = [],
-  onModuleFieldMappingsChange
+  onModuleFieldMappingsChange,
+  tableDictionary = null
 }) => {
-  // Debug logging (commented out to prevent continuous output)
-  // useEffect(() => {
-  //   console.log('[AppendModule] Received props:', {
-  //     availableInputSourcesCount: availableInputSources.length,
-  //     availableInputSources: availableInputSources.map(src => ({
-  //       id: src.id,
-  //       sourceName: src.sourceName,
-  //       isVersioned: src.isVersioned,
-  //       headersCount: src.headers?.length || 0
-  //     })),
-  //     versionedSourcesCount: versionedSources.length
-  //   });
-  // }, [availableInputSources, versionedSources]);
-  // Use custom hooks for state management
   const {
     configs,
     editingConfigId,
@@ -95,12 +82,10 @@ const AppendModule: React.FC<AppendModuleProps> = ({
   // Note: Field mappings are now managed at module level, not config level
   const handleEditConfigWithMappings = (config: AppendConfig) => {
     handleEditConfig(config);
-    console.log('🔍 [DEBUG - Append Module] Loading config for edit (field mappings are module-level)');
   };
 
   const handleCancelEditWithMappings = () => {
     handleCancelEdit();
-    console.log('🔍 [DEBUG - Append Module] Canceled edit');
   };
 
   // Use shared custom sources from props instead of local state
@@ -213,12 +198,19 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     );
   };
 
+  // Track if initial configs have been loaded to prevent re-loading on every render
+  const initialConfigsLoadedRef = useRef(false);
+
   // Load initial configurations if provided (for edit mode)
+  // Only load once to allow user deletions to persist
   useEffect(() => {
-    if (initialConfigs && initialConfigs?.length > 0) {
+
+    if (initialConfigs && initialConfigs?.length > 0 && !initialConfigsLoadedRef.current) {
       setConfigs(initialConfigs);
+      initialConfigsLoadedRef.current = true;
+    } else if (initialConfigs && initialConfigs?.length > 0 && initialConfigsLoadedRef.current) {
     }
-  }, [initialConfigs, setConfigs]);
+  }, [initialConfigs, setConfigs, moduleId, configs?.length]);
 
   // Track previous configs to prevent infinite loops
   const prevConfigsRef = useRef<string>('');
@@ -233,6 +225,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
       if (currentConfigsString !== prevConfigsRef.current) {
         prevConfigsRef.current = currentConfigsString;
         onConfigurationsChange(configs);
+      } else {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,17 +467,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
     source?.sourceName?.toLowerCase().includes(inputSourcesSearch.toLowerCase())
   );
 
-  // Debug logging
-  if (editingConfigId) {
-    console.log('[AppendModule] Dropdown state:', {
-      editingConfigId,
-      selectedInputSources,
-      availableInputSourcesCount: availableInputSources?.length,
-      availableInputSourcesIds: availableInputSources?.map(s => ({ id: s.id, name: s.sourceName })),
-      filteredInputSourcesCount: filteredInputSources?.length
-    });
-  }
-
   const filteredAppendOnFields = appendOnFields?.filter(field =>
     field?.toLowerCase().includes(appendOnFieldsSearch?.toLowerCase())
   );
@@ -540,7 +522,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
             size="small"
             startIcon={<AccountTree />}
             onClick={() => {
-              console.log('🔍 [DEBUG - Append Module] Step 0: Configure Field Mapping button clicked, current moduleFieldMappings =', moduleFieldMappings);
               setFieldMappingDialogOpen(true);
             }}
             sx={{
@@ -579,15 +560,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
               size="small"
               startIcon={<Add />}
               onClick={() => {
-                console.log('[AppendModule] Opening Add Custom Append Source dialog, availableInputSources:',
-                  availableInputSources?.map(src => ({
-                    id: src.id,
-                    sourceName: src.sourceName,
-                    isVersioned: src.isVersioned,
-                    headersCount: src.headers?.length || 0,
-                    headers: src.headers
-                  }))
-                );
                 setDialogOpen(true);
               }}
               sx={{
@@ -1457,7 +1429,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
           >
             <IconButton
               onClick={() => {
-                console.log('🔍 [DEBUG - Append Module] Step 6: Add/Update config button clicked (field mappings are module-level)');
                 handleAddOrUpdateConfig();
               }}
               sx={{
@@ -2371,6 +2342,7 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         sourcesLoading={sourcesLoading}
         editingSource={editingSource}
         appendConfigs={configs}
+        tableDictionary={tableDictionary}
       />
 
       {/* Add Field Dialog */}
@@ -2386,7 +2358,6 @@ const AppendModule: React.FC<AppendModuleProps> = ({
         open={fieldMappingDialogOpen}
         onClose={() => setFieldMappingDialogOpen(false)}
         onSave={(mappings) => {
-          console.log('🔍 [DEBUG - Append Module] Step 5: Received mappings from dialog =', mappings);
           if (onModuleFieldMappingsChange) {
             onModuleFieldMappingsChange(mappings);
           }

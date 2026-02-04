@@ -17,7 +17,14 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Storage, Refresh } from '@mui/icons-material';
 import DataStreamDialog from '../../components/DataStreams/DataStreamDialog';
-import { getAllDataStreams, type DataStream as ApiDataStream } from '../../services/api';
+import {
+  getAllDataStreams,
+  createDataStream,
+  updateDataStream,
+  type DataStream as ApiDataStream,
+  type CreateDataStreamPayload,
+  type UpdateDataStreamPayload
+} from '../../services/api';
 
 // Local interface for dialog compatibility
 interface DialogDataStream {
@@ -32,6 +39,7 @@ interface DialogDataStream {
   accessKey?: string;
   secretKey?: string;
   defaultBucket?: string;
+  region?: string;
   createdBy?: string;
   createdDate?: string;
   processStatus?: string;
@@ -54,8 +62,8 @@ const DataStreamsPage = () => {
 
       const response = await getAllDataStreams();
 
-      if (response && response.success) {
-        setDataStreams(response.data || []);
+      if (response?.success) {
+        setDataStreams(response?.data || []);
       } else {
         setError('Failed to load data streams. Please try again.');
         setDataStreams([]);
@@ -81,39 +89,115 @@ const DataStreamsPage = () => {
 
   const handleEdit = (stream: ApiDataStream) => {
     // Convert API data stream to dialog format
+    // Map sourceTypeCode to sourceType: S -> SFTP, A -> AWS S3, N -> NFS
+    let mappedSourceType: 'AWS S3' | 'SFTP' | 'NFS' = 'AWS S3';
+    if (stream?.sourceTypeCode === 'S') {
+      mappedSourceType = 'SFTP';
+    } else if (stream?.sourceTypeCode === 'A') {
+      mappedSourceType = 'AWS S3';
+    } else if (stream?.sourceTypeCode === 'N') {
+      mappedSourceType = 'NFS';
+    }
+
     const dialogStream: DialogDataStream = {
-      id: stream.id.toString(),
-      name: stream.name,
-      sourceType: stream.sourceType as 'AWS S3' | 'SFTP' | 'NFS',
-      host: stream.hostname || undefined,
-      port: stream.port?.toString() || undefined,
-      username: stream.fileUsername || undefined,
-      password: stream.filePassword || undefined,
-      defaultPath: stream.defaultPath || undefined,
-      accessKey: stream.accessKey || undefined,
-      secretKey: stream.secretKey || undefined,
-      defaultBucket: stream.bucketName || undefined,
-      createdBy: stream.createdBy,
-      createdDate: stream.createdDate,
-      processStatus: stream.processStatus,
-      processedFullTime: stream.updatedDate,
+      id: stream?.id?.toString() || '',
+      name: stream?.name || '',
+      sourceType: mappedSourceType,
+      host: stream?.hostname || undefined,
+      port: stream?.port?.toString() || undefined,
+      username: stream?.fileUsername || undefined,
+      password: stream?.filePassword || undefined,
+      defaultPath: stream?.defaultPath || undefined,
+      accessKey: stream?.accessKey || undefined,
+      secretKey: stream?.secretKey || undefined,
+      defaultBucket: stream?.bucketName || undefined,
+      region: stream?.region || undefined,
+      createdBy: stream?.createdBy,
+      createdDate: stream?.createdDate,
+      processStatus: stream?.processStatus,
+      processedFullTime: stream?.updatedDate,
     };
     setEditingStream(dialogStream);
     setDialogOpen(true);
   };
 
   const handleDelete = (id: number) => {
-    if (window.confirm('Are you sure you want to delete this data stream?')) {
-      setDataStreams(dataStreams?.filter(stream => stream.id !== id));
+    if (window?.confirm('Are you sure you want to delete this data stream?')) {
+      setDataStreams(dataStreams?.filter(stream => stream?.id !== id));
       // TODO: Call API to delete the stream
     }
   };
 
-  const handleSave = (stream: DialogDataStream) => {
-    // TODO: Call API to save/update the stream
-    // For now, just close the dialog and reload data
-    setDialogOpen(false);
-    loadDataStreams();
+  const handleSave = async (stream: DialogDataStream) => {
+    try {
+      setError(null);
+
+      const isUpdate = editingStream !== null;
+      let response;
+
+      if (isUpdate) {
+        // Update existing data stream
+        const updatePayload: UpdateDataStreamPayload = {
+          operation: 'Update',
+          dataSourceId: parseInt(stream?.id || '0'),
+          sourceType: stream?.sourceType === 'SFTP' ? 'S' : 'A',
+          updatedBy: 'admin', // TODO: Get from user context
+        };
+
+        // Add source-specific fields
+        if (stream?.sourceType === 'SFTP') {
+          updatePayload.hostName = stream?.host || '';
+          updatePayload.port = parseInt(stream?.port || '22');
+          updatePayload.userName = stream?.username || '';
+          updatePayload.password = stream?.password || '';
+          updatePayload.defaultDirectory = stream?.defaultPath || '';
+        } else if (stream?.sourceType === 'AWS S3') {
+          updatePayload.bucketName = stream?.defaultBucket || '';
+          updatePayload.accessKey = stream?.accessKey || '';
+          updatePayload.secretKey = stream?.secretKey || '';
+          updatePayload.region = stream?.region || 'us-east-1';
+        }
+
+        response = await updateDataStream(updatePayload);
+      } else {
+        // Create new data stream
+        const createPayload: CreateDataStreamPayload = {
+          operation: 'Add',
+          dataStreamName: stream?.name || '',
+          sourceCategory: 'F',
+          sourceType: stream?.sourceType === 'SFTP' ? 'S' : 'A',
+          createdBy: 'admin', // TODO: Get from user context
+        };
+
+        // Add source-specific fields
+        if (stream?.sourceType === 'SFTP') {
+          createPayload.hostName = stream?.host || '';
+          createPayload.port = parseInt(stream?.port || '22');
+          createPayload.userName = stream?.username || '';
+          createPayload.password = stream?.password || '';
+          createPayload.defaultDirectory = stream?.defaultPath || '';
+        } else if (stream?.sourceType === 'AWS S3') {
+          createPayload.bucketName = stream?.defaultBucket || '';
+          createPayload.accessKey = stream?.accessKey || '';
+          createPayload.secretKey = stream?.secretKey || '';
+          createPayload.region = stream?.region || 'us-east-1';
+        }
+
+        response = await createDataStream(createPayload);
+      }
+
+      if (response?.success) {
+        setDialogOpen(false);
+        setEditingStream(null);
+        // Reload data streams to show the changes
+        await loadDataStreams();
+      } else {
+        setError(response?.message || `Failed to ${isUpdate ? 'update' : 'create'} data stream. Please try again.`);
+      }
+    } catch (err: any) {
+      console.error(`Error ${editingStream ? 'updating' : 'creating'} data stream:`, err);
+      setError(err?.message || `Failed to ${editingStream ? 'update' : 'create'} data stream. Please try again.`);
+    }
   };
 
   return (
@@ -226,15 +310,15 @@ const DataStreamsPage = () => {
               </TableRow>
             ) : (
               dataStreams?.map((stream) => (
-                <TableRow key={stream.id} hover>
+                <TableRow key={stream?.id} hover>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.85rem' }}>
-                      {stream.name}
+                      {stream?.name}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={stream.sourceType}
+                      label={stream?.sourceType}
                       size="small"
                       sx={{
                         backgroundColor: '#29669520',
@@ -246,12 +330,12 @@ const DataStreamsPage = () => {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-                      {stream.createdBy}
+                      {stream?.createdBy}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                      {stream.createdDate ? new Date(stream.createdDate).toLocaleString('en-US', {
+                      {stream?.createdDate ? new Date(stream?.createdDate).toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
                         day: 'numeric',
@@ -262,11 +346,11 @@ const DataStreamsPage = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={stream.processStatus}
+                      label={stream?.processStatus}
                       size="small"
                       sx={{
-                        backgroundColor: stream.processStatus === 'Active' ? '#10B98120' : '#EF444420',
-                        color: stream.processStatus === 'Active' ? '#10B981' : '#EF4444',
+                        backgroundColor: stream?.processStatus === 'Active' ? '#10B98120' : '#EF444420',
+                        color: stream?.processStatus === 'Active' ? '#10B981' : '#EF4444',
                         fontWeight: 600,
                         fontSize: '0.7rem',
                       }}
@@ -274,7 +358,7 @@ const DataStreamsPage = () => {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                      {stream.updatedDate ? new Date(stream.updatedDate).toLocaleString('en-US', {
+                      {stream?.updatedDate ? new Date(stream?.updatedDate).toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
                         day: 'numeric',
@@ -299,7 +383,7 @@ const DataStreamsPage = () => {
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDelete(stream.id)}
+                        onClick={() => handleDelete(stream?.id)}
                         sx={{
                           color: 'error.main',
                           '&:hover': {
@@ -321,7 +405,10 @@ const DataStreamsPage = () => {
       {/* Data Stream Dialog */}
       <DataStreamDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          setDialogOpen(false);
+          setEditingStream(null);
+        }}
         onSave={handleSave}
         editingStream={editingStream}
       />

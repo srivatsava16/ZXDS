@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { getRequestInputs, type RequestInputsResponse } from '../../../../services/api';
+import { getRequestInputs, getTableDictionary, type RequestInputsResponse, type TableDictionaryResponse } from '../../../../services/api';
 
 /**
  * Custom hook for loading API data sources for the request creation form
- * Handles fetching file sources, database sources, and preconfigured tables
+ * Handles fetching file sources, database sources, preconfigured tables, and table dictionary
  */
 export const useDataLoading = () => {
   const [apiSources, setApiSources] = useState<RequestInputsResponse | null>(null);
+  const [tableDictionary, setTableDictionary] = useState<TableDictionaryResponse | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const hasLoadedRef = useRef(false);
 
@@ -20,14 +21,24 @@ export const useDataLoading = () => {
       try {
         hasLoadedRef.current = true;
         setSourcesLoading(true);
-        console.log('=== Calling requestinputs.php API ===');
-        const response = await getRequestInputs();
-        console.log('=== requestinputs.php API Response ===', response);
-        setApiSources(response);
+
+        // Call both APIs in parallel
+        console.log('=== Calling requestinputs.php and dictionary.php APIs ===');
+        const [sourcesResponse, dictionaryResponse] = await Promise.all([
+          getRequestInputs(),
+          getTableDictionary()
+        ]);
+
+        console.log('=== requestinputs.php API Response ===', sourcesResponse);
+        console.log('=== dictionary.php API Response ===', dictionaryResponse);
+
+        setApiSources(sourcesResponse);
+        setTableDictionary(dictionaryResponse);
       } catch (error) {
-        console.error('=== requestinputs.php API Error ===', error);
+        console.error('=== API Error ===', error);
         // Fallback to default sources if API call fails
         setApiSources(null);
+        setTableDictionary(null);
       } finally {
         setSourcesLoading(false);
       }
@@ -36,5 +47,5 @@ export const useDataLoading = () => {
     loadApiSources();
   }, []);
 
-  return { apiSources, sourcesLoading };
+  return { apiSources, tableDictionary, sourcesLoading };
 };

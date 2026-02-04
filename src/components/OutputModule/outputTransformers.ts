@@ -24,6 +24,7 @@ export type DestinationConfig =
       region: string;
       path: string;
       accesskey: string;
+      secretkey?: string;
     }
   | {
       // Custom NFS destination
@@ -71,8 +72,6 @@ export const transformOutputToAPIFormat = (
   fieldMappings: FieldMapping[],
   apiSources?: RequestInputsResponse | null
 ): OutputConfigPayload | null => {
-
-  console.log('entered_', outputConfig);
   if (!outputConfig) return null;
 
   // Ensure inputSources exists and is an array
@@ -163,7 +162,8 @@ export const transformOutputToAPIFormat = (
         bucketname: customDest?.bucket || '',
         region: customDest?.region || '',
         path: customDest?.path || '',
-        accesskey: customDest?.accessKey || ''
+        accesskey: customDest?.accessKey || '',
+        secretkey: customDest?.secretKey
       };
     } else if (destinationTypeUpper === 'NFS') {
       destinationConfig = {
@@ -230,12 +230,7 @@ export const transformOutputConfigurationsToAPI = (
   moduleLevelFieldMappings: FieldMapping[],  // Module-level field mappings
   apiSources?: RequestInputsResponse | null
 ): OutputAPIPayload | null => {
-  console.log('=== transformOutputConfigurationsToAPI called ===');
-  console.log('outputConfigurations:', outputConfigurations);
-  console.log('availableInputSources:', availableInputSources);
-
   if (!outputConfigurations || outputConfigurations?.length === 0) {
-    console.log('=== transformOutputConfigurationsToAPI: No configurations, returning null ===');
     return null;
   }
 

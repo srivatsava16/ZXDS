@@ -32,6 +32,7 @@ import {
 import { Search, ExpandMore, ExpandLess, CheckBox, CheckBoxOutlineBlank, MenuBook, Close } from '@mui/icons-material';
 import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
+import DataDictionaryDialog from './DataDictionaryDialog';
 import { type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
 import { getReservedNamesFromAPI } from '../../utils/sourceValidation';
 
@@ -42,6 +43,7 @@ interface DatabaseSourceConfigProps {
   sourcesLoading?: boolean;
   sourceNameError?: string;
   allExistingSources?: InputSource[]; // For auto-generating unique source names
+  tableDictionary?: any; // Table dictionary data from dictionary.php API
 }
 
 // Field descriptions mapping
@@ -71,7 +73,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
   apiSources = null,
   sourcesLoading = false,
   sourceNameError = '',
-  allExistingSources = []
+  allExistingSources = [],
+  tableDictionary = null
 }) => {
   /**
    * Generates a unique source name by checking against reserved names and existing sources
@@ -132,6 +135,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
   const [top10Records, setTop10Records] = useState<any[]>([]);
   const [showTop10, setShowTop10] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedPreviewColumns, setSelectedPreviewColumns] = useState<string[]>([]); // For multi-select preview
   const [tableSearch, setTableSearch] = useState<string>('');
   const [isPreviewExpanded, setIsPreviewExpanded] = useState<boolean>(true);
 
@@ -265,9 +269,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           // We need to restore them as both available and selected for backward compatibility
           // For new API structure, we could have separate fields but need to maintain compatibility
           const savedHeaders = data.headers;
-          const savedSelectedHeaders = data.selectedHeaders || data.headers;
-          
-          setAllAvailableHeaders(savedHeaders);
+          // Use hasOwnProperty to distinguish between "not set" vs "empty array" (user deselected all)
+          const savedSelectedHeaders = data.hasOwnProperty('selectedHeaders') ? (data.selectedHeaders || []) : data.headers;          setAllAvailableHeaders(savedHeaders);
           setSelectedHeaders(savedSelectedHeaders);
           
           // Create fields from headers and dataTypes
@@ -290,13 +293,11 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
         // Priority 1: Try to restore by tableId (most reliable)
         if (data.tableSourceId) {
-          console.log('[DatabaseSourceConfig] Restoring by tableId:', data.tableSourceId);
 
           // Find the table by tableId
           const tableObj = availableTables?.find(table => table.tableId === data.tableSourceId);
 
           if (tableObj) {
-            console.log('[DatabaseSourceConfig] Found table by ID:', tableObj.tableName);
             setSelectedTable(tableObj.tableName);
             setSelectedTableId(tableObj.tableId);
           } else {
@@ -315,7 +316,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           }
         } else {
           // Priority 2: No tableId available, restore by table name
-          console.log('[DatabaseSourceConfig] Restoring by table name');
           const tableNameToRestore = data.originalTableName || data.table || '';
 
           if (tableNameToRestore) {
@@ -347,9 +347,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           // For saved data, headers contains the selected headers (user's choice)
           // We need to restore them as both available and selected for backward compatibility
           const savedHeaders = data.headers;
-          const savedSelectedHeaders = data.selectedHeaders || data.headers;
-          
-          setAllAvailableHeaders(savedHeaders);
+          // Use hasOwnProperty to distinguish between "not set" vs "empty array" (user deselected all)
+          const savedSelectedHeaders = data.hasOwnProperty('selectedHeaders') ? (data.selectedHeaders || []) : data.headers;          setAllAvailableHeaders(savedHeaders);
           setSelectedHeaders(savedSelectedHeaders);
           
           const restoredFields = savedHeaders?.map(header => ({
@@ -437,7 +436,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
     // Auto-trigger if all conditions are met and not already loading/showing
     if (isEditMode && hasNoPreviewData && hasTableSelected && !isLoadingRecords && !showTop10) {
-      console.log('[DatabaseSourceConfig] Auto-triggering Get Sample Recods in edit mode');
       handleGetTop10Records();
     }
   }, [isRestoringData, data, selectedTable, customTableName, tableSelectionType, isLoadingRecords, showTop10]);
@@ -481,16 +479,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     const selectedTableObj = currentTables?.find(table => table.name === tableName);
     const tableId = selectedTableObj?.tableId;
 
-    console.log('[DatabaseSourceConfig] Table selection changed:', {
-      tableName,
-      foundTable: !!selectedTableObj,
-      tableId,
-      currentTablesCount: currentTables?.length,
-      currentTablesPreview: currentTables?.slice(0, 3).map(t => ({ name: t.name, id: t.tableId })),
-      availableTablesCount: availableTables?.length,
-      selectedTableObj: selectedTableObj
-    });
-
     setSelectedTableId(tableId);
 
     setTop10Records([]);
@@ -532,18 +520,9 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     // Only add tableSourceId if it's defined (not undefined)
     if (tableId !== undefined) {
       updatedData.tableSourceId = tableId;
-      console.log('[DatabaseSourceConfig] ✅ Adding tableSourceId to updatedData:', tableId);
     } else {
       console.warn('[DatabaseSourceConfig] ⚠️ tableId is undefined, not adding to updatedData. Check if API provided tableId in preconfiguredTables.');
     }
-
-    console.log('[DatabaseSourceConfig] Calling onChange with data:', {
-      sourceName: updatedData.sourceName,
-      tableSourceId: updatedData.tableSourceId,
-      originalTableName: updatedData.originalTableName,
-      hasTableSourceId: 'tableSourceId' in updatedData
-    });
-
     onChange(updatedData);
   };
 
@@ -608,8 +587,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         payload.schema = selectedSchema; // Already contains ID
         payload.source = selectedSource;
       }
-
-      console.log('[DatabaseSourceConfig] Fetching Top 10 Records with payload:', payload);
 
       // Make the API call
       const response: Top10RecordsResponse | any[] = await getTop10Records(payload);
@@ -697,19 +674,23 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
       // Check if we're in edit mode and should preserve existing selection
       const isEditMode = data && data.id && Object.keys(data).length > 0;
-      const hasExistingSelection = data.selectedHeaders && Array.isArray(data.selectedHeaders) && data.selectedHeaders?.length > 0;
+      // Use hasOwnProperty to properly detect if selectedHeaders was set (even if empty array)
+      const hasExistingSelection = data.hasOwnProperty('selectedHeaders') && Array.isArray(data.selectedHeaders);
 
       let finalSelectedHeaders: string[];
       if (isEditMode && hasExistingSelection) {
-        // In edit mode, validate and preserve existing selection
-        const isSelectionValid = data.selectedHeaders!.every(header => actualColumns?.includes(header));
-        finalSelectedHeaders = isSelectionValid ? data.selectedHeaders! : actualColumns;
+        // In edit mode, validate and preserve existing selection (including empty array)
+        if (data.selectedHeaders?.length === 0) {
+          // User explicitly deselected all headers
+          finalSelectedHeaders = [];        } else {
+          const isSelectionValid = data.selectedHeaders!.every(header => actualColumns?.includes(header));
+          finalSelectedHeaders = isSelectionValid ? data.selectedHeaders! : actualColumns;        }
       } else {
         // New mode - select all headers
-        finalSelectedHeaders = actualColumns;
-      }
+        finalSelectedHeaders = actualColumns;      }
 
       setSelectedHeaders(finalSelectedHeaders);
+      setSelectedPreviewColumns(finalSelectedHeaders); // Initially show all columns in preview
 
       // Auto-generate unique source name if not already set
       let autoSourceName = tableSourceName;
@@ -740,7 +721,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         updatedDataFromTop10.originalTableName = selectedTable;
         if (selectedTableId !== undefined) {
           updatedDataFromTop10.tableSourceId = selectedTableId;
-          console.log('[DatabaseSourceConfig - handleGetTop10Records] ✅ Adding tableSourceId:', selectedTableId);
         } else {
           console.warn('[DatabaseSourceConfig - handleGetTop10Records] ⚠️ selectedTableId is undefined for preconfigured table:', selectedTable);
         }
@@ -756,13 +736,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           tableSourceName: autoSourceName
         };
       }
-
-      console.log('[DatabaseSourceConfig - handleGetTop10Records] Final updatedData:', {
-        hasTableSourceId: 'tableSourceId' in updatedDataFromTop10,
-        tableSourceId: updatedDataFromTop10.tableSourceId,
-        tableSelectionType,
-        selectedTableId
-      });
 
       onChange(updatedDataFromTop10);
     } catch (error) {
@@ -794,14 +767,13 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
 
   const handleHeaderSelectionChange = (newSelectedHeaders: string[]) => {
     setSelectedHeaders(newSelectedHeaders);
-    
+
     // Update parent data with selected headers while preserving all available headers
     onChange({
       ...data,
       selectedHeaders: newSelectedHeaders, // Save user's selection
       // headers field should remain unchanged to preserve full list
-    });
-  };
+    });  };
 
   const handleSourceChange = (sourceId: string) => {
     setSelectedSource(sourceId);
@@ -964,6 +936,28 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
     return allEntries;
   };
 
+  // Transform tableDictionary API response to DataDictionaryDialog format
+  const transformDictionaryData = () => {
+    if (!tableDictionary?.success || !tableDictionary?.dictionary) {
+      return [];
+    }
+
+    return Object.entries(tableDictionary.dictionary).map(([tableName, fields]) => {
+      const fieldsArray = fields as any[];
+      return {
+        name: tableName,
+        description: `Table containing ${fieldsArray?.length || 0} fields`,
+        fields: Array.isArray(fieldsArray) ? fieldsArray?.map((field: any) => ({
+          fieldName: field?.field_name || '',
+          description: field?.description || '',
+          availableValues: field?.field_values && Array.isArray(field.field_values)
+            ? field.field_values?.slice(0, 10)?.join(', ') + (field.field_values?.length > 10 ? '...' : '')
+            : '',
+        })) : [],
+      };
+    });
+  };
+
   const handleOpenDictionary = () => {
     setDictionaryDialogOpen(true);
   };
@@ -1089,12 +1083,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 <span>
                   <IconButton
                     size="small"
-                    disabled={!apiSources?.dbSource?.dataDictionary}
+                    disabled={!tableDictionary?.success}
                     onClick={handleOpenDictionary}
                     sx={{
-                      color: apiSources?.dbSource?.dataDictionary ? 'primary.main' : 'action.disabled',
+                      color: tableDictionary?.success ? 'primary.main' : 'action.disabled',
                       border: '1px solid',
-                      borderColor: apiSources?.dbSource?.dataDictionary ? 'primary.main' : 'action.disabled',
+                      borderColor: tableDictionary?.success ? 'primary.main' : 'action.disabled',
                       borderRadius: '4px',
                       '&:hover': {
                         backgroundColor: 'primary.light',
@@ -1109,13 +1103,13 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             </Box>
           </Box>
 
-          {/* Top 10 Records Preview - Inline */}
+          {/* SampleRecords - Inline */}
           {showTop10 && top10Records?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    Top 10 Records Preview
+                    SampleRecords
                   </Typography>
                   <IconButton
                     size="small"
@@ -1125,25 +1119,151 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     {isPreviewExpanded ? <ExpandLess /> : <ExpandMore />}
                   </IconButton>
                 </Box>
-                <TextField
-                  size="small"
-                  placeholder="Search records..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{
-                    width: '300px',
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: 'white',
-                    },
-                  }}
-                />
+                {/* Column Selection and Search - Only show when expanded */}
+                {isPreviewExpanded && (
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 'auto' }}>
+                    {/* Column Selection Dropdown - Searchable Multi-Select */}
+                    <Autocomplete
+                      multiple
+                      size="small"
+                      options={['__SELECT_ALL__', ...(selectedHeaders || [])]}
+                      value={selectedPreviewColumns}
+                    onChange={(event, newValue) => {
+                      // Check if "Select All" was clicked
+                      if (newValue?.includes('__SELECT_ALL__')) {
+                        // Toggle: if all are selected, deselect all; otherwise select all
+                        if (selectedPreviewColumns?.length === selectedHeaders?.length) {
+                          setSelectedPreviewColumns([]);
+                        } else {
+                          setSelectedPreviewColumns(selectedHeaders || []);
+                        }
+                      } else {
+                        // Filter out __SELECT_ALL__ in case it's in the array
+                        const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');
+                        setSelectedPreviewColumns(filtered);
+                      }
+                    }}
+                    disableCloseOnSelect
+                    getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'All Columns' : option}
+                    renderOption={(props, option, { selected }) => {
+                      if (option === '__SELECT_ALL__') {
+                        const allSelected = selectedPreviewColumns?.length === selectedHeaders?.length;
+                        const someSelected = selectedPreviewColumns?.length > 0 && selectedPreviewColumns?.length < (selectedHeaders?.length || 0);
+                        return (
+                          <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                            <Checkbox
+                              icon={<CheckBoxOutlineBlank fontSize="small" />}
+                              checkedIcon={<CheckBox fontSize="small" />}
+                              indeterminateIcon={<CheckBox fontSize="small" />}
+                              style={{ marginRight: 8 }}
+                              checked={allSelected}
+                              indeterminate={someSelected}
+                            />
+                            All Columns
+                          </li>
+                        );
+                      }
+                      return (
+                        <li {...props}>
+                          <Checkbox
+                            icon={<CheckBoxOutlineBlank fontSize="small" />}
+                            checkedIcon={<CheckBox fontSize="small" />}
+                            style={{ marginRight: 8 }}
+                            checked={selected}
+                          />
+                          {option}
+                        </li>
+                      );
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        placeholder={selectedPreviewColumns?.length === 0 ? "Select columns to view..." : ""}
+                        size="small"
+                      />
+                    )}
+                    renderTags={(value, getTagProps) =>
+                      value?.length === selectedHeaders?.length
+                        ? [
+                            <Chip
+                              key="all"
+                              label="All Columns"
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: '0.75rem',
+                                backgroundColor: 'primary.main',
+                                color: 'white',
+                              }}
+                            />
+                          ]
+                        : value?.slice(0, 2).map((option, index) => (
+                            <Chip
+                              {...getTagProps({ index })}
+                              key={option}
+                              label={option}
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: '0.75rem',
+                                backgroundColor: 'primary.main',
+                                color: 'white',
+                                '& .MuiChip-deleteIcon': {
+                                  color: 'rgba(255, 255, 255, 0.7)',
+                                  '&:hover': {
+                                    color: 'white',
+                                  },
+                                },
+                              }}
+                            />
+                          )).concat(
+                            value?.length > 2
+                              ? [
+                                  <Chip
+                                    key="more"
+                                    label={`+${value?.length - 2} more`}
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: '0.75rem',
+                                      backgroundColor: 'text.secondary',
+                                      color: 'white',
+                                    }}
+                                  />
+                                ]
+                              : []
+                          )
+                    }
+                    sx={{
+                      minWidth: 250,
+                      maxWidth: 400,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                      },
+                    }}
+                  />
+                  {/* Search Box */}
+                  <TextField
+                    size="small"
+                    placeholder="Search records..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{
+                      width: 250,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                      },
+                    }}
+                  />
+                  </Box>
+                )}
               </Box>
               <Collapse in={isPreviewExpanded}>
                 <TableContainer
@@ -1156,10 +1276,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   borderRadius: 2,
                 }}
               >
-                <Table stickyHeader size="small" sx={{ minWidth: Object.keys(top10Records[0] || {}).length * 120 }}>
+                <Table stickyHeader size="small" sx={{ minWidth: (selectedPreviewColumns?.length || 1) * 120 }}>
                   <TableHead>
                     <TableRow>
-                      {Object.keys(top10Records[0] || {}).map((header) => (
+                      {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(top10Records?.[0] || {})).map((header) => (
                         <TableCell key={header} sx={{ backgroundColor: '#F8FAFB', fontWeight: 600, py: 1, whiteSpace: 'nowrap' }}>
                           <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                             {header}
@@ -1170,19 +1290,20 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   </TableHead>
                   <TableBody>
                     {top10Records
-                      .filter((row) => {
+                      ?.filter((row) => {
                         if (!searchTerm?.trim()) return true;
                         const searchLower = searchTerm?.toLowerCase();
-                        return Object.values(row).some((value) =>
-                          String(value || '').toLowerCase().includes(searchLower)
+                        const columnsToSearch = selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(row || {});
+                        return columnsToSearch?.some((header) =>
+                          String(row?.[header] || '')?.toLowerCase()?.includes(searchLower)
                         );
                       })
-                      .map((row, idx) => (
+                      ?.map((row, idx) => (
                         <TableRow key={idx} hover>
-                          {Object.keys(row).map((key) => (
+                          {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(row || {})).map((key) => (
                             <TableCell key={key} sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
                               <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                                {row[key]}
+                                {row?.[key]}
                               </Typography>
                             </TableCell>
                           ))}
@@ -1212,24 +1333,19 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 value={selectedHeaders}
                 onChange={(event, newValue) => {
                   // Check if "Select All" was clicked
-                  if (newValue?.includes('__SELECT_ALL__')) {
-                    // Toggle: if all are selected, deselect all; otherwise select all
-                    if (selectedHeaders?.length === allAvailableHeaders?.length) {
-                      handleHeaderSelectionChange([]);
-                    } else {
-                      handleHeaderSelectionChange(allAvailableHeaders);
+                  if (newValue?.includes('__SELECT_ALL__')) {                    // Toggle: if all are selected, deselect all; otherwise select all
+                    if (selectedHeaders?.length === allAvailableHeaders?.length) {                      handleHeaderSelectionChange([]);
+                    } else {                      handleHeaderSelectionChange(allAvailableHeaders || []);
                     }
-                  } else {
-                    handleHeaderSelectionChange(newValue);
-                  }
-                }}
+                  } else {                    // Filter out __SELECT_ALL__ in case it's in the array
+                    const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');                    handleHeaderSelectionChange(filtered);
+                  }                }}
                 disableCloseOnSelect
                 getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
                 renderOption={(props, option, { selected }) => {
                   if (option === '__SELECT_ALL__') {
                     const allSelected = selectedHeaders?.length === allAvailableHeaders?.length;
-                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;
-                    return (
+                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;                    return (
                       <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
                         <Checkbox
                           icon={<CheckBoxOutlineBlank fontSize="small" />}
@@ -1337,20 +1453,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 initialConfig={data.filterJson}
                 showDataType={false} 
               />
-              {/* Display current filter query if in edit mode and has saved filter */}
-              {data.filterQuery && (
-                <Box sx={{ mt: 1, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Saved Filter Query:
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5, fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    {data.filterQuery}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
-                    Note: Use the filter builder above to modify this query
-                  </Typography>
-                </Box>
-              )}
             </Box>
           )}
 
@@ -1574,24 +1676,19 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 value={selectedHeaders}
                 onChange={(event, newValue) => {
                   // Check if "Select All" was clicked
-                  if (newValue?.includes('__SELECT_ALL__')) {
-                    // Toggle: if all are selected, deselect all; otherwise select all
-                    if (selectedHeaders?.length === allAvailableHeaders?.length) {
-                      handleHeaderSelectionChange([]);
-                    } else {
-                      handleHeaderSelectionChange(allAvailableHeaders);
+                  if (newValue?.includes('__SELECT_ALL__')) {                    // Toggle: if all are selected, deselect all; otherwise select all
+                    if (selectedHeaders?.length === allAvailableHeaders?.length) {                      handleHeaderSelectionChange([]);
+                    } else {                      handleHeaderSelectionChange(allAvailableHeaders || []);
                     }
-                  } else {
-                    handleHeaderSelectionChange(newValue);
-                  }
-                }}
+                  } else {                    // Filter out __SELECT_ALL__ in case it's in the array
+                    const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');                    handleHeaderSelectionChange(filtered);
+                  }                }}
                 disableCloseOnSelect
                 getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'Select All' : option}
                 renderOption={(props, option, { selected }) => {
                   if (option === '__SELECT_ALL__') {
                     const allSelected = selectedHeaders?.length === allAvailableHeaders?.length;
-                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;
-                    return (
+                    const someSelected = selectedHeaders?.length > 0 && selectedHeaders?.length < allAvailableHeaders?.length;                    return (
                       <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
                         <Checkbox
                           icon={<CheckBoxOutlineBlank fontSize="small" />}
@@ -1678,13 +1775,13 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
             </Box>
           )}
 
-          {/* Top 10 Records Preview - Inline for Custom Table */}
+          {/* SampleRecords - Inline for Custom Table */}
           {showTop10 && top10Records?.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    Top 10 Records Preview
+                    SampleRecords
                   </Typography>
                   <IconButton
                     size="small"
@@ -1694,25 +1791,151 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     {isPreviewExpanded ? <ExpandLess /> : <ExpandMore />}
                   </IconButton>
                 </Box>
-                <TextField
-                  size="small"
-                  placeholder="Search records..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{
-                    width: '300px',
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: 'white',
-                    },
-                  }}
-                />
+                {/* Column Selection and Search - Only show when expanded */}
+                {isPreviewExpanded && (
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 'auto' }}>
+                    {/* Column Selection Dropdown - Searchable Multi-Select */}
+                    <Autocomplete
+                      multiple
+                      size="small"
+                      options={['__SELECT_ALL__', ...(selectedHeaders || [])]}
+                      value={selectedPreviewColumns}
+                    onChange={(event, newValue) => {
+                      // Check if "Select All" was clicked
+                      if (newValue?.includes('__SELECT_ALL__')) {
+                        // Toggle: if all are selected, deselect all; otherwise select all
+                        if (selectedPreviewColumns?.length === selectedHeaders?.length) {
+                          setSelectedPreviewColumns([]);
+                        } else {
+                          setSelectedPreviewColumns(selectedHeaders || []);
+                        }
+                      } else {
+                        // Filter out __SELECT_ALL__ in case it's in the array
+                        const filtered = (newValue || []).filter((v) => v !== '__SELECT_ALL__');
+                        setSelectedPreviewColumns(filtered);
+                      }
+                    }}
+                    disableCloseOnSelect
+                    getOptionLabel={(option) => option === '__SELECT_ALL__' ? 'All Columns' : option}
+                    renderOption={(props, option, { selected }) => {
+                      if (option === '__SELECT_ALL__') {
+                        const allSelected = selectedPreviewColumns?.length === selectedHeaders?.length;
+                        const someSelected = selectedPreviewColumns?.length > 0 && selectedPreviewColumns?.length < (selectedHeaders?.length || 0);
+                        return (
+                          <li {...props} style={{ backgroundColor: '#f0f0f0', fontWeight: 600, borderBottom: '1px solid #ddd' }}>
+                            <Checkbox
+                              icon={<CheckBoxOutlineBlank fontSize="small" />}
+                              checkedIcon={<CheckBox fontSize="small" />}
+                              indeterminateIcon={<CheckBox fontSize="small" />}
+                              style={{ marginRight: 8 }}
+                              checked={allSelected}
+                              indeterminate={someSelected}
+                            />
+                            All Columns
+                          </li>
+                        );
+                      }
+                      return (
+                        <li {...props}>
+                          <Checkbox
+                            icon={<CheckBoxOutlineBlank fontSize="small" />}
+                            checkedIcon={<CheckBox fontSize="small" />}
+                            style={{ marginRight: 8 }}
+                            checked={selected}
+                          />
+                          {option}
+                        </li>
+                      );
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        placeholder={selectedPreviewColumns?.length === 0 ? "Select columns to view..." : ""}
+                        size="small"
+                      />
+                    )}
+                    renderTags={(value, getTagProps) =>
+                      value?.length === selectedHeaders?.length
+                        ? [
+                            <Chip
+                              key="all"
+                              label="All Columns"
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: '0.75rem',
+                                backgroundColor: 'primary.main',
+                                color: 'white',
+                              }}
+                            />
+                          ]
+                        : value?.slice(0, 2).map((option, index) => (
+                            <Chip
+                              {...getTagProps({ index })}
+                              key={option}
+                              label={option}
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: '0.75rem',
+                                backgroundColor: 'primary.main',
+                                color: 'white',
+                                '& .MuiChip-deleteIcon': {
+                                  color: 'rgba(255, 255, 255, 0.7)',
+                                  '&:hover': {
+                                    color: 'white',
+                                  },
+                                },
+                              }}
+                            />
+                          )).concat(
+                            value?.length > 2
+                              ? [
+                                  <Chip
+                                    key="more"
+                                    label={`+${value?.length - 2} more`}
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: '0.75rem',
+                                      backgroundColor: 'text.secondary',
+                                      color: 'white',
+                                    }}
+                                  />
+                                ]
+                              : []
+                          )
+                    }
+                    sx={{
+                      minWidth: 250,
+                      maxWidth: 400,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                      },
+                    }}
+                  />
+                  {/* Search Box */}
+                  <TextField
+                    size="small"
+                    placeholder="Search records..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{
+                      width: 250,
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: 'white',
+                      },
+                    }}
+                  />
+                  </Box>
+                )}
               </Box>
               <Collapse in={isPreviewExpanded}>
                 <TableContainer
@@ -1725,10 +1948,10 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   borderRadius: 2,
                 }}
               >
-                <Table stickyHeader size="small" sx={{ minWidth: Object.keys(top10Records[0] || {}).length * 120 }}>
+                <Table stickyHeader size="small" sx={{ minWidth: (selectedPreviewColumns?.length || 1) * 120 }}>
                   <TableHead>
                     <TableRow>
-                      {Object.keys(top10Records[0] || {}).map((header) => (
+                      {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(top10Records?.[0] || {})).map((header) => (
                         <TableCell key={header} sx={{ backgroundColor: '#F8FAFB', fontWeight: 600, py: 1, whiteSpace: 'nowrap' }}>
                           <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                             {header}
@@ -1739,19 +1962,20 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   </TableHead>
                   <TableBody>
                     {top10Records
-                      .filter((row) => {
+                      ?.filter((row) => {
                         if (!searchTerm?.trim()) return true;
                         const searchLower = searchTerm?.toLowerCase();
-                        return Object.values(row).some((value) =>
-                          String(value || '').toLowerCase().includes(searchLower)
+                        const columnsToSearch = selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(row || {});
+                        return columnsToSearch?.some((header) =>
+                          String(row?.[header] || '')?.toLowerCase()?.includes(searchLower)
                         );
                       })
-                      .map((row, idx) => (
+                      ?.map((row, idx) => (
                         <TableRow key={idx} hover>
-                          {Object.keys(row).map((key) => (
+                          {(selectedPreviewColumns?.length > 0 ? selectedPreviewColumns : Object.keys(row || {})).map((key) => (
                             <TableCell key={key} sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
                               <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
-                                {row[key]}
+                                {row?.[key]}
                               </Typography>
                             </TableCell>
                           ))}
@@ -1785,20 +2009,6 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 initialConfig={data.filterJson}
                 showDataType={false} 
               />
-              {/* Display current filter query if in edit mode and has saved filter */}
-              {data.filterQuery && (
-                <Box sx={{ mt: 1, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Saved Filter Query:
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5, fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    {data.filterQuery}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
-                    Note: Use the filter builder above to modify this query
-                  </Typography>
-                </Box>
-              )}
             </Box>
           )}
 
@@ -1828,231 +2038,14 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
       )}
 
       {/* Table Dictionary Dialog */}
-      <Dialog
+      <DataDictionaryDialog
         open={dictionaryDialogOpen}
         onClose={handleCloseDictionary}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            pb: 2,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#2D3748' }}>
-              Data Dictionary
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-              All available table fields and metadata
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={handleCloseDictionary}
-            size="small"
-            sx={{
-              color: 'text.secondary',
-              '&:hover': {
-                backgroundColor: 'action.hover',
-              },
-            }}
-          >
-            <Close />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent sx={{ pt: 2.5, pb: 2 }}>
-          {getAllDictionaryData().length > 0 ? (
-            <TableContainer
-              component={Paper}
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                boxShadow: 'none',
-                maxHeight: 600,
-              }}
-            >
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell
-                      sx={{
-                        backgroundColor: '#F8FAFB',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        color: '#2D3748',
-                        py: 1.5,
-                      }}
-                    >
-                      Table Name
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        backgroundColor: '#F8FAFB',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        color: '#2D3748',
-                        py: 1.5,
-                      }}
-                    >
-                      Field Name
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        backgroundColor: '#F8FAFB',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        color: '#2D3748',
-                        py: 1.5,
-                      }}
-                    >
-                      Description
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        backgroundColor: '#F8FAFB',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        color: '#2D3748',
-                        py: 1.5,
-                      }}
-                    >
-                      Sample Values
-                    </TableCell>
-                    <TableCell
-                      sx={{
-                        backgroundColor: '#F8FAFB',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        color: '#2D3748',
-                        py: 1.5,
-                      }}
-                    >
-                      Data Type
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {getAllDictionaryData().map((entry: any, index: number) => {
-                    const { tableName, field } = entry;
-
-                    // Handle both field_name and fieldName (for backward compatibility)
-                    const fieldName = field.field_name || field.fieldName || '--';
-                    const description = field.description || '--';
-
-                    // Handle field_values (array) or availableValues (string)
-                    let sampleValues = '--';
-                    if (field.field_values && Array.isArray(field.field_values)) {
-                      // Take first 3 unique values
-                      const uniqueValues = [...new Set(field.field_values)].slice(0, 3);
-                      sampleValues = uniqueValues?.join(', ');
-                      if (field.field_values?.length > 3) {
-                        sampleValues += ', ...';
-                      }
-                    } else if (field.availableValues) {
-                      sampleValues = field.availableValues;
-                    }
-
-                    const dataType = field.data_type || field.dataType || '--';
-
-                    return (
-                      <TableRow key={index} hover>
-                        <TableCell sx={{ py: 1 }}>
-                          <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#2D3748' }}>
-                            {tableName}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#2D3748' }}>
-                            {fieldName}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1 }}>
-                          <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>
-                            {description}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontSize: '0.8rem',
-                              color: 'text.secondary',
-                              fontFamily: 'monospace',
-                              maxWidth: 200,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={sampleValues}
-                          >
-                            {sampleValues}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1 }}>
-                          <Chip
-                            label={dataType}
-                            size="small"
-                            sx={{
-                              height: 22,
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              backgroundColor: '#E6F2FF',
-                              color: '#0066CC',
-                              border: '1px solid #B3D9FF',
-                            }}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Box
-              sx={{
-                py: 6,
-                textAlign: 'center',
-                border: '1px dashed',
-                borderColor: 'divider',
-                borderRadius: 1,
-                backgroundColor: '#F8FAFB',
-              }}
-            >
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                No dictionary data available.
-              </Typography>
-            </Box>
-          )}
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Button
-            onClick={handleCloseDictionary}
-            variant="contained"
-            sx={{
-              textTransform: 'none',
-              borderRadius: 1,
-              px: 3,
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+        tableName=""
+        fields={[]}
+        allTables={transformDictionaryData()}
+        showAllTables={true}
+      />
 
     </Box>
   );

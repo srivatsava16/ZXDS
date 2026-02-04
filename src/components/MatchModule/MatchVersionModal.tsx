@@ -48,6 +48,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   const [versionNameError, setVersionNameError] = useState('');
   const [selectedInputSources, setSelectedInputSources] = useState<string[]>([]);
   const [selectedMatchSources, setSelectedMatchSources] = useState<string[]>([]);
+  const [selectedMatchKeys, setSelectedMatchKeys] = useState<string[]>([]);
   const [selectedAddFields, setSelectedAddFields] = useState<string[]>([]);
 
   // Filter out the currently editing version from available input sources
@@ -63,23 +64,31 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
     if (version && open) {
       console.log('[MatchVersionModal] Loading version data:', {
         version,
-        addFields: version.addFields,
-        configJsonAddFields: version.configJson?.add_fields
+        operationFields: version?.operationFields,
+        addFields: version?.addFields,
+        configJsonMatchKeys: version?.configJson?.match_keys,
+        configJsonAddFields: version?.configJson?.add_fields
       });
 
-      setVersionName(version.sourceName || version.versionLabel || '');
-      setSelectedInputSources(version.baseInputSources || []);
-      setSelectedMatchSources(version.operationSources || []);
+      setVersionName(version?.sourceName || version?.versionLabel || '');
+      setSelectedInputSources(version?.baseInputSources || []);
+      setSelectedMatchSources(version?.operationSources || []);
 
-      // Get add fields from version property, or from first match source's fields array
-      let addFields = version.addFields || [];
-      if (addFields.length === 0 && version.configJson?.match_sources?.length > 0) {
-        addFields = version.configJson.match_sources[0]?.fields || [];
+      // Match Keys are fields from INPUT sources (stored in operationFields or configJson.match_keys)
+      const matchKeys = version?.operationFields || version?.configJson?.match_keys || [];
+      setSelectedMatchKeys(matchKeys);
+
+      // Add Fields are fields from MATCH sources (stored in addFields or configJson.add_fields)
+      let addFields = version?.addFields || version?.configJson?.add_fields || [];
+      if (addFields?.length === 0 && version?.configJson?.match_sources?.length > 0) {
+        addFields = version?.configJson?.match_sources?.[0]?.fields || [];
       }
 
       console.log('[MatchVersionModal] Setting state:', {
+        matchKeys,
         addFields,
-        loadedFrom: version.addFields ? 'version.addFields' : 'match_sources[0].fields'
+        matchKeysFrom: version?.operationFields ? 'operationFields' : 'configJson.match_keys',
+        addFieldsFrom: version?.addFields ? 'addFields' : version?.configJson?.add_fields ? 'configJson.add_fields' : 'match_sources[0].fields'
       });
 
       setSelectedAddFields(addFields);
@@ -118,54 +127,126 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName?.trim(),
-      versionLabel: versionName?.trim(),
+      versionName: versionName?.trim(),     // Used in payload transformation
+      sourceName: versionName?.trim(),      // Source name
+      versionLabel: versionName?.trim(),    // Display label
       baseInputSources: selectedInputSources,
       operationSources: selectedMatchSources,
-      addFields: selectedAddFields,
-      configJson: {
-        ...version.configJson,
-        // add_fields will be set within each match_sources.fields by handleUpdateVersion
-      },
+      operationFields: selectedMatchKeys,  // Match Keys from INPUT sources
+      addFields: selectedAddFields,        // Add Fields from MATCH sources
     };
+
+    // Update configJson to include match_keys and add_fields
+    if (updatedVersion?.configJson) {
+      updatedVersion.configJson = {
+        ...updatedVersion?.configJson,
+        match_keys: selectedMatchKeys || []
+      };
+
+      // Only include add_fields if there are any selected
+      if (selectedAddFields && selectedAddFields?.length > 0) {
+        updatedVersion.configJson.add_fields = selectedAddFields;
+      } else {
+        // Remove add_fields if none selected
+        delete updatedVersion?.configJson?.add_fields;
+      }
+    }
 
     console.log('[MatchVersionModal] Saving updated version:', updatedVersion);
     onSave(updatedVersion);
   };
 
   const getSourceName = (id: string): string => {
-    const inputSource = availableInputSources?.find(s => s.id === id);
-    if (inputSource) return inputSource.sourceName;
+    const inputSource = availableInputSources?.find(s => s?.id === id);
+    if (inputSource) return inputSource?.sourceName;
 
-    const matchSource = availableMatchSources?.find(s => s.id === id);
-    if (matchSource) return matchSource.name;
+    const matchSource = availableMatchSources?.find(s => s?.id === id);
+    if (matchSource) return matchSource?.name;
 
     return id;
   };
 
+  // Get available Match Keys from selected input sources
+  const getAvailableMatchKeys = (): string[] => {
+    if (!selectedInputSources || selectedInputSources?.length === 0) {
+      return [];
+    }
+
+    const headersSet = new Set<string>();
+
+    selectedInputSources?.forEach(sourceId => {
+      const source = availableInputSources?.find(s => s?.id === sourceId);
+      if (source?.headers) {
+        source?.headers?.forEach((header: string) => {
+          if (header) {
+            headersSet?.add(header);
+          }
+        });
+      }
+    });
+
+    return Array?.from(headersSet)?.sort();
+  };
+
   // Get available Add Fields from selected match sources
   const getAvailableAddFields = (): string[] => {
-    if (selectedMatchSources?.length === 0) return [];
+    if (!selectedMatchSources || selectedMatchSources?.length === 0) return [];
 
-    const selectedSources = availableMatchSources?.filter(src => selectedMatchSources?.includes(src.id));
-    if (selectedSources?.length === 0) return [];
+    const selectedSources = availableMatchSources?.filter(src => selectedMatchSources?.includes(src?.id));
+    if (!selectedSources || selectedSources?.length === 0) return [];
 
     // If only one source, return all its fields
     if (selectedSources?.length === 1) {
-      return (selectedSources[0] as any).fields || [];
+      return (selectedSources?.[0] as any)?.fields || [];
     }
 
     // If multiple sources, return common fields (intersection)
-    const firstSourceFields = (selectedSources[0] as any).fields || [];
+    const firstSourceFields = (selectedSources?.[0] as any)?.fields || [];
     return firstSourceFields?.filter((field: string) =>
-      selectedSources?.slice(1).every(src => {
-        const srcFields = (src as any).fields || [];
+      selectedSources?.slice(1)?.every(src => {
+        const srcFields = (src as any)?.fields || [];
         return srcFields?.includes(field);
       })
     );
   };
 
+  const availableMatchKeys = getAvailableMatchKeys();
   const availableAddFields = getAvailableAddFields();
+
+  // Clear invalid match keys when input sources change
+  useEffect(() => {
+    if (open && selectedMatchKeys?.length > 0) {
+      // Get current available fields based on selected input sources
+      const headersSet = new Set<string>();
+      selectedInputSources?.forEach(sourceId => {
+        const source = availableInputSources?.find(s => s?.id === sourceId);
+        if (source?.headers) {
+          source?.headers?.forEach((header: string) => {
+            if (header) {
+              headersSet?.add(header);
+            }
+          });
+        }
+      });
+      const availableFields = Array?.from(headersSet);
+
+      const validKeys = selectedMatchKeys?.filter(key => availableFields?.includes(key));
+      if (validKeys?.length !== selectedMatchKeys?.length) {
+        setSelectedMatchKeys(validKeys);
+      }
+    }
+  }, [selectedInputSources, open, availableInputSources, selectedMatchKeys]);
+
+  // Clear invalid add fields when match sources change
+  useEffect(() => {
+    if (open && selectedAddFields?.length > 0) {
+      const currentAvailableAddFields = getAvailableAddFields();
+      const validFields = selectedAddFields?.filter(field => currentAvailableAddFields?.includes(field));
+      if (validFields?.length !== selectedAddFields?.length) {
+        setSelectedAddFields(validFields);
+      }
+    }
+  }, [selectedMatchSources, open, availableMatchSources, selectedAddFields]);
 
   return (
     <Dialog
@@ -267,6 +348,59 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
             </FormControl>
           </Box>
 
+             {/* Match Keys Selection (from MATCH sources) */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+              Match Keys
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                multiple
+                value={selectedAddFields?.filter(field => availableAddFields?.includes(field)) || []}
+                onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                input={<OutlinedInput />}
+                disabled={!availableAddFields || availableAddFields?.length === 0}
+                displayEmpty
+                renderValue={(selected) => {
+                  if (!selected || selected?.length === 0) {
+                    return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
+                      {availableAddFields?.length === 0 ? 'No common fields available' : 'Select fields...'}
+                    </Typography>;
+                  }
+                  return (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected?.map((value) => (
+                        <Chip
+                          key={value}
+                          label={value}
+                          size="small"
+                          color="secondary"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Box>
+                  );
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(0, 0, 0, 0.15)',
+                  },
+                }}
+              >
+                {availableAddFields?.map((field) => (
+                  <MenuItem key={field} value={field}>
+                    <Checkbox checked={selectedAddFields?.indexOf(field) > -1} />
+                    <ListItemText primary={field} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              Optional: Fields from match sources to add to output
+            </Typography>
+          </Box>
+
           {/* Match Sources Selection */}
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
@@ -308,55 +442,6 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
             </FormControl>
           </Box>
 
-          {/* Add Fields Selection */}
-          <Box>
-            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
-              Add Fields
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                multiple
-                value={selectedAddFields}
-                onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
-                input={<OutlinedInput />}
-                disabled={availableAddFields?.length === 0}
-                displayEmpty
-                renderValue={(selected) => {
-                  if (selected?.length === 0) {
-                    return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
-                      {availableAddFields?.length === 0 ? 'No common fields available' : 'Select fields...'}
-                    </Typography>;
-                  }
-                  return (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected?.map((value) => (
-                        <Chip
-                          key={value}
-                          label={value}
-                          size="small"
-                          color="secondary"
-                          variant="outlined"
-                          sx={{ height: 20, fontSize: '0.7rem' }}
-                        />
-                      ))}
-                    </Box>
-                  );
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(0, 0, 0, 0.15)',
-                  },
-                }}
-              >
-                {availableAddFields?.map((field) => (
-                  <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAddFields?.indexOf(field) > -1} />
-                    <ListItemText primary={field} />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
         </Box>
       </DialogContent>
 

@@ -62,13 +62,6 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
 
   useEffect(() => {
     if (version && open) {
-      console.log('[AppendVersionModal] Loading version data:', {
-        version,
-        appendFields: version.appendFields,
-        configJsonAppendFields: version.configJson?.append_fields,
-        operationFields: version.operationFields,
-        configJsonMatchKeys: version.configJson?.match_keys
-      });
 
       setVersionName(version.sourceName || version.versionLabel || '');
       setSelectedInputSources(version.baseInputSources || []);
@@ -81,12 +74,6 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
       if (appendFields.length === 0 && version.configJson?.append_sources?.length > 0) {
         appendFields = version.configJson.append_sources[0]?.fields || [];
       }
-
-      console.log('[AppendVersionModal] Setting state:', {
-        matchKeys,
-        appendFields,
-        loadedFrom: version.appendFields ? 'version.appendFields' : 'append_sources[0].fields'
-      });
 
       setSelectedMatchKeys(matchKeys);
       setSelectedAppendFields(appendFields);
@@ -133,14 +120,15 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
 
     const updatedVersion = {
       ...version,
-      sourceName: versionName?.trim(),
-      versionLabel: versionName?.trim(),
+      versionName: versionName?.trim(),     // Used in payload transformation
+      sourceName: versionName?.trim(),      // Source name
+      versionLabel: versionName?.trim(),    // Display label
       baseInputSources: selectedInputSources,
       operationSources: selectedAppendSources,
       operationFields: selectedMatchKeys,
       appendFields: selectedAppendFields,
       configJson: {
-        ...version.configJson,
+        ...version?.configJson,
         match_keys: selectedMatchKeys,
         // append_fields will be set within each append_sources.fields by handleUpdateVersion
       },
@@ -310,52 +298,7 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
             </FormControl>
           </Box>
 
-          {/* Append Sources Selection */}
-          <Box>
-            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
-              Select Append Sources <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
-            </Typography>
-            <FormControl fullWidth size="small">
-              <Select
-                multiple
-                value={selectedAppendSources}
-                onChange={(e) => {
-                  setSelectedAppendSources(typeof e.target.value === 'string' ? [e.target.value] : e.target.value);
-                  // Reset append fields when append sources change
-                  setSelectedAppendFields([]);
-                }}
-                input={<OutlinedInput />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected?.map((value) => (
-                      <Chip
-                        key={value}
-                        label={getSourceName(value)}
-                        size="small"
-                        color="success"
-                        variant="outlined"
-                        sx={{ height: 20, fontSize: '0.7rem' }}
-                      />
-                    ))}
-                  </Box>
-                )}
-                sx={{
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(0, 0, 0, 0.15)',
-                  },
-                }}
-              >
-                {availableAppendSources?.map((source) => (
-                  <MenuItem key={source.id} value={source.id}>
-                    <Checkbox checked={selectedAppendSources?.indexOf(source.id) > -1} />
-                    <ListItemText primary={source.name} />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          {/* Match Keys Selection */}
+             {/* Match Keys Selection */}
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
               Select Match Keys <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
@@ -402,6 +345,53 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
               </Select>
             </FormControl>
           </Box>
+
+          {/* Append Sources Selection */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+              Select Append Sources <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                multiple
+                value={selectedAppendSources}
+                onChange={(e) => {
+                  setSelectedAppendSources(typeof e.target.value === 'string' ? [e.target.value] : e.target.value);
+                  // Reset append fields when append sources change
+                  setSelectedAppendFields([]);
+                }}
+                input={<OutlinedInput />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selected?.map((value) => (
+                      <Chip
+                        key={value}
+                        label={getSourceName(value)}
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                      />
+                    ))}
+                  </Box>
+                )}
+                sx={{
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(0, 0, 0, 0.15)',
+                  },
+                }}
+              >
+                {availableAppendSources?.map((source) => (
+                  <MenuItem key={source.id} value={source.id}>
+                    <Checkbox checked={selectedAppendSources?.indexOf(source.id) > -1} />
+                    <ListItemText primary={source.name} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+       
 
           {/* Fields to Append Selection */}
           <Box>

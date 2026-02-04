@@ -15,7 +15,8 @@
       "Bash(git checkout:*)",
       "Bash(npx vite build)",
       "Bash(./node_modules/.bin/tsc:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cd /mnt/c/Users/SriVatsavaAvanigadda/Desktop/ZXDS\\\\ latest\\\\ 7-25/zxds && npm run build:qa:*)"
     ],
     "deny": [],
     "ask": []

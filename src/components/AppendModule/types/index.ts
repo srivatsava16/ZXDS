@@ -45,6 +45,8 @@ export interface AppendModuleProps {
   // Module-level field mappings (shared across all configs/versions)
   moduleFieldMappings?: any[];
   onModuleFieldMappingsChange?: (mappings: any[]) => void;
+  // Table dictionary data from dictionary.php API
+  tableDictionary?: any;
 }
 
 export interface PredefinedSource {

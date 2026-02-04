@@ -38,12 +38,19 @@ import DivisionCreationPage from './views/admin/division/form/Index';
 function App() {
   const [sidebarOpen] = useState(true);
 
+  // Get base path from environment variable, fallback to dev environment
+  const basePath = import.meta.env.VITE_BASE_PATH || '/zxPlatformQAEnvironment';
+
+  console.log('🚀 App - Base Path:', basePath);
+  console.log('🚀 App - API Base URL:', import.meta.env.VITE_API_BASE_URL);
+  console.log('🚀 App - Mode:', import.meta.env.MODE);
+
   return (
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <NotificationProvider>
           <CssBaseline />
-          <Router basename="/zxPlatformDevEnvironment">
+          <Router basename={basePath}>
         <Routes>
           {/* Auth Routes (No Layout) */}
           <Route path="/login" element={<LoginPage />} />
@@ -53,7 +60,7 @@ function App() {
           <Route
             path="/*"
             element={
-              <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+              <Box sx={{ display: 'flex', minHeight: '100vh', flexDirection: 'column', zoom: 0.8 }}>
                 <Header onMenuClick={() => {}} />
                 <Box sx={{ display: 'flex', flex: 1, pt: 8 }}>
                   <Sidebar open={sidebarOpen} onClose={() => {}} />

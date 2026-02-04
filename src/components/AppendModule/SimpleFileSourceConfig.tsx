@@ -122,13 +122,6 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
         formData.append('sourceOption', '1'); // Default source option for Desktop
         formData.append('sourceType', 'file');
 
-        // Console log FormData contents
-        console.log('=== Append Module - Desktop File Upload - FormData Payload ===');
-        console.log('File:', uploadedFile);
-        console.log('File name:', uploadedFile.name);
-        console.log('File size:', uploadedFile.size, 'bytes');
-        console.log('File type:', uploadedFile.type);
-        console.log('FormData entries:');
         for (const [key, value] of formData.entries()) {
           if (value instanceof File) {
             console.log(`  ${key}:`, value.name, `(${value.size} bytes)`);
@@ -136,7 +129,6 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
             console.log(`  ${key}:`, value);
           }
         }
-        console.log('================================================================');
 
         // Make the API call with FormData
         response = await getTop10Records(formData as any);
@@ -148,22 +140,9 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
           sourceOption: 1, // Default for custom sources
           sourceType: 'file'
         };
-
-        // Console log JSON payload
-        console.log('=== Append Module - File Source API Call - JSON Payload ===');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('============================================================');
-
         // Make the API call
         response = await getTop10Records(payload);
       }
-
-      // Console log API response
-      console.log('=== Append Module - API Response from getTop10Records ===');
-      console.log('Response:', response);
-      console.log('Response type:', typeof response);
-      console.log('Is Array:', Array.isArray(response));
-      console.log('==========================================================');
 
       // Handle response data
       let responseData: Record<string, any>[];
@@ -364,7 +343,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
       {previewData?.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            Top 10 Records Preview
+            SampleRecords
           </Typography>
           <TableContainer
             component={Paper}
@@ -408,7 +387,7 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
       {/* Delimiter Selection */}
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-          Delimiter (Auto-detected, can be changed)
+          Delimiter
         </Typography>
         <RadioGroup
           row

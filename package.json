@@ -4,11 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:qa": "vite build --mode qa",
+    "build": "vite build --mode development",
+    "build:dev": "vite build --mode development",
+    "start": "vite --mode development",
+    "start:local": "vite --mode localdev",
+    "start:qa": "vite --mode qa",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start": "vite --mode development"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -35,6 +38,7 @@
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.22",
+    "fdir": "^6.5.0",
     "globals": "^16.4.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
