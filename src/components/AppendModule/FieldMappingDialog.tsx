@@ -313,6 +313,15 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 <MenuItem disabled value="">
                   <em>Select sources...</em>
@@ -392,6 +401,7 @@ const FieldMappingDialog: React.FC<FieldMappingDialogProps> = ({
                   PaperProps: {
                     sx: {
                       maxHeight: 400,
+                      maxWidth: '400px'
                     },
                   },
                   autoFocus: false,

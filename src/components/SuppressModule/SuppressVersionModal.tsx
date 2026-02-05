@@ -266,6 +266,15 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 {filteredAvailableInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
@@ -312,6 +321,15 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
                 }}
               >
                 {suppressOnFieldsOptions?.length === 0 ? (
@@ -364,6 +382,15 @@ const SuppressVersionModal: React.FC<SuppressVersionModalProps> = ({
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
                 }}
               >
                 {availableSuppressSources?.map((source) => (

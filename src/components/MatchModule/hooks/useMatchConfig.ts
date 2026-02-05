@@ -37,6 +37,12 @@ export const useMatchConfig = (initialConfigs?: MatchConfig[]) => {
       return;
     }
 
+    // Validation: If expand is checked, Add Fields are mandatory
+    if (expand && (!selectedAddFields || selectedAddFields?.length === 0)) {
+      alert('Please select at least one Add Field when Expand is enabled');
+      return;
+    }
+
     // Validation: Check if Add Fields are compatible with Match Keys (Match On Fields)
     // The match sources must have the fields that can be used as match keys
     if (expand && selectedAddFields?.length > 0 && availableMatchSources && selectedMatchSources?.length > 0) {

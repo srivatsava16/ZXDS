@@ -1010,7 +1010,17 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 displayEmpty
                 disabled={sourcesLoading}
                 sx={{ flex: 1 }}
-                MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      width: 'fit-content',
+                      maxWidth: '600px'
+                    }
+                  },
+                  autoFocus: false,
+                  disablePortal: false
+                }}
               >
                 <MenuItem value="">
                   <em>{sourcesLoading ? 'Loading tables...' : 'Select Database Table'}</em>
@@ -1055,11 +1065,30 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   )
                   .map((table) => (
                     <MenuItem key={table.name} value={table.name}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                      <Box sx={{ maxWidth: '500px', overflow: 'hidden' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.9rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
                           {table.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            fontSize: '0.75rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'block'
+                          }}
+                        >
                           {table.description}
                         </Typography>
                       </Box>
@@ -1421,6 +1450,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                     backgroundColor: 'white',
                   },
                 }}
+                ListboxProps={{
+                  sx: {
+                    maxHeight: 400,
+                    maxWidth: '400px'
+                  }
+                }}
               />
               {selectedHeaders?.length > 0 && (
                 <Box sx={{ mt: 1 }}>
@@ -1587,6 +1622,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                 value={selectedSchema}
                 onChange={(e) => handleSchemaChange(e.target.value)}
                 displayEmpty
+                MenuProps={{ PaperProps: { sx: { maxHeight: 300 } }, autoFocus: false }}
               >
                 <MenuItem value="">
                   <em>Select Schema</em>
@@ -1763,6 +1799,12 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   '& .MuiOutlinedInput-root': {
                     backgroundColor: 'white',
                   },
+                }}
+                ListboxProps={{
+                  sx: {
+                    maxHeight: 400,
+                    maxWidth: '400px'
+                  }
                 }}
               />
               {(selectedHeaders?.length > 0 ? selectedHeaders : (data.headers || [])).length > 0 && (

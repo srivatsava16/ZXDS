@@ -242,6 +242,15 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({
             sqlFragment = `(${cond.field} BETWEEN '${cond.value}' AND '${cond.value2 || ''}')`;
           } else if (cond.operator === 'LIKE' || cond.operator === 'NOT LIKE') {
             sqlFragment = `(${cond.field} ${cond.operator} '%${cond.value}%')`;
+          } else if (cond.operator === 'IN' || cond.operator === 'NOT IN') {
+            // Split by comma, trim, and quote each value individually
+            const values = cond.value
+              .split(',')
+              .map(v => v.trim())
+              .filter(v => v.length > 0)
+              .map(v => `'${v}'`)
+              .join(',');
+            sqlFragment = `(${cond.field} ${cond.operator} (${values}))`;
           } else {
             sqlFragment = `(${cond.field} ${cond.operator} '${cond.value}')`;
           }

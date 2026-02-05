@@ -17,6 +17,10 @@ import {
   OutlinedInput,
   IconButton,
   Divider,
+  FormGroup,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
 } from '@mui/material';
 import { Close, Save } from '@mui/icons-material';
 import type { InputSource } from '../InputModule/InputModule';
@@ -50,6 +54,8 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
   const [selectedMatchSources, setSelectedMatchSources] = useState<string[]>([]);
   const [selectedMatchKeys, setSelectedMatchKeys] = useState<string[]>([]);
   const [selectedAddFields, setSelectedAddFields] = useState<string[]>([]);
+  const [expand, setExpand] = useState<boolean>(false);
+  const [matchType, setMatchType] = useState<'full' | 'any'>('full');
 
   // Filter out the currently editing version from available input sources
   const filteredAvailableInputSources = availableInputSources?.filter(source => {
@@ -66,8 +72,12 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
         version,
         operationFields: version?.operationFields,
         addFields: version?.addFields,
+        expand: version?.expand,
+        matchType: version?.matchType,
         configJsonMatchKeys: version?.configJson?.match_keys,
-        configJsonAddFields: version?.configJson?.add_fields
+        configJsonAddFields: version?.configJson?.add_fields,
+        configJsonExpand: version?.configJson?.expand,
+        configJsonMatchType: version?.configJson?.match_type
       });
 
       setVersionName(version?.sourceName || version?.versionLabel || '');
@@ -84,14 +94,25 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
         addFields = version?.configJson?.match_sources?.[0]?.fields || [];
       }
 
+      // Load expand and matchType settings
+      // If expand is not explicitly set, infer it from whether addFields exist
+      const hasAddFields = addFields && addFields.length > 0;
+      const expandValue = version?.expand !== undefined ? version.expand : hasAddFields;
+      const matchTypeValue = version?.matchType || version?.configJson?.match_type || 'any';
+
       console.log('[MatchVersionModal] Setting state:', {
         matchKeys,
         addFields,
+        expand: expandValue,
+        matchType: matchTypeValue,
         matchKeysFrom: version?.operationFields ? 'operationFields' : 'configJson.match_keys',
-        addFieldsFrom: version?.addFields ? 'addFields' : version?.configJson?.add_fields ? 'configJson.add_fields' : 'match_sources[0].fields'
+        addFieldsFrom: version?.addFields ? 'addFields' : version?.configJson?.add_fields ? 'configJson.add_fields' : 'match_sources[0].fields',
+        expandInferred: version?.expand === undefined ? 'inferred from addFields' : 'explicit'
       });
 
       setSelectedAddFields(addFields);
+      setExpand(expandValue);
+      setMatchType(matchTypeValue);
     }
   }, [version, open]);
 
@@ -125,6 +146,12 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
       return;
     }
 
+    // Validation: If expand is checked, Add Fields are mandatory
+    if (expand && (!selectedAddFields || selectedAddFields?.length === 0)) {
+      alert('Please select at least one Add Field when Expand is enabled');
+      return;
+    }
+
     const updatedVersion = {
       ...version,
       versionName: versionName?.trim(),     // Used in payload transformation
@@ -133,21 +160,25 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
       baseInputSources: selectedInputSources,
       operationSources: selectedMatchSources,
       operationFields: selectedMatchKeys,  // Match Keys from INPUT sources
-      addFields: selectedAddFields,        // Add Fields from MATCH sources
+      addFields: expand ? selectedAddFields : undefined,        // Add Fields from MATCH sources (only when expand is true)
+      expand: expand,
+      matchType: matchType,
     };
 
-    // Update configJson to include match_keys and add_fields
+    // Update configJson to include match_keys, add_fields, expand, and match_type
     if (updatedVersion?.configJson) {
       updatedVersion.configJson = {
         ...updatedVersion?.configJson,
-        match_keys: selectedMatchKeys || []
+        match_keys: selectedMatchKeys || [],
+        match_type: matchType,
+        expand: expand
       };
 
-      // Only include add_fields if there are any selected
-      if (selectedAddFields && selectedAddFields?.length > 0) {
+      // Only include add_fields if expand is true and fields are selected
+      if (expand && selectedAddFields && selectedAddFields?.length > 0) {
         updatedVersion.configJson.add_fields = selectedAddFields;
       } else {
-        // Remove add_fields if none selected
+        // Remove add_fields if expand is false or none selected
         delete updatedVersion?.configJson?.add_fields;
       }
     }
@@ -337,6 +368,15 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 {filteredAvailableInputSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
@@ -348,7 +388,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
             </FormControl>
           </Box>
 
-             {/* Match Keys Selection (from MATCH sources) */}
+          {/* Match Keys Selection (fields to match on from input sources) */}
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
               Match Keys
@@ -356,15 +396,15 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
             <FormControl fullWidth size="small">
               <Select
                 multiple
-                value={selectedAddFields?.filter(field => availableAddFields?.includes(field)) || []}
-                onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                value={selectedMatchKeys?.filter(key => getAvailableMatchKeys()?.includes(key)) || []}
+                onChange={(e) => setSelectedMatchKeys(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
                 input={<OutlinedInput />}
-                disabled={!availableAddFields || availableAddFields?.length === 0}
+                disabled={!getAvailableMatchKeys() || getAvailableMatchKeys()?.length === 0}
                 displayEmpty
                 renderValue={(selected) => {
                   if (!selected || selected?.length === 0) {
                     return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
-                      {availableAddFields?.length === 0 ? 'No common fields available' : 'Select fields...'}
+                      {getAvailableMatchKeys()?.length === 0 ? 'Select input sources first' : 'Select fields...'}
                     </Typography>;
                   }
                   return (
@@ -374,7 +414,7 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                           key={value}
                           label={value}
                           size="small"
-                          color="secondary"
+                          color="primary"
                           variant="outlined"
                           sx={{ height: 20, fontSize: '0.7rem' }}
                         />
@@ -387,17 +427,26 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
-                {availableAddFields?.map((field) => (
-                  <MenuItem key={field} value={field}>
-                    <Checkbox checked={selectedAddFields?.indexOf(field) > -1} />
-                    <ListItemText primary={field} />
+                {getAvailableMatchKeys()?.map((key) => (
+                  <MenuItem key={key} value={key}>
+                    <Checkbox checked={selectedMatchKeys?.indexOf(key) > -1} />
+                    <ListItemText primary={key} />
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-              Optional: Fields from match sources to add to output
+              Fields from input sources to match on
             </Typography>
           </Box>
 
@@ -431,6 +480,15 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 {availableMatchSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
@@ -441,6 +499,190 @@ const MatchVersionModal: React.FC<MatchVersionModalProps> = ({
               </Select>
             </FormControl>
           </Box>
+
+          {/* Match Options: Expand and Match Type */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                Match Options
+              </Typography>
+
+              {/* Separator */}
+              <Box sx={{ width: '1px', height: '20px', backgroundColor: 'divider', mx: 0.5 }} />
+
+              {/* Expand Checkbox - Disabled when Full Match is selected */}
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={expand || false}
+                      onChange={(e) => {
+                        setExpand(e.target.checked);
+                        if (e.target.checked && matchType === 'full') {
+                          setMatchType('any');
+                        }
+                      }}
+                      disabled={matchType === 'full'}
+                      sx={{
+                        padding: '2px',
+                        '& .MuiSvgIcon-root': { fontSize: 18 }
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: matchType === 'full' ? 'text.disabled' : '#2D3748'
+                      }}
+                    >
+                      Expand
+                    </Typography>
+                  }
+                  sx={{ margin: 0 }}
+                  disabled={matchType === 'full'}
+                />
+              </FormGroup>
+
+              {/* Full Match / Any Match Radio Buttons - Disabled when Expand is enabled */}
+              <FormControl component="fieldset" sx={{ minWidth: 'auto' }}>
+                <RadioGroup
+                  row
+                  value={matchType || 'any'}
+                  onChange={(e) => {
+                    const newMatchType = e.target.value as 'full' | 'any';
+                    setMatchType(newMatchType);
+                    if (newMatchType === 'full') {
+                      setExpand(false);
+                    }
+                  }}
+                  sx={{ gap: 1 }}
+                >
+                  <FormControlLabel
+                    value="full"
+                    control={
+                      <Radio
+                        size="small"
+                        disabled={expand || false}
+                        sx={{
+                          padding: '2px',
+                          '& .MuiSvgIcon-root': { fontSize: 18 }
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          color: expand ? 'text.disabled' : '#2D3748'
+                        }}
+                      >
+                        Full Match
+                      </Typography>
+                    }
+                    sx={{ margin: 0 }}
+                    disabled={expand || false}
+                  />
+                  <FormControlLabel
+                    value="any"
+                    control={
+                      <Radio
+                        size="small"
+                        disabled={expand || false}
+                        sx={{
+                          padding: '2px',
+                          '& .MuiSvgIcon-root': { fontSize: 18 }
+                        }}
+                      />
+                    }
+                    label={
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          color: expand ? 'text.disabled' : '#2D3748'
+                        }}
+                      >
+                        Any Match
+                      </Typography>
+                    }
+                    sx={{ margin: 0 }}
+                    disabled={expand || false}
+                  />
+                </RadioGroup>
+              </FormControl>
+            </Box>
+          </Box>
+
+          {/* Add Fields Selection - Only shown when expand is checked */}
+          {expand && (
+            <Box>
+              <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.85rem' }}>
+                Add Fields {expand && <Typography component="span" sx={{ color: 'error.main' }}>*</Typography>}
+              </Typography>
+              <FormControl fullWidth size="small">
+                <Select
+                  multiple
+                  value={selectedAddFields?.filter(field => availableAddFields?.includes(field)) || []}
+                  onChange={(e) => setSelectedAddFields(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                  input={<OutlinedInput />}
+                  disabled={!availableAddFields || availableAddFields?.length === 0}
+                  displayEmpty
+                  renderValue={(selected) => {
+                    if (!selected || selected?.length === 0) {
+                      return <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.875rem' }}>
+                        {availableAddFields?.length === 0 ? 'No common fields available' : 'Select fields...'}
+                      </Typography>;
+                    }
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected?.map((value) => (
+                          <Chip
+                            key={value}
+                            label={value}
+                            size="small"
+                            color="secondary"
+                            variant="outlined"
+                            sx={{ height: 20, fontSize: '0.7rem' }}
+                          />
+                        ))}
+                      </Box>
+                    );
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'rgba(0, 0, 0, 0.15)',
+                    },
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        maxHeight: 400,
+                        maxWidth: '400px'
+                      }
+                    },
+                    autoFocus: false
+                  }}
+                >
+                  {availableAddFields?.map((field) => (
+                    <MenuItem key={field} value={field}>
+                      <Checkbox checked={selectedAddFields?.indexOf(field) > -1} />
+                      <ListItemText primary={field} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Fields from match sources to add to output
+              </Typography>
+            </Box>
+          )}
 
         </Box>
       </DialogContent>

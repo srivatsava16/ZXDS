@@ -329,6 +329,15 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 {availableMatchKeys?.length === 0 ? (
                   <MenuItem disabled>
@@ -380,6 +389,15 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
                 }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
+                }}
               >
                 {availableAppendSources?.map((source) => (
                   <MenuItem key={source.id} value={source.id}>
@@ -423,6 +441,15 @@ const AppendVersionModal: React.FC<AppendVersionModalProps> = ({
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(0, 0, 0, 0.15)',
                   },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 400,
+                      maxWidth: '400px'
+                    }
+                  },
+                  autoFocus: false
                 }}
               >
                 {availableAppendFields?.length === 0 ? (

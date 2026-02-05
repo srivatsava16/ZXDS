@@ -257,12 +257,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       setFileName(fileNameValue);
       setDelimiter(data.delimiter || ',');
       setHasHeader(data.hasHeader ?? true);
-      setPreviewData(data.previewData || []);
 
       // IMPORTANT: data.headers should contain custom headers if they were applied
       // Always use data.headers as the source of truth
       // But don't override if we're currently updating custom headers
       if (!isUpdatingCustomHeaders.current) {
+        setPreviewData(data.previewData || []);
         const headersFromData = data.headers || [];
         setHeaders(headersFromData);
         setAllAvailableHeaders(headersFromData);
@@ -666,6 +666,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         // Update allAvailableHeaders and selectedHeaders with custom headers
         setAllAvailableHeaders(customHeadersList);
         setSelectedHeaders(customHeadersList);
+        setSelectedPreviewColumns(customHeadersList);
 
         let transformedData: any[] = [];
         let updatedDataTypes: Record<string, string> = {};
@@ -714,6 +715,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       if (!trimmedValue && headers?.length > 0) {
         setAllAvailableHeaders(headers);
         setSelectedHeaders(headers);
+        setSelectedPreviewColumns(headers);
 
         let restoredData = previewData;
         let restoredDataTypes: Record<string, string> = {};
@@ -1452,6 +1454,12 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
               '& .MuiOutlinedInput-root': {
                 backgroundColor: 'white',
               },
+            }}
+            ListboxProps={{
+              sx: {
+                maxHeight: 400,
+                maxWidth: '400px'
+              }
             }}
           />
           {selectedHeaders?.length > 0 && (

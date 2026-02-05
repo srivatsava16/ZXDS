@@ -1609,6 +1609,15 @@ const InputVersionModal: React.FC<InputVersionModalProps> = ({
                       borderColor: 'rgba(0, 0, 0, 0.15)',
                     },
                   }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        maxHeight: 400,
+                        maxWidth: '400px'
+                      }
+                    },
+                    autoFocus: false
+                  }}
                 >
                   {availableHeaders?.map((header) => (
                     <MenuItem key={header} value={header}>

@@ -1300,6 +1300,15 @@ const ReportPage: React.FC = () => {
                       boxShadow: '0 0 0 2px rgba(41, 102, 149, 0.1)',
                     },
                   }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        maxHeight: 400,
+                        maxWidth: '400px'
+                      }
+                    },
+                    autoFocus: false
+                  }}
                 >
                   <MenuItem value="Waiting">
                     <Checkbox checked={selectedStatuses?.indexOf('Waiting') > -1} />
@@ -2525,6 +2534,15 @@ const ReportPage: React.FC = () => {
                             </Box>
                           )}
                           displayEmpty
+                          MenuProps={{
+                            PaperProps: {
+                              sx: {
+                                maxHeight: 400,
+                                maxWidth: '400px'
+                              }
+                            },
+                            autoFocus: false
+                          }}
                         >
                           <MenuItem disabled value="">
                             <em>Select sources...</em>
@@ -2563,6 +2581,15 @@ const ReportPage: React.FC = () => {
                             </Box>
                           )}
                           displayEmpty
+                          MenuProps={{
+                            PaperProps: {
+                              sx: {
+                                maxHeight: 400,
+                                maxWidth: '400px'
+                              }
+                            },
+                            autoFocus: false
+                          }}
                         >
                           <MenuItem disabled value="">
                             <em>{mappingSelectedSources?.length === 0 ? 'Select sources first' : 'Select columns...'}</em>
@@ -2865,6 +2892,15 @@ const ReportPage: React.FC = () => {
                       </Box>
                     );
                   }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        maxHeight: 400,
+                        maxWidth: '400px'
+                      }
+                    },
+                    autoFocus: false
+                  }}
                 >
                   <MenuItem disabled value="">
                     <em>Select Input Sources</em>
@@ -2925,6 +2961,15 @@ const ReportPage: React.FC = () => {
                         ))}
                       </Box>
                     );
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        maxHeight: 400,
+                        maxWidth: '400px'
+                      }
+                    },
+                    autoFocus: false
                   }}
                 >
                   <MenuItem disabled value="">
@@ -3092,6 +3137,15 @@ const ReportPage: React.FC = () => {
                           ))}
                         </Box>
                       );
+                    }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 400,
+                          maxWidth: '400px'
+                        }
+                      },
+                      autoFocus: false
                     }}
                   >
                     <MenuItem disabled value="">
@@ -3339,288 +3393,144 @@ const ReportPage: React.FC = () => {
                     <Table size="medium">
                       <TableHead>
                         <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                          <TableCell sx={{ fontWeight: 600, width: 50, color: '#374151', fontSize: '0.8rem' }} />
                           <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Input Sources</TableCell>
                           <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Output Fields</TableCell>
                           <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Destination</TableCell>
+                          <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Filename</TableCell>
+                          <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Output Full Path</TableCell>
+                          <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Records Count</TableCell>
                           <TableCell sx={{ fontWeight: 600, color: '#374151', fontSize: '0.8rem' }}>Status</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {savedConfigurations?.map((config) => {
-                          const isExpanded = expandedConfigIds.has(config?.id || '');
-                          const isCompleted = config?.status === 'Completed';
-                          const canExpand = isCompleted;
+                          const firstOutput = config?.outputDetails?.[0];
+                          const hasMultipleOutputs = config?.outputDetails && config?.outputDetails?.length > 1;
+
                           return (
-                            <>
-                              <TableRow key={config?.id} hover>
-                                <TableCell>
-                                  <IconButton
+                            <TableRow key={config?.id} hover>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                  {config?.inputSources?.slice(0, 2)?.map((source) => (
+                                    <Chip
+                                      key={source}
+                                      label={source}
+                                      size="small"
+                                      sx={{ fontSize: '0.7rem', fontWeight: 600 }}
+                                    />
+                                  ))}
+                                  {config?.inputSources && config?.inputSources?.length > 2 && (
+                                    <Chip
+                                      label={`+${config?.inputSources?.length - 2} more`}
+                                      size="small"
+                                      sx={{ fontSize: '0.7rem' }}
+                                    />
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                  {config?.outputFields?.slice(0, 3)?.map((field) => (
+                                    <Chip key={field} label={field} size="small" sx={{ fontSize: '0.7rem' }} />
+                                  ))}
+                                  {config?.outputFields && config?.outputFields?.length > 3 && (
+                                    <Chip
+                                      label={`+${config?.outputFields?.length - 3} more`}
+                                      size="small"
+                                      sx={{ fontSize: '0.7rem' }}
+                                    />
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                {config?.destination && (
+                                  <Chip
+                                    label={config?.destination}
                                     size="small"
-                                    onClick={() => handleToggleConfigExpand(config?.id || '')}
-                                    disabled={!canExpand}
                                     sx={{
-                                      color: !canExpand ? '#9CA3AF' : '#296695',
-                                      cursor: !canExpand ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.7rem',
+                                      fontWeight: 600,
+                                      backgroundColor: '#E0F2FE',
+                                      color: '#0369A1',
                                     }}
-                                  >
-                                    {isExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                                  </IconButton>
-                                </TableCell>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                    {config?.inputSources?.slice(0, 2)?.map((source) => (
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {firstOutput?.filename ? (
+                                  <Typography variant="body2" sx={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                                    {firstOutput.filename}
+                                    {hasMultipleOutputs && (
                                       <Chip
-                                        key={source}
-                                        label={source}
+                                        label={`+${config?.outputDetails?.length - 1} more`}
                                         size="small"
-                                        sx={{ fontSize: '0.7rem', fontWeight: 600 }}
-                                      />
-                                    ))}
-                                    {config?.inputSources && config?.inputSources?.length > 2 && (
-                                      <Chip
-                                        label={`+${config?.inputSources?.length - 2} more`}
-                                        size="small"
-                                        sx={{ fontSize: '0.7rem' }}
+                                        sx={{ fontSize: '0.65rem', ml: 0.5, height: 18 }}
                                       />
                                     )}
-                                  </Box>
-                                </TableCell>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                    {config?.outputFields?.slice(0, 3)?.map((field) => (
-                                      <Chip key={field} label={field} size="small" sx={{ fontSize: '0.7rem' }} />
-                                    ))}
-                                    {config?.outputFields && config?.outputFields?.length > 3 && (
-                                      <Chip
-                                        label={`+${config?.outputFields?.length - 3} more`}
-                                        size="small"
-                                        sx={{ fontSize: '0.7rem' }}
-                                      />
-                                    )}
-                                  </Box>
-                                </TableCell>
-                                <TableCell>
-                                  {config?.destination && (
-                                    <Chip
-                                      label={config?.destination}
-                                      size="small"
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="body2" sx={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+                                    -
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {firstOutput?.outputFullPath ? (
+                                  <Tooltip title={firstOutput.outputFullPath} placement="top">
+                                    <Typography
+                                      variant="body2"
                                       sx={{
                                         fontSize: '0.7rem',
-                                        fontWeight: 600,
-                                        backgroundColor: '#E0F2FE',
-                                        color: '#0369A1',
+                                        fontFamily: 'monospace',
+                                        color: '#6B7280',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        maxWidth: '400px'
                                       }}
-                                    />
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {config?.status && (
-                                    <Chip
-                                      label={config?.status}
-                                      size="small"
-                                      sx={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: 600,
-                                        backgroundColor: '#8B5CF6',
-                                        color: '#fff',
-                                      }}
-                                    />
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={5}>
-                                  <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                                    <Box sx={{ p: 3, backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}>
-                                      {/* Show Output Details Table for Completed status */}
-                                      {isCompleted && config?.outputDetails && config?.outputDetails?.length > 0 ? (
-                                        <>
-                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
-                                            <Description sx={{ fontSize: 18, color: '#296695' }} />
-                                            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#374151', fontSize: '0.875rem' }}>
-                                              Output Files
-                                            </Typography>
-                                          </Box>
-                                          <TableContainer
-                                            component={Paper}
-                                            sx={{
-                                              border: '1px solid',
-                                              borderColor: 'divider',
-                                              borderRadius: 1,
-                                            }}
-                                          >
-                                            <Table size="small">
-                                              <TableHead>
-                                                <TableRow sx={{ backgroundColor: '#F8FAFB' }}>
-                                                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>
-                                                    Filename
-                                                  </TableCell>
-                                                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>
-                                                    Output Full Path
-                                                  </TableCell>
-                                                  <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>
-                                                    Records Count
-                                                  </TableCell>
-                                                </TableRow>
-                                              </TableHead>
-                                              <TableBody>
-                                                {config?.outputDetails?.map((output, idx) => (
-                                                  <TableRow key={idx} hover>
-                                                    <TableCell sx={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                                                      {output?.filename || '-'}
-                                                    </TableCell>
-                                                    <TableCell sx={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#6B7280' }}>
-                                                      {output?.outputFullPath || '-'}
-                                                    </TableCell>
-                                                    <TableCell align="right">
-                                                      <Chip
-                                                        label={output?.recordsCount?.toLocaleString() || '0'}
-                                                        size="small"
-                                                        sx={{
-                                                          fontSize: '0.7rem',
-                                                          fontWeight: 600,
-                                                          backgroundColor: '#10B98120',
-                                                          color: '#10B981',
-                                                        }}
-                                                      />
-                                                    </TableCell>
-                                                  </TableRow>
-                                                ))}
-                                              </TableBody>
-                                            </Table>
-                                          </TableContainer>
-                                        </>
-                                      ) : (
-                                        <>
-                                          {/* Show Configuration Details for non-Completed status */}
-                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2.5 }}>
-                                            <Settings sx={{ fontSize: 18, color: '#296695' }} />
-                                            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#374151', fontSize: '0.875rem' }}>
-                                              Configuration Details
-                                            </Typography>
-                                          </Box>
-
-                                          {/* All Input Sources */}
-                                          <Box sx={{ mb: 2 }}>
-                                            <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                              All Input Sources
-                                            </Typography>
-                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                              {config?.inputSources?.map((source) => (
-                                                <Chip key={source} label={source} size="small" sx={{ fontSize: '0.7rem' }} />
-                                              ))}
-                                            </Box>
-                                          </Box>
-
-                                          {/* All Output Fields */}
-                                          <Box sx={{ mb: 2 }}>
-                                            <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                              All Output Fields
-                                            </Typography>
-                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                              {config?.outputFields?.map((field) => (
-                                                <Chip key={field} label={field} size="small" sx={{ fontSize: '0.7rem' }} />
-                                              ))}
-                                            </Box>
-                                          </Box>
-
-                                          {/* Combine Sources */}
-                                          {config?.inputSources && config?.inputSources?.length > 1 && (
-                                            <Box sx={{ mb: 2 }}>
-                                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                                Combine Sources
-                                              </Typography>
-                                              <Chip
-                                                label={config?.combineSources ? 'Yes' : 'No'}
-                                                size="small"
-                                                color={config?.combineSources ? 'success' : 'default'}
-                                                sx={{ fontSize: '0.7rem', fontWeight: 600 }}
-                                              />
-                                            </Box>
-                                          )}
-
-                                          {/* Priority Order */}
-                                          {config?.priorityOrder && config?.priorityOrder?.length > 0 && (
-                                            <Box sx={{ mb: 2 }}>
-                                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                                Priority Order
-                                              </Typography>
-                                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                                {config?.priorityOrder?.map((source, idx) => (
-                                                  <Box key={source} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                    <Chip
-                                                      label={idx + 1}
-                                                      size="small"
-                                                      sx={{
-                                                        backgroundColor: '#10B981',
-                                                        color: '#fff',
-                                                        minWidth: 20,
-                                                        height: 20,
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 600,
-                                                      }}
-                                                    />
-                                                    <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                                                      {source}
-                                                    </Typography>
-                                                  </Box>
-                                                ))}
-                                              </Box>
-                                            </Box>
-                                          )}
-
-                                          {/* Field Priority Order */}
-                                          {config?.fieldPriorityOrder && config?.fieldPriorityOrder?.length > 0 && (
-                                            <Box sx={{ mb: 2 }}>
-                                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                                Field Priority Order
-                                              </Typography>
-                                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                {config?.fieldPriorityOrder?.map((field) => (
-                                                  <Chip key={field} label={field} size="small" sx={{ fontSize: '0.7rem' }} />
-                                                ))}
-                                              </Box>
-                                            </Box>
-                                          )}
-
-                                          {/* Limitations */}
-                                          {config?.limitations && (
-                                            <Box sx={{ mb: 2 }}>
-                                              <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', display: 'block', mb: 0.5 }}>
-                                                Limitations
-                                              </Typography>
-                                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                {config?.limitations?.limitRecords ? (
-                                                  <>
-                                                    <Chip
-                                                      label={`Limit: ${config?.limitations?.recordCount || 0} records`}
-                                                      size="small"
-                                                      sx={{ fontSize: '0.7rem', backgroundColor: '#FEF3C7', color: '#92400E' }}
-                                                    />
-                                                    {config?.limitations?.shuffleRecords && (
-                                                      <Chip
-                                                        label="Shuffle Records"
-                                                        size="small"
-                                                        sx={{ fontSize: '0.7rem', backgroundColor: '#DBEAFE', color: '#1E40AF' }}
-                                                      />
-                                                    )}
-                                                  </>
-                                                ) : (
-                                                  <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                                                    No limitations
-                                                  </Typography>
-                                                )}
-                                              </Box>
-                                            </Box>
-                                          )}
-                                        </>
-                                      )}
-                                    </Box>
-                                  </Collapse>
-                                </TableCell>
-                              </TableRow>
-                            </>
+                                    >
+                                      {firstOutput.outputFullPath}
+                                    </Typography>
+                                  </Tooltip>
+                                ) : (
+                                  <Typography variant="body2" sx={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+                                    -
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {firstOutput?.recordsCount !== undefined ? (
+                                  <Chip
+                                    label={firstOutput.recordsCount.toLocaleString()}
+                                    size="small"
+                                    sx={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: 600,
+                                      backgroundColor: '#10B98120',
+                                      color: '#10B981',
+                                    }}
+                                  />
+                                ) : (
+                                  <Typography variant="body2" sx={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+                                    -
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {config?.status && (
+                                  <Chip
+                                    label={config?.status}
+                                    size="small"
+                                    sx={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: 600,
+                                      backgroundColor: '#8B5CF6',
+                                      color: '#fff',
+                                    }}
+                                  />
+                                )}
+                              </TableCell>
+                            </TableRow>
                           );
                         })}
                       </TableBody>

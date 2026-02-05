@@ -23,14 +23,10 @@ export const useDataLoading = () => {
         setSourcesLoading(true);
 
         // Call both APIs in parallel
-        console.log('=== Calling requestinputs.php and dictionary.php APIs ===');
         const [sourcesResponse, dictionaryResponse] = await Promise.all([
           getRequestInputs(),
           getTableDictionary()
         ]);
-
-        console.log('=== requestinputs.php API Response ===', sourcesResponse);
-        console.log('=== dictionary.php API Response ===', dictionaryResponse);
 
         setApiSources(sourcesResponse);
         setTableDictionary(dictionaryResponse);

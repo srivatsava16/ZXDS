@@ -284,7 +284,7 @@ export interface SubmitRequestResponse {
 export async function submitRequest(payload: SubmitRequestPayload): Promise<SubmitRequestResponse> {
   try {
     const response = await ApiService.fetchData<SubmitRequestResponse>({
-      url: '/submitReques.php',
+      url: '/submitRequest.php',
       method: 'post',
       data: payload
     });

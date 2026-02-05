@@ -946,6 +946,15 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                           ))}
                         </Box>
                       )}
+                      MenuProps={{
+                        PaperProps: {
+                          sx: {
+                            maxHeight: 400,
+                            maxWidth: '400px'
+                          }
+                        },
+                        autoFocus: false
+                      }}
                     >
                       <MenuItem value="" disabled>
                         <em>Select Fields</em>
@@ -996,6 +1005,15 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                           ))}
                         </Box>
                       )}
+                      MenuProps={{
+                        PaperProps: {
+                          sx: {
+                            maxHeight: 400,
+                            maxWidth: '400px'
+                          }
+                        },
+                        autoFocus: false
+                      }}
                     >
                       <MenuItem value="" disabled>
                         <em>Select Fields</em>
@@ -1050,6 +1068,15 @@ const StatsConfigDialog: React.FC<StatsConfigDialogProps> = ({
                         ))}
                       </Box>
                     )}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 400,
+                          maxWidth: '400px'
+                        }
+                      },
+                      autoFocus: false
+                    }}
                   >
                     <MenuItem value="" disabled>
                       <em>{selectedDynamicCountsOn?.length === 0 ? 'Please select Generate Counts On fields first' : 'Select fields'}</em>

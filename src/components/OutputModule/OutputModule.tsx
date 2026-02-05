@@ -876,7 +876,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       );
                     }}
                     displayEmpty
-                    MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 400,
+                          maxWidth: '400px'
+                        }
+                      },
+                      autoFocus: false
+                    }}
                     sx={{
                       backgroundColor: 'white',
                       '& .MuiOutlinedInput-notchedOutline': {
@@ -1065,7 +1073,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     }}
                     disabled={availableOutputFields?.length === 0}
                     displayEmpty
-                    MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 400,
+                          maxWidth: '400px'
+                        }
+                      },
+                      autoFocus: false
+                    }}
                     sx={{
                       backgroundColor: 'white',
                       '& .MuiOutlinedInput-notchedOutline': {
@@ -1249,6 +1265,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                       }}
                       disabled={availableOutputFields?.length === 0}
                       displayEmpty
+                      MenuProps={{
+                        PaperProps: {
+                          sx: {
+                            maxHeight: 400,
+                            maxWidth: '400px'
+                          }
+                        },
+                        autoFocus: false
+                      }}
                       sx={{
                         backgroundColor: 'white',
                         '& .MuiOutlinedInput-notchedOutline': {
@@ -1445,7 +1470,15 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                         </Typography>
                       );
                     }}
-                    MenuProps={{ PaperProps: { sx: { maxHeight: 400 } }, autoFocus: false }}
+                    MenuProps={{
+                      PaperProps: {
+                        sx: {
+                          maxHeight: 400,
+                          maxWidth: '400px'
+                        }
+                      },
+                      autoFocus: false
+                    }}
                     sx={{
                       backgroundColor: 'white',
                       '& .MuiOutlinedInput-notchedOutline': {

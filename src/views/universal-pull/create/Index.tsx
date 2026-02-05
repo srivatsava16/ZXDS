@@ -31,6 +31,12 @@ import {
   Tooltip,
   Alert,
   Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
@@ -190,6 +196,19 @@ const RequestCreationPage: React.FC = () => {
 
   // Shared custom sources across all modules (Append, Match, Suppress)
   const [sharedCustomSources, setSharedCustomSources] = useState<InputSource[]>([]);
+
+  // Error dialog state for source usage validation
+  const [usageErrorDialog, setUsageErrorDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    usedIn: string[];
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    usedIn: []
+  });
 
   // Transform API response to internal format
   const transformApiDataToInternalFormat = (apiData: any, apiSourcesForTransform?: RequestInputsResponse | null) => {
@@ -892,8 +911,8 @@ const RequestCreationPage: React.FC = () => {
             const operationFields = configJson?.match_keys || [];
 
             // Extract add fields (fields being added from match sources)
-            // Prefer add_fields at config level, otherwise extract from match_sources[].fields
-            const addFields = configJson?.add_fields ||
+            // Prefer expand_fields (new name), fallback to add_fields (old name for backward compatibility)
+            const addFields = configJson?.expand_fields || configJson?.add_fields ||
                              configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
 
             // Get combined headers
@@ -982,8 +1001,8 @@ const RequestCreationPage: React.FC = () => {
             
 
             // Extract add fields (fields to add from match sources)
-            // Prefer add_fields at config level, otherwise extract from match_sources[].fields
-            const configAddFields = configJson?.add_fields ||
+            // Prefer expand_fields (new name), fallback to add_fields (old name for backward compatibility)
+            const configAddFields = configJson?.expand_fields || configJson?.add_fields ||
                                    configJson?.match_sources?.flatMap((src: any) => src?.fields || []) || [];
 
             matchConfigs?.push({
@@ -991,8 +1010,10 @@ const RequestCreationPage: React.FC = () => {
               inputSources: inputSources, // Array of source IDs
               matchOnFields: configJson?.match_keys || [],
               matchSources: matchSources, // Array of source IDs (preconfigured or custom)
-              expand: configJson?.expand !== undefined ? configJson.expand : false,
-              matchType: configJson?.match_type || 'full',
+              // Read is_expand (new name), fallback to expand (old name)
+              expand: configJson?.is_expand !== undefined ? configJson.is_expand : (configJson?.expand !== undefined ? configJson.expand : false),
+              // Convert match_type: 'F' → 'full', 'A' → 'any' (for internal state)
+              matchType: configJson?.match_type === 'A' ? 'any' : 'full',
               addFields: configAddFields, // Fields to add from match sources
               // Flag to indicate if this has an existing ID from API (for update payload)
               hasExistingId: hasExistingId,
@@ -2017,16 +2038,155 @@ const RequestCreationPage: React.FC = () => {
     
   };
 
+  // Check if a source/version is being used in any downstream modules
+  const checkIfSourceIsUsed = (sourceId: string): { isUsed: boolean; usedIn: string[] } => {
+    const usedIn: string[] = [];
+
+    console.log('[SOURCE_USAGE_CHECK] Checking if source is used:', sourceId);
+    console.log('[SOURCE_USAGE_CHECK] Input sources count:', inputSources?.length);
+    console.log('[SOURCE_USAGE_CHECK] Versioned sources count:', versionedSources?.length);
+
+    // Get the source name for the ID being checked (needed because versions store source names, not IDs)
+    const sourceBeingChecked = inputSources?.find(s => s.id === sourceId);
+    const sourceNameBeingChecked = sourceBeingChecked?.sourceName;
+    console.log('[SOURCE_USAGE_CHECK] Source name being checked:', sourceNameBeingChecked);
+
+    // Check Input versions (versions created from this source)
+    // These are stored in inputSources array with isVersioned flag
+    inputSources?.forEach(source => {
+      if (source.isVersioned && source.versionConfig?.selectedSources) {
+        const selectedSources = Array.isArray(source.versionConfig.selectedSources)
+          ? source.versionConfig.selectedSources
+          : [];
+        console.log('[SOURCE_USAGE_CHECK] Checking input version:', source.sourceName, 'selectedSources:', selectedSources);
+        // Check by both ID and source name (versions may store either)
+        if (selectedSources.includes(sourceId) || (sourceNameBeingChecked && selectedSources.includes(sourceNameBeingChecked))) {
+          console.log('[SOURCE_USAGE_CHECK] ✓ Source IS used in input version:', source.sourceName);
+          usedIn.push(`Input version: ${source.sourceName}`);
+        }
+      }
+    });
+
+    // Check versioned sources that might use this source
+    // These are stored in versionedSources array
+    versionedSources?.forEach(version => {
+      if (version.moduleType === 'Input' && version.versionConfig?.selectedSources) {
+        const selectedSources = Array.isArray(version.versionConfig.selectedSources)
+          ? version.versionConfig.selectedSources
+          : [];
+        console.log('[SOURCE_USAGE_CHECK] Checking versioned source (Input):', version.sourceName || version.versionLabel, 'selectedSources:', selectedSources);
+        // Check by both ID and source name (versions may store either)
+        if (selectedSources.includes(sourceId) || (sourceNameBeingChecked && selectedSources.includes(sourceNameBeingChecked))) {
+          console.log('[SOURCE_USAGE_CHECK] ✓ Source IS used in versioned source:', version.sourceName || version.versionLabel);
+          usedIn.push(`Input version: ${version.sourceName || version.versionLabel}`);
+        }
+      }
+    });
+
+    // Check Stats configurations
+    console.log('[SOURCE_USAGE_CHECK] Stats configurations count:', statsConfigurations?.length);
+    statsConfigurations?.forEach(config => {
+      console.log('[SOURCE_USAGE_CHECK] Checking stats config, inputSources:', config.inputSources);
+      // Check if source is used in inputSources (check by both ID and name)
+      if (config.inputSources?.includes(sourceId)) {
+        console.log('[SOURCE_USAGE_CHECK] ✓ Source IS used in stats configuration (by ID)');
+        usedIn.push('Stats configuration');
+      }
+      // Also check by source name
+      else if (sourceNameBeingChecked && config.inputSources?.includes(sourceNameBeingChecked)) {
+        console.log('[SOURCE_USAGE_CHECK] ✓ Source IS used in stats configuration (by name)');
+        usedIn.push('Stats configuration');
+      }
+    });
+
+    // Check Match configurations
+    matchConfigurations?.forEach(config => {
+      if (config.inputSources?.includes(sourceId) || config.matchSources?.includes(sourceId)) {
+        usedIn.push('Match configuration');
+      }
+    });
+
+    // Check Match versions
+    versionedSources?.forEach(version => {
+      if (version.moduleType === 'Match') {
+        if (version.baseInputSources?.includes(sourceId) || version.operationSources?.includes(sourceId)) {
+          usedIn.push(`Match version: ${version.sourceName || version.versionLabel}`);
+        }
+      }
+    });
+
+    // Check Append configurations
+    appendConfigurations?.forEach(config => {
+      if (config.inputSources?.includes(sourceId) || config.appendSources?.includes(sourceId)) {
+        usedIn.push('Append configuration');
+      }
+    });
+
+    // Check Append versions
+    versionedSources?.forEach(version => {
+      if (version.moduleType === 'Append') {
+        if (version.baseInputSources?.includes(sourceId) || version.operationSources?.includes(sourceId)) {
+          usedIn.push(`Append version: ${version.sourceName || version.versionLabel}`);
+        }
+      }
+    });
+
+    // Check Suppress configurations
+    suppressConfigurations?.forEach(config => {
+      if (config.inputSources?.includes(sourceId) || config.suppressSources?.includes(sourceId)) {
+        usedIn.push('Suppress configuration');
+      }
+    });
+
+    // Check Suppress versions
+    versionedSources?.forEach(version => {
+      if (version.moduleType === 'Suppress') {
+        if (version.baseInputSources?.includes(sourceId) || version.operationSources?.includes(sourceId)) {
+          usedIn.push(`Suppress version: ${version.sourceName || version.versionLabel}`);
+        }
+      }
+    });
+
+    // Check Output configurations
+    outputConfigurations?.forEach(config => {
+      if (config.inputSources?.includes(sourceId)) {
+        usedIn.push('Output configuration');
+      }
+    });
+
+    console.log('[SOURCE_USAGE_CHECK] Check complete for source:', sourceId);
+    console.log('[SOURCE_USAGE_CHECK] Is used:', usedIn.length > 0);
+    console.log('[SOURCE_USAGE_CHECK] Used in:', usedIn);
+
+    return {
+      isUsed: usedIn.length > 0,
+      usedIn
+    };
+  };
+
   const handleDeleteVersion = (versionId: string) => {
-    
+    // Check if this version is being used in downstream modules
+    const { isUsed, usedIn } = checkIfSourceIsUsed(versionId);
+
+    if (isUsed) {
+      setUsageErrorDialog({
+        open: true,
+        title: 'Cannot Delete Version',
+        message: 'This version cannot be deleted because it is currently being used in the workflow:',
+        usedIn
+      });
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this version?')) {
+      return;
+    }
 
     // Remove from versioned sources
     setVersionedSources(prev => prev?.filter(version => version?.id !== versionId));
 
     // Also remove from input sources if it exists there
     setInputSources(prev => prev?.filter(source => source?.id !== versionId));
-
-    
   };
 
   // Handlers for shared custom sources - with module tracking
@@ -2080,6 +2240,24 @@ const RequestCreationPage: React.FC = () => {
     // Find the original source to compare
     const originalSource = sharedCustomSources?.find(s => s.id === source.id);
 
+    // Check if the source name is being changed
+    const isNameChanged = originalSource?.sourceName !== source.sourceName;
+
+    // If name is being changed, check if source is being used in downstream modules
+    if (isNameChanged) {
+      const { isUsed, usedIn } = checkIfSourceIsUsed(source.id);
+
+      if (isUsed) {
+        setUsageErrorDialog({
+          open: true,
+          title: 'Cannot Rename Source',
+          message: 'This source cannot be renamed because it is currently being used in the workflow',
+          usedIn
+        });
+        return;
+      }
+    }
+
     setSharedCustomSources(prev =>
       prev?.map(s => s.id === source.id ? { ...source, createdByModuleId: s.createdByModuleId } : s)
     );
@@ -2101,6 +2279,19 @@ const RequestCreationPage: React.FC = () => {
   };
 
   const handleDeleteSharedCustomSource = (id: string) => {
+    // Check if this source is being used in downstream modules
+    const { isUsed, usedIn } = checkIfSourceIsUsed(id);
+
+    if (isUsed) {
+      setUsageErrorDialog({
+        open: true,
+        title: 'Cannot Delete Source',
+        message: 'This source cannot be deleted because it is currently being used in the workflow',
+        usedIn
+      });
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this custom source?')) {
       // Find the source to be deleted
       const sourceToDelete = sharedCustomSources?.find(s => s.id === id);
@@ -2684,10 +2875,10 @@ const RequestCreationPage: React.FC = () => {
         // operationFields = selectedMatchOnFields = fields from INPUT sources
         configJson.match_keys = operationFields || [];
 
-        // Add Fields are separate - fields from MATCH sources to add to the output (stored in addFields)
-        // Only include add_fields if there are any selected
+        // Expand Fields are separate - fields from MATCH sources to add to the output (stored in addFields)
+        // Only include expand_fields if there are any selected
         if (addFields && addFields?.length > 0) {
-          configJson.add_fields = addFields;
+          configJson.expand_fields = addFields;
         }
       }
 
@@ -3526,8 +3717,9 @@ const RequestCreationPage: React.FC = () => {
             source_name: matchSourceName
           };
         }),
-        expand: config?.expand || false,
-        match_type: config?.matchType || 'full',
+        is_expand: config?.expand || false,
+        // Convert match type: 'full' → 'F', 'any' → 'A'
+        match_type: config?.matchType === 'any' ? 'A' : 'F',
         field_mappings: fieldMappingsForConfig
       };
 
@@ -3897,20 +4089,83 @@ const RequestCreationPage: React.FC = () => {
             const selfSource = source as any;
             
 
+            // Helper function to generate SQL from filterJson
+            const generateSQLFromFilterJson = (filterJson: any[]): string => {
+              if (!filterJson || filterJson.length === 0) return '';
+
+              const groupQueries = filterJson.map((group: any) => {
+                const conditionQueries = group.conditions
+                  ?.filter((cond: any) => cond?.field && cond?.operator)
+                  ?.map((cond: any) => {
+                    let sqlFragment = '';
+                    if (cond.operator === 'IS NULL' || cond.operator === 'IS NOT NULL') {
+                      sqlFragment = `(${cond.field} ${cond.operator})`;
+                    } else if (cond.operator === 'BETWEEN') {
+                      sqlFragment = `(${cond.field} BETWEEN '${cond.value}' AND '${cond.value2 || ''}')`;
+                    } else if (cond.operator === 'LIKE' || cond.operator === 'NOT LIKE') {
+                      sqlFragment = `(${cond.field} ${cond.operator} '%${cond.value}%')`;
+                    } else if (cond.operator === 'IN' || cond.operator === 'NOT IN') {
+                      const values = cond.value
+                        .split(',')
+                        .map((v: string) => v.trim())
+                        .filter((v: string) => v.length > 0)
+                        .map((v: string) => `'${v}'`)
+                        .join(',');
+                      sqlFragment = `(${cond.field} ${cond.operator} (${values}))`;
+                    } else {
+                      sqlFragment = `(${cond.field} ${cond.operator} '${cond.value}')`;
+                    }
+                    return sqlFragment;
+                  });
+
+                if (!conditionQueries || conditionQueries.length === 0) {
+                  return { query: '', operator: group.groupOperator || 'OR' };
+                }
+
+                const query = conditionQueries.length === 1
+                  ? conditionQueries[0]
+                  : `(${conditionQueries.join(` ${group.logicalOperator} `)})`;
+
+                return { query, operator: group.groupOperator || 'OR' };
+              });
+
+              const validQueries = groupQueries.filter((q: any) => q?.query !== '');
+
+              if (validQueries.length === 0) return '';
+              if (validQueries.length === 1) return validQueries[0]?.query;
+
+              let result = validQueries[0]?.query;
+              for (let i = 1; i < validQueries.length; i++) {
+                const currentOperator = validQueries[i - 1]?.operator;
+                result = `(${result} ${currentOperator} ${validQueries[i]?.query})`;
+              }
+
+              return result;
+            };
+
             // Get assignment_sets and tiering_on directly from selfConfig
             const assignmentSets = selfSource?.selfConfig?.assignment_sets || [];
             const tieringOn = selfSource?.selfConfig?.tiering_on ?? null;
 
-            // Transform assignment_sets: rename filter_config to filterJson
+            // Transform assignment_sets: regenerate filter_sql from filterJson
             const transformedAssignmentSets = assignmentSets?.map((set: any) => {
               const transformed: any = {
                 value_to_assign: set?.value_to_assign || '',
-                filter_sql: set?.filter_sql || '',
+                filter_sql: '', // Will be regenerated
               };
 
-              // Rename filter_config to filterJson if it exists
+              // Rename filter_config to filterJson if it exists, and regenerate filter_sql
               if (set?.filter_config) {
                 transformed.filterJson = set.filter_config;
+                // Regenerate filter_sql from filterJson
+                transformed.filter_sql = generateSQLFromFilterJson(set.filter_config);
+              } else if (set?.filterJson) {
+                transformed.filterJson = set.filterJson;
+                // Regenerate filter_sql from filterJson
+                transformed.filter_sql = generateSQLFromFilterJson(set.filterJson);
+              } else {
+                // Fallback to existing filter_sql if no filterJson
+                transformed.filter_sql = set?.filter_sql || '';
               }
 
               return transformed;
@@ -5219,15 +5474,16 @@ const RequestCreationPage: React.FC = () => {
             // Match Keys are fields from INPUT sources to match on
             match_keys: config?.matchOnFields || [],
             match_sources: matchSourcesForConfig,
-            expand: config?.expand || false,
-            match_type: config?.matchType || 'full',
+            is_expand: config?.expand || false,
+            // Convert match type: 'full' → 'F', 'any' → 'A'
+            match_type: config?.matchType === 'any' ? 'A' : 'F',
             field_mappings: fieldMappingsForConfig
           };
 
-          // Add Fields are separate - fields from MATCH sources to add to output
+          // Expand Fields are separate - fields from MATCH sources to add to output
           // Only include if addFields is defined and has items
           if (config?.addFields && config?.addFields?.length > 0) {
-            configJson.add_fields = config?.addFields;
+            configJson.expand_fields = config?.addFields;
           }
 
           // Calculate stepOrder based on the config's createdByModuleId
@@ -5278,11 +5534,14 @@ const RequestCreationPage: React.FC = () => {
             match_keys: configJson?.match_keys || (source as any)?.operationFields || []
           };
 
-          // Include add_fields if present (fields from MATCH sources to add to output)
+          // Include expand_fields if present (fields from MATCH sources to add to output)
           if ((source as any)?.addFields && (source as any)?.addFields?.length > 0) {
-            updatedConfigJson.add_fields = (source as any)?.addFields;
+            updatedConfigJson.expand_fields = (source as any)?.addFields;
+          } else if (configJson?.expand_fields && configJson?.expand_fields?.length > 0) {
+            updatedConfigJson.expand_fields = configJson?.expand_fields;
           } else if (configJson?.add_fields && configJson?.add_fields?.length > 0) {
-            updatedConfigJson.add_fields = configJson?.add_fields;
+            // Backward compatibility: if old field name exists, use it
+            updatedConfigJson.expand_fields = configJson?.add_fields;
           }
 
           matchItems?.push({
@@ -5368,20 +5627,83 @@ const RequestCreationPage: React.FC = () => {
           const selfSource = source as any;
 
 
+          // Helper function to generate SQL from filterJson (same as above)
+          const generateSQLFromFilterJson = (filterJson: any[]): string => {
+            if (!filterJson || filterJson.length === 0) return '';
+
+            const groupQueries = filterJson.map((group: any) => {
+              const conditionQueries = group.conditions
+                ?.filter((cond: any) => cond?.field && cond?.operator)
+                ?.map((cond: any) => {
+                  let sqlFragment = '';
+                  if (cond.operator === 'IS NULL' || cond.operator === 'IS NOT NULL') {
+                    sqlFragment = `(${cond.field} ${cond.operator})`;
+                  } else if (cond.operator === 'BETWEEN') {
+                    sqlFragment = `(${cond.field} BETWEEN '${cond.value}' AND '${cond.value2 || ''}')`;
+                  } else if (cond.operator === 'LIKE' || cond.operator === 'NOT LIKE') {
+                    sqlFragment = `(${cond.field} ${cond.operator} '%${cond.value}%')`;
+                  } else if (cond.operator === 'IN' || cond.operator === 'NOT IN') {
+                    const values = cond.value
+                      .split(',')
+                      .map((v: string) => v.trim())
+                      .filter((v: string) => v.length > 0)
+                      .map((v: string) => `'${v}'`)
+                      .join(',');
+                    sqlFragment = `(${cond.field} ${cond.operator} (${values}))`;
+                  } else {
+                    sqlFragment = `(${cond.field} ${cond.operator} '${cond.value}')`;
+                  }
+                  return sqlFragment;
+                });
+
+              if (!conditionQueries || conditionQueries.length === 0) {
+                return { query: '', operator: group.groupOperator || 'OR' };
+              }
+
+              const query = conditionQueries.length === 1
+                ? conditionQueries[0]
+                : `(${conditionQueries.join(` ${group.logicalOperator} `)})`;
+
+              return { query, operator: group.groupOperator || 'OR' };
+            });
+
+            const validQueries = groupQueries.filter((q: any) => q?.query !== '');
+
+            if (validQueries.length === 0) return '';
+            if (validQueries.length === 1) return validQueries[0]?.query;
+
+            let result = validQueries[0]?.query;
+            for (let i = 1; i < validQueries.length; i++) {
+              const currentOperator = validQueries[i - 1]?.operator;
+              result = `(${result} ${currentOperator} ${validQueries[i]?.query})`;
+            }
+
+            return result;
+          };
+
           // Get assignment_sets and tiering_on directly from selfConfig
           const assignmentSets = selfSource?.selfConfig?.assignment_sets || [];
           const tieringOn = selfSource?.selfConfig?.tiering_on ?? null;
 
-          // Transform assignment_sets: rename filter_config to filterJson
+          // Transform assignment_sets: regenerate filter_sql from filterJson
           const transformedAssignmentSets = assignmentSets?.map((set: any) => {
             const transformed: any = {
               value_to_assign: set?.value_to_assign || '',
-              filter_sql: set?.filter_sql || ''
+              filter_sql: '', // Will be regenerated
             };
 
-            // Rename filter_config to filterJson if it exists
+            // Rename filter_config to filterJson if it exists, and regenerate filter_sql
             if (set?.filter_config) {
-              transformed.filterJson = set?.filter_config;
+              transformed.filterJson = set.filter_config;
+              // Regenerate filter_sql from filterJson
+              transformed.filter_sql = generateSQLFromFilterJson(set.filter_config);
+            } else if (set?.filterJson) {
+              transformed.filterJson = set.filterJson;
+              // Regenerate filter_sql from filterJson
+              transformed.filter_sql = generateSQLFromFilterJson(set.filterJson);
+            } else {
+              // Fallback to existing filter_sql if no filterJson
+              transformed.filter_sql = set?.filter_sql || '';
             }
 
             return transformed;
@@ -5465,13 +5787,44 @@ const RequestCreationPage: React.FC = () => {
       const matchItems = extractMatchItemsForWorkflow();
       const selfAppendSources = extractSelfAppendSourcesForWorkflow(); // NEW: Self-append sources
 
-      const workflowArray = [
+      let workflowArray = [
         ...inputSourcesAndVersions,  // All input sources and versions in creation order
         ...appendItems,              // Append configs and versions sorted by creation order
         ...selfAppendSources,        // Self-append sources (NEW)
         ...suppressItems,            // Suppress configs and versions sorted by creation order
         ...matchItems                // Match configs and versions sorted by creation order
       ];
+
+      // ============================================================================
+      // RENUMBER STEPORDER TO REMOVE GAPS (Make stepOrder continuous)
+      // ============================================================================
+      // If a module has no configurations/versions/sources, its stepOrder is skipped.
+      // We need to renumber the workflow items so stepOrder is continuous (1, 2, 3, 4...)
+      // without gaps.
+      if (workflowArray?.length > 0) {
+        // Step 1: Find all unique stepOrder values that actually have items
+        const uniqueStepOrders = Array.from(
+          new Set(workflowArray?.map(item => item?.stepOrder).filter(step => typeof step === 'number'))
+        ).sort((a, b) => a - b);
+
+        // Step 2: Create mapping from old stepOrder → new continuous stepOrder
+        const stepOrderMapping = new Map<number, number>();
+        uniqueStepOrders?.forEach((oldStepOrder, index) => {
+          stepOrderMapping.set(oldStepOrder, index + 1); // 1-based indexing
+        });
+
+        // Step 3: Apply the mapping to renumber all workflow items
+        workflowArray = workflowArray?.map(item => ({
+          ...item,
+          stepOrder: stepOrderMapping.get(item?.stepOrder) ?? item?.stepOrder
+        }));
+
+        console.log('StepOrder Renumbering:');
+        console.log('  Original stepOrders:', uniqueStepOrders);
+        console.log('  Mapping:', Array.from(stepOrderMapping.entries()).map(([old, newVal]) => `${old} → ${newVal}`).join(', '));
+        console.log('  Renumbered workflow has continuous stepOrder values');
+      }
+      // ============================================================================
 
       // Log workflow array for debugging
       
@@ -6130,6 +6483,10 @@ const RequestCreationPage: React.FC = () => {
           versionCounters={versionCounters}
           onUpdateVersionCounter={handleUpdateVersionCounter}
           tableDictionary={tableDictionary}
+          onCheckIfSourceIsUsed={checkIfSourceIsUsed}
+          onShowUsageError={(title, message, usedIn) =>
+            setUsageErrorDialog({ open: true, title, message, usedIn })
+          }
         />
       );
     } else if (moduleId === 'panel2' || String(moduleId || '').startsWith('panel2_')) {
@@ -7919,6 +8276,51 @@ const RequestCreationPage: React.FC = () => {
           {saveLoading ? 'Submitting...' : 'Submit Request'}
         </Button>
       </Box>
+
+      {/* Usage Error Dialog */}
+      <Dialog
+        open={usageErrorDialog.open}
+        onClose={() => setUsageErrorDialog({ ...usageErrorDialog, open: false })}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            position: 'fixed',
+            top: 50,
+            m: 0,
+          },
+        }}
+        sx={{
+          '& .MuiDialog-container': {
+            alignItems: 'flex-start',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 2, fontWeight: 700, color: '#D32F2F' }}>
+          {usageErrorDialog.title}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            {usageErrorDialog.message}
+          </Typography>
+       
+          
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setUsageErrorDialog({ ...usageErrorDialog, open: false })}
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+            }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
         </>
       )}
     </Box>

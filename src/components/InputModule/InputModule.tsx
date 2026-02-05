@@ -91,6 +91,8 @@ interface InputModuleProps {
   onUpdateVersionCounter?: (module: 'Input', increment: number) => void;
   sharedCustomSources?: InputSource[]; // Sources from Append/Match/Suppress modules for validation
   tableDictionary?: any; // Table dictionary data from dictionary.php API
+  onCheckIfSourceIsUsed?: (sourceId: string) => { isUsed: boolean; usedIn: string[] }; // Check if source is used in downstream modules
+  onShowUsageError?: (title: string, message: string, usedIn: string[]) => void; // Show usage error dialog
 }
 
 const InputModule: React.FC<InputModuleProps> = ({
@@ -103,7 +105,9 @@ const InputModule: React.FC<InputModuleProps> = ({
   versionCounters = { Input: 0, Match: 0, Append: 0, Suppress: 0 },
   onUpdateVersionCounter,
   sharedCustomSources = [],
-  tableDictionary = null
+  tableDictionary = null,
+  onCheckIfSourceIsUsed,
+  onShowUsageError
 }) => {
   const [sources, setSources] = useState<InputSource[]>(initialSources || []);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -137,6 +141,29 @@ const InputModule: React.FC<InputModuleProps> = ({
   };
 
   const handleDeleteSource = (id: string) => {
+    // Check if this source is being used in downstream modules
+    if (onCheckIfSourceIsUsed) {
+      const { isUsed, usedIn } = onCheckIfSourceIsUsed(id);
+
+      if (isUsed) {
+        if (onShowUsageError) {
+          onShowUsageError(
+            'Cannot Delete Source',
+            'This source cannot be deleted because it is currently being used in the workflow',
+            usedIn
+          );
+        } else {
+          const usageList = usedIn.join('\n• ');
+          alert(`Cannot delete this source because it is being used in:\n\n• ${usageList}\n\nPlease remove it from the workflow first.`);
+        }
+        return;
+      }
+    }
+
+    if (!window.confirm('Are you sure you want to delete this source?')) {
+      return;
+    }
+
     const newSources = sources?.filter(s => s?.id !== id) || [];
     setSources(newSources);
     if (onSourcesChange) {
@@ -145,6 +172,28 @@ const InputModule: React.FC<InputModuleProps> = ({
   };
 
   const handleSaveSource = (source: InputSource, shouldClose: boolean = true) => {
+    // If editing an existing source, check if the name is being changed
+    if (editingSource && editingSource.sourceName !== source.sourceName) {
+      // Check if this source is being used in downstream modules
+      if (onCheckIfSourceIsUsed) {
+        const { isUsed, usedIn } = onCheckIfSourceIsUsed(editingSource.id);
+
+        if (isUsed) {
+          if (onShowUsageError) {
+            onShowUsageError(
+              'Cannot Rename Source',
+              'This source cannot be renamed because it is currently being used in the workflow',
+              usedIn
+            );
+          } else {
+            const usageList = usedIn.join('\n• ');
+            alert(`Cannot rename this source because it is being used in:\n\n• ${usageList}\n\nPlease remove it from the workflow before renaming.`);
+          }
+          return;
+        }
+      }
+    }
+
     let newSources: InputSource[];
     if (editingSource) {
       newSources = sources?.map(s => s?.id === source?.id ? source : s) || [];

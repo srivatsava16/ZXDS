@@ -306,6 +306,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({
       return;
     }
 
+    // Validation: If expand is checked, Add Fields are mandatory
+    if (matchConfig.expand && (!matchConfig.selectedAddFields || matchConfig.selectedAddFields?.length === 0)) {
+      alert('Please select at least one Add Field when Expand is enabled');
+      return;
+    }
+
     // Create versioned sources (n × m combinations)
     if (onCreateVersionedSource) {
       onCreateVersionedSource(
@@ -1643,9 +1649,9 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                     {/* Match On Fields Column */}
                     <TableCell sx={{ py: 0.75, px: 1.5, maxWidth: 250 }}>
                       {isVersion ? (
-                        // For versions, use addFields (user's Match Keys selection) first, fallback to operationFields
+                        // For versions, use operationFields
                         (() => {
-                          const matchKeys = version?.addFields || version?.operationFields || [];
+                          const matchKeys = version?.operationFields || [];
                           return matchKeys && matchKeys.length > 0 ? (
                             <Tooltip
                               title={
@@ -1697,12 +1703,12 @@ const MatchModule: React.FC<MatchModuleProps> = ({
                           );
                         })()
                       ) : config && (() => {
-                        // For configs, use addFields (user's Match Keys selection) first, fallback to matchOnFields
-                        const matchKeys = config.addFields || config.matchOnFields || [];
+                        // For configs, use matchOnFields
+                        const matchKeys = config.matchOnFields || [];
                         return matchKeys && matchKeys.length > 0;
                       })() ? (
                         (() => {
-                          const matchKeys = config.addFields || config.matchOnFields || [];
+                          const matchKeys = config.matchOnFields || [];
                           return (
                             <Tooltip
                               title={
