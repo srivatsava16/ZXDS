@@ -81,6 +81,7 @@ interface SuppressModuleProps {
   onEditSharedCustomSource?: (source: InputSource) => void;
   onDeleteSharedCustomSource?: (id: string) => void;
   appendConfigurations?: AppendConfig[]; // To track appended fields
+  modules?: Array<{ id: string; type: string }>; // All modules in workflow for position-based filtering
   // Module-level field mappings (shared across all configs/versions in this module)
   moduleFieldMappings?: any[];
   onModuleFieldMappingsChange?: (mappings: any[]) => void;
@@ -118,6 +119,7 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
   onEditSharedCustomSource,
   onDeleteSharedCustomSource,
   appendConfigurations = [],
+  modules = [],
   moduleFieldMappings = [],
   onModuleFieldMappingsChange,
   tableDictionary = null
@@ -328,14 +330,31 @@ const SuppressModule: React.FC<SuppressModuleProps> = ({
     }
   }, [selectedSuppressOnFields]); // Only run when suppress on fields change
 
-  // Helper function to get all fields for a source (original + appended fields)
+  // Helper function to get all fields for a source (original + appended fields from UPSTREAM modules only)
   const getSourceFieldsWithAppends = (source: InputSource): string[] => {
     // Start with original headers
     const originalHeaders = source.selectedHeaders || source.headers || [];
     const allFields = new Set<string>(originalHeaders);
 
+    // Find current module index for filtering
+    const currentModuleIndex = modules?.findIndex(m => m?.id === moduleId) ?? -1;
+
+    console.log(`[suppress-filter] SuppressModule ${moduleId} (index: ${currentModuleIndex}) - Computing fields for source: ${source?.sourceName}`);
+
+    // Filter to only UPSTREAM append configurations
+    const upstreamAppendConfigs = appendConfigurations?.filter(config => {
+      const configModuleId = (config as any)?.createdByModuleId;
+      const configModuleIndex = modules?.findIndex(m => m?.id === configModuleId) ?? -1;
+      // Include only if the config's module appears BEFORE the current module
+      const isUpstream = configModuleIndex !== -1 && configModuleIndex < currentModuleIndex;
+      console.log(`[suppress-filter] Append config from module ${configModuleId} (index: ${configModuleIndex}), is upstream: ${isUpstream}`);
+      return isUpstream;
+    });
+
+    console.log(`[suppress-filter] Total append configs: ${appendConfigurations?.length}, Upstream configs: ${upstreamAppendConfigs?.length}`);
+
     // Find all append configurations where this source is an input source
-    appendConfigurations?.forEach(config => {
+    upstreamAppendConfigs?.forEach(config => {
       // Check if this source is one of the input sources for this append config
       const isInputSource = config.inputSources?.some(inputSourceId => {
         const inputSource = availableInputSources?.find(s => s.id === inputSourceId);

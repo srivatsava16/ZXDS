@@ -264,8 +264,8 @@ const SourceConfigDialog: React.FC<SourceConfigDialogProps> = ({
     // Determine columnSelectionType: "A" if all headers selected, "S" if subset
     const columnSelectionType = selectedHeaders?.length === headers?.length ? 'A' : 'S';
 
-    // Determine inputType: "P" for preconfigured (has fileSourceId), "M" for manual
-    const inputType = source.fileSourceId ? 'I' : 'M';
+    // Determine inputType: "P" for preconfigured (has fileSourceId), "I" for manual
+    const inputType = 'I' ;
 
 
     return {

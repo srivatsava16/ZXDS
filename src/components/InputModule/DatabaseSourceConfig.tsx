@@ -35,6 +35,7 @@ import FilterBuilder from './FilterBuilder';
 import DataDictionaryDialog from './DataDictionaryDialog';
 import { type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
 import { getReservedNamesFromAPI } from '../../utils/sourceValidation';
+import { useNotification } from '../../contexts/NotificationContext';
 
 interface DatabaseSourceConfigProps {
   data: Partial<InputSource>;
@@ -76,6 +77,8 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
   allExistingSources = [],
   tableDictionary = null
 }) => {
+  const { showSnackbar } = useNotification();
+  
   /**
    * Generates a unique source name by checking against reserved names and existing sources
    * If baseName conflicts, appends _1, _2, _3, etc. until unique
@@ -607,7 +610,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
           } else {
-            alert(errorMsg);
+            showSnackbar(errorMsg, 'error');
           }
           setIsLoadingRecords(false);
           return;
@@ -622,7 +625,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
           } else {
-            alert(errorMsg);
+            showSnackbar(errorMsg, 'error');
           }
           setIsLoadingRecords(false);
           return;
@@ -636,7 +639,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
           if (tableSelectionType === 'custom') {
             setCustomTableError(errorMsg);
           } else {
-            alert(errorMsg);
+            showSnackbar(errorMsg, 'error');
           }
           setIsLoadingRecords(false);
           return;
@@ -649,7 +652,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         if (tableSelectionType === 'custom') {
           setCustomTableError(errorMsg);
         } else {
-          alert(errorMsg);
+          showSnackbar(errorMsg, 'error');
         }
         setIsLoadingRecords(false);
         return;
@@ -751,7 +754,13 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
         }
       }
 
-      setCustomTableError(errorMsg);
+      // Show error notification for both custom and preconfigured tables
+      showSnackbar(errorMsg, 'error');
+      
+      // Also set inline error for custom tables (for backwards compatibility)
+      if (tableSelectionType === 'custom') {
+        setCustomTableError(errorMsg);
+      }
 
       // Reset state on error
       setFields([]);
@@ -1106,7 +1115,7 @@ const DatabaseSourceConfig: React.FC<DatabaseSourceConfigProps> = ({
                   minWidth: '160px',
                 }}
               >
-                {isLoadingRecords ? 'Loading...' : 'Get Sample Recods'}
+                {isLoadingRecords ? 'Loading...' : 'Get Sample Records'}
               </Button>
               <Tooltip title="View Table Dictionary" arrow>
                 <span>

@@ -11,7 +11,7 @@ export default defineConfig(({ command, mode }) => {
 	
 	// Determine proxy target based on mode
 	const proxyTarget = mode === 'qa'
-		? 'https://qaapp.zt02.net/zxPlatformQAAPIs'
+		? 'http://alaska.zti9.com/zxPlatformQAAPIs'
 		: mode === 'dev'
 		? 'https://qaapp.zt02.net/zxPlatformDevAPIs'
 		: 'https://qaapp.zt02.net/zxPlatformDevAPIs';

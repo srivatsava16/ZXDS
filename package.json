@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "build:qa": "vite build --mode qa",
+    "build:uat": "vite build --mode uat",
     "build": "vite build --mode development",
     "build:dev": "vite build --mode development",
     "start": "vite --mode development",
     "start:local": "vite --mode localdev",
     "start:qa": "vite --mode qa",
+    "start:uat": "vite --mode uat",
     "lint": "eslint .",
     "preview": "vite preview"
   },

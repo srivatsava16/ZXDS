@@ -146,11 +146,31 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
 
       // Handle response data
       let responseData: Record<string, any>[];
+      let responseFileName: string | undefined;
 
       if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
         responseData = response.data;
+
+        // Extract fileName if provided in the API response
+        console.log('[filename] API Response:', response);
+        console.log('[filename] Checking if fileName exists in response:', 'fileName' in response);
+        if ('fileName' in response && typeof response.fileName === 'string') {
+          responseFileName = response.fileName;
+          console.log('[filename] ✓ API returned fileName:', responseFileName);
+        } else {
+          // If API doesn't return fileName, set to empty string
+          responseFileName = '';
+          console.log('[filename] ✗ API did NOT return fileName, setting to empty string');
+        }
+        console.log('[filename] Calling setFileName with:', responseFileName);
+        // Always update the local fileName state based on API response
+        setFileName(responseFileName);
       } else if (Array.isArray(response)) {
         responseData = response;
+
+        // For array fallback, no fileName in response - set to empty string
+        responseFileName = '';
+        setFileName(responseFileName);
       } else {
         alert('Invalid response format from API.');
         setIsLoadingRecords(false);
@@ -171,11 +191,22 @@ const SimpleFileSourceConfig: React.FC<SimpleFileSourceConfigProps> = ({ data, o
       // Auto-populate source name from filename (without extension)
       const autoSourceName = fileName.split('/').pop()?.split('\\').pop()?.replace(/\.[^/.]+$/, '') || '';
 
-      updateParentData({
+      const updateObj: any = {
         previewData: responseData,
         headers: detectedHeaders,
         sourceName: autoSourceName,
-      });
+      };
+
+      // Always include fileName from API response (empty string if not provided)
+      // The fileName comes from the API response, not from the uploaded file name
+      updateObj.fileName = responseFileName !== undefined ? responseFileName : '';
+
+      console.log('[filename] ========== BEFORE updateParentData ==========');
+      console.log('[filename] responseFileName:', responseFileName);
+      console.log('[filename] updateObj.fileName:', updateObj.fileName);
+      console.log('[filename] Current state fileName:', fileName);
+
+      updateParentData(updateObj);
 
       setIsLoadingRecords(false);
     } catch (error: any) {

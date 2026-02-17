@@ -32,6 +32,7 @@ import type { InputSource } from './InputModule';
 import FilterBuilder from './FilterBuilder';
 import {  type RequestInputsResponse, type Top10RecordsRequest, type Top10RecordsResponse, getTop10Records } from '../../services/api';
 import { validateCustomHeaders, getCustomHeadersErrorMessage } from '../../utils/columnNameValidation';
+import { useNotification } from '../../contexts/NotificationContext';
 
 interface FileSourceConfigProps {
   data: Partial<InputSource>;
@@ -62,6 +63,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   sourcesLoading = false,
   onValidationError
 }) => {
+  const { showSnackbar } = useNotification();
   
   const [fileSource, setFileSource] = useState<string>(data.subSourceType || 'SFTP');
   // Initialize selectedSource - will be properly set in useEffect when data/apiSources are available
@@ -82,7 +84,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
   const [selectedHeaders, setSelectedHeaders] = useState<string[]>(data.headers || []);
   // Track if we've fetched headers from data source - initialize to true if data already has headers or custom headers (edit mode)
   const [headersFetched, setHeadersFetched] = useState<boolean>(
-    !!(data?.headers?.length > 0 || data?.customHeaders)
+    !!(data?.headers?.length || data?.customHeaders)
   );
   const [dataTypes, setDataTypes] = useState<Record<string, string>>(data.dataTypes || {});
   const [filterQuery, setFilterQuery] = useState<string>(data.filterQuery || '');
@@ -406,7 +408,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     // Validate based on file source type
     if (fileSource === 'Desktop') {
       if (!fileName || !uploadedFile) {
-        alert('Please select a file to upload.');
+        showSnackbar('Please select a file to upload.', 'warning');
         return;
       }
     } else {
@@ -451,20 +453,21 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       }
 
       // Handle multiple response formats:
-      // 1. New format: { separator: string, data: object[], content: string }
-      // 2. Legacy format: { columns: string[], data: object[] }
+      // 1. New format: { separator: string, data: object[], content: string, fileName?: string }
+      // 2. Legacy format: { columns: string[], data: object[], fileName?: string }
       // 3. Plain array: object[] (fallback)
       let columns: string[];
       let responseData: Record<string, any>[];
       let responseSeparator: string | undefined;
       let responseContent: string | undefined;
+      let responseFileName: string | undefined;
 
       if (response && typeof response === 'object' && !Array.isArray(response) && 'data' in response && Array.isArray(response.data)) {
-        // New format: { separator: string, data: object[], content: string }
+        // New format: { separator: string, data: object[], content: string, fileName?: string }
         responseData = response.data;
 
         if (responseData?.length === 0) {
-          alert('No data found in the file. Please check the file format.');
+          showSnackbar('No data found in the file. Please check the file format.', 'error');
           setIsLoadingRecords(false);
           return;
         }
@@ -483,27 +486,61 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         if ('content' in response && typeof response.content === 'string') {
           responseContent = response.content;
         }
+
+        // Extract fileName if provided in the API response
+        console.log('[filename] API Response:', response);
+        console.log('[filename] Checking if fileName exists in response:', 'fileName' in response);
+        if ('fileName' in response && typeof response.fileName === 'string') {
+          responseFileName = response.fileName;
+          console.log('[filename] ✓ API returned fileName:', responseFileName);
+        } else {
+          // If API doesn't return fileName, set to empty string
+          responseFileName = '';
+          console.log('[filename] ✗ API did NOT return fileName, setting to empty string');
+        }
+        console.log('[filename] Calling setFileName with:', responseFileName);
+        // Always update the local fileName state based on API response
+        setFileName(responseFileName);
       } else if (response && typeof response === 'object' && !Array.isArray(response) && 'columns' in response && 'data' in response) {
-        // Legacy format: { columns: string[], data: object[] }
+        // Legacy format: { columns: string[], data: object[], fileName?: string }
         if (!response.columns || !Array.isArray(response.columns) || response.columns?.length === 0) {
-          alert('Invalid response format: missing columns.');
+          showSnackbar('Invalid response format: missing columns.', 'error');
           setIsLoadingRecords(false);
           return;
         }
         columns = response.columns;
         responseData = response.data;
+
+        // Extract fileName if provided in the API response
+        console.log('[filename] API Response:', response);
+        console.log('[filename] Checking if fileName exists in response:', 'fileName' in response);
+        if ('fileName' in response && typeof response.fileName === 'string') {
+          responseFileName = response.fileName;
+          console.log('[filename] ✓ API returned fileName:', responseFileName);
+        } else {
+          // If API doesn't return fileName, set to empty string
+          responseFileName = '';
+          console.log('[filename] ✗ API did NOT return fileName, setting to empty string');
+        }
+        console.log('[filename] Calling setFileName with:', responseFileName);
+        // Always update the local fileName state based on API response
+        setFileName(responseFileName);
       } else if (Array.isArray(response)) {
         // Plain array fallback: object[]
         if (response?.length === 0) {
-          alert('No data found in the file. Please check the file format.');
+          showSnackbar('No data found in the file. Please check the file format.', 'error');
           setIsLoadingRecords(false);
           return;
         }
         columns = Object.keys(response[0]);
         responseData = response;
+
+        // For array fallback, no fileName in response - set to empty string
+        responseFileName = '';
+        setFileName(responseFileName);
       } else {
         // Invalid format
-        alert('Received invalid data from server. Please try again.');
+        showSnackbar('Received invalid data from server. Please try again.', 'error');
         setIsLoadingRecords(false);
         return;
       }
@@ -511,14 +548,14 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Validate that we have data
       if (!Array.isArray(columns) || columns?.length === 0) {
 
-        alert('No columns found in the file. Please check the file format.');
+        showSnackbar('No columns found in the file. Please check the file format.', 'error');
         setIsLoadingRecords(false);
         return;
       }
 
       if (!Array.isArray(responseData)) {
 
-        alert('Invalid data format received. Please try again.');
+        showSnackbar('Invalid data format received. Please try again.', 'error');
         setIsLoadingRecords(false);
         return;
       }
@@ -583,7 +620,17 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
       // Include content preview if it was provided in the response
         updateObj.contentPreview = responseContent;
         setContentPreview(responseContent || ""); // Set in local state for immediate access
-      
+
+
+      // Always include fileName from API response (empty string if not provided)
+      // The fileName comes from the API response, not from the uploaded file name
+      updateObj.fileName = responseFileName !== undefined ? responseFileName : '';
+
+      console.log('[filename] ========== BEFORE updateParentData ==========');
+      console.log('[filename] responseFileName:', responseFileName);
+      console.log('[filename] updateObj.fileName:', updateObj.fileName);
+      console.log('[filename] Current state fileName:', fileName);
+      console.log('[filename] Full updateObj:', updateObj);
 
       updateParentData(updateObj);
 
@@ -600,7 +647,7 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
         errorMessage += 'Please check the file name and source, then try again.';
       }
 
-      alert(errorMessage);
+      showSnackbar(errorMessage, 'error');
 
       // Reset state on error
       setPreviewData([]);
@@ -774,13 +821,21 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
     console.log('[subSourceType] Current fileSource state:', fileSource);
     console.log('[subSourceType] updates:', updates);
 
+    console.log('[filename] ========== INSIDE updateParentData ==========');
+    console.log('[filename] updates.fileName:', updates?.fileName);
+    console.log('[filename] data.fileName (from parent):', data?.fileName);
+    console.log('[filename] state fileName:', fileName);
+    const willUseFileName = updates?.fileName !== undefined ? updates.fileName : (data?.fileName !== undefined ? data.fileName : fileName);
+    console.log('[filename] Will use:', willUseFileName);
+    console.log('[filename] Logic: updates has fileName?', updates?.fileName !== undefined, '| parent has fileName?', data?.fileName !== undefined);
+
     const finalData = {
       ...data,
       subSourceType: fileSource,
       fileSource: updates?.fileSource !== undefined ? updates?.fileSource : data?.fileSource,
       fileSourceId: updates?.fileSourceId !== undefined ? updates?.fileSourceId : data?.fileSourceId,
       filePath,
-      fileName,
+      fileName: updates?.fileName !== undefined ? updates.fileName : (data?.fileName !== undefined ? data.fileName : fileName),
       delimiter,
       hasHeader,
       customHeaders: customHeadersInput?.trim(),
@@ -797,6 +852,8 @@ const FileSourceConfig: React.FC<FileSourceConfigProps> = ({
 
     console.log('[subSourceType] finalData.subSourceType:', finalData?.subSourceType);
     console.log('[subSourceType] Calling onChange with finalData');
+    console.log('[filename] finalData.fileName:', finalData?.fileName);
+    console.log('[filename] ========== Calling parent onChange ==========');
 
     onChange(finalData);
   };

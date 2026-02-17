@@ -55,6 +55,7 @@ export interface MatchModuleProps {
   // Configuration tracking for dependency validation
   onConfigurationsChange?: (configs: MatchConfig[]) => void;
   appendConfigurations?: AppendConfig[]; // To track appended fields
+  modules?: Array<{ id: string; type: string }>; // All modules in workflow for position-based filtering
   // Module-level field mappings (shared across all configs/versions in this module)
   moduleFieldMappings?: any[];
   onModuleFieldMappingsChange?: (mappings: any[]) => void;

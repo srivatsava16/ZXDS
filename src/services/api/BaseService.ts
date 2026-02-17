@@ -5,10 +5,10 @@ import { store } from '../../store';
 const unauthorizedCode = [401];
 
 // Debug: Log the base URL being used
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'https://qaapp.zt02.net/zxPlatformDevAPIs';
+const baseURL = import.meta.env.MODE === "qa" ? "http://alaska.zti9.com/zxPlatformQAAPIs" 
+  : import.meta.env.MODE === "uat" ? "http://alaska.zti9.com/zxPlatformUATAPIs" 
+  : 'http://alaska.zti9.com/zxPlatformDevAPIs';
 console.log('🔧 BaseService - Mode:', import.meta.env.MODE);
-console.log('🔧 BaseService - DEV:', import.meta.env.DEV);
-console.log('🔧 BaseService - VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
 console.log('🔧 BaseService - Using baseURL:', baseURL);
 
 const BaseService = axios.create({

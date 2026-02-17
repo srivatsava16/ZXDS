@@ -62,6 +62,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
   onDeleteSharedCustomSource,
   onConfigurationsChange,
   appendConfigurations = [],
+  modules = [],
   moduleFieldMappings = [],
   onModuleFieldMappingsChange,
   tableDictionary = null
@@ -344,7 +345,7 @@ const MatchModule: React.FC<MatchModuleProps> = ({
     return id;
   };
 
-  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources, fieldMappings, appendConfigurations);
+  const matchOnFields = getMatchOnFields(matchConfig.selectedInputSources, availableInputSources, fieldMappings, appendConfigurations, modules, moduleId);
 
   // Extract versioned sources from availableInputSources
   const localVersionedSources = availableInputSources?.filter(src =>

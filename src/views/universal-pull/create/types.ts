@@ -15,7 +15,8 @@ export interface StatsConfiguration {
 
 // API format for Stats
 export interface StatsAPIFormat {
-  id?: string | number; // Optional ID for existing stats configs (for update payload)
+  id?: string | number; // Optional single ID for existing stats configs (for update payload)
+  ids?: number[]; // Optional array of IDs for existing stats configs (API can return array format)
   input_sources: Array<{
     source_name: string;
     columns: string[];
@@ -66,11 +67,25 @@ export const transformStatsConfigToAPI = (
     breakdown_by: config.breakdownBy
   };
 
-  // Include ID if this is an existing stats config (for update payload)
-  if ((config as any).hasExistingId && config.id) {
-    result.id = config.id;
+  console.log('[updatepayload] transformStatsConfigToAPI - config.id:', config.id);
+  console.log('[updatepayload] transformStatsConfigToAPI - config.ids:', (config as any).ids);
+  console.log('[updatepayload] transformStatsConfigToAPI - config.hasExistingId:', (config as any).hasExistingId);
+
+  // Include ID(s) if this is an existing stats config (for update payload)
+  // Preserve the format from API - can be either `id` (singular) or `ids` (array)
+  if ((config as any).hasExistingId) {
+    if ((config as any).ids && Array.isArray((config as any).ids)) {
+      result.ids = (config as any).ids;
+      console.log('[updatepayload] transformStatsConfigToAPI - Added IDs array to result:', result.ids);
+    } else if (config.id) {
+      result.id = config.id;
+      console.log('[updatepayload] transformStatsConfigToAPI - Added single ID to result:', result.id);
+    }
+  } else {
+    console.log('[updatepayload] transformStatsConfigToAPI - NOT adding ID - hasExistingId is false');
   }
 
+  console.log('[updatepayload] transformStatsConfigToAPI - Final result:', result);
   return result;
 };
 

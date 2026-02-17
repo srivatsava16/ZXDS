@@ -68,6 +68,10 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
   const [region, setRegion] = useState('us-east-1');
   const [showPassword, setShowPassword] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [originalPassword, setOriginalPassword] = useState('');
+  const [originalSecretKey, setOriginalSecretKey] = useState('');
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [secretKeyChanged, setSecretKeyChanged] = useState(false);
 
   useEffect(() => {
     if (editingStream) {
@@ -76,10 +80,16 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       setHost(editingStream?.host || '');
       setPort(editingStream?.port || '22');
       setUsername(editingStream?.username || '');
-      setPassword(editingStream?.password || '');
+      const pwd = editingStream?.password || '';
+      setPassword(pwd);
+      setOriginalPassword(pwd);
+      setPasswordChanged(false);
       setDefaultPath(editingStream?.defaultPath || '');
       setAccessKey(editingStream?.accessKey || '');
-      setSecretKey(editingStream?.secretKey || '');
+      const secKey = editingStream?.secretKey || '';
+      setSecretKey(secKey);
+      setOriginalSecretKey(secKey);
+      setSecretKeyChanged(false);
       setDefaultBucket(editingStream?.defaultBucket || '');
       setRegion(editingStream?.region || 'us-east-1');
     } else {
@@ -90,9 +100,13 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
       setPort('22');
       setUsername('');
       setPassword('');
+      setOriginalPassword('');
+      setPasswordChanged(false);
       setDefaultPath('');
       setAccessKey('');
       setSecretKey('');
+      setOriginalSecretKey('');
+      setSecretKeyChanged(false);
       setDefaultBucket('');
       setRegion('us-east-1');
     }
@@ -105,29 +119,63 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
     }
 
     if (sourceType === 'SFTP') {
-      if (!host?.trim() || !port?.trim() || !username?.trim() || !password?.trim() || !defaultPath?.trim()) {
+      if (!host?.trim() || !port?.trim() || !username?.trim() || !defaultPath?.trim()) {
         alert('Please complete all SFTP fields');
         return;
       }
+      // For edit mode, password is optional if not changed (masked passwords should not be required)
+      if (!editingStream && !password?.trim()) {
+        alert('Please enter a password');
+        return;
+      }
     } else if (sourceType === 'AWS S3') {
-      if (!accessKey?.trim() || !secretKey?.trim() || !defaultBucket?.trim() || !region?.trim()) {
+      if (!accessKey?.trim() || !defaultBucket?.trim() || !region?.trim()) {
         alert('Please complete all AWS S3 fields');
         return;
       }
+      // For edit mode, secret key is optional if not changed (masked keys should not be required)
+      if (!editingStream && !secretKey?.trim()) {
+        alert('Please enter a secret key');
+        return;
+      }
     }
+
+    // Helper function to check if a value is a masked password
+    const isMaskedValue = (value: string) => {
+      return value === '*******' || /^\*+$/.test(value);
+    };
 
     const stream: DataStream = {
       id: editingStream?.id || Date.now().toString(),
       name,
       sourceType,
       ...(sourceType === 'SFTP'
-        ? { host, port, username, password, defaultPath }
-        : { accessKey, secretKey, defaultBucket, region, defaultPath }),
+        ? {
+            host,
+            port,
+            username,
+            // Only include password if it was changed or is not masked
+            password: passwordChanged && !isMaskedValue(password) ? password : undefined,
+            defaultPath,
+          }
+        : {
+            accessKey,
+            // Only include secret key if it was changed or is not masked
+            secretKey: secretKeyChanged && !isMaskedValue(secretKey) ? secretKey : undefined,
+            defaultBucket,
+            region,
+            defaultPath,
+          }),
       createdBy: editingStream?.createdBy || 'Current User',
       createdDate: editingStream?.createdDate || new Date().toISOString(),
       processStatus: editingStream?.processStatus || 'Active',
       processedFullTime: editingStream?.processedFullTime || '-',
     };
+
+    console.log('[DataStreams DIALOG] sourceType:', sourceType);
+    console.log('[DataStreams DIALOG] defaultPath state:', defaultPath);
+    console.log('[DataStreams DIALOG] stream object:', stream);
+    console.log('[DataStreams DIALOG] stream.defaultPath:', stream.defaultPath);
 
     onSave(stream);
     handleClose();
@@ -140,9 +188,13 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
     setPort('22');
     setUsername('');
     setPassword('');
+    setOriginalPassword('');
+    setPasswordChanged(false);
     setDefaultPath('');
     setAccessKey('');
     setSecretKey('');
+    setOriginalSecretKey('');
+    setSecretKeyChanged(false);
     setDefaultBucket('');
     setRegion('us-east-1');
     setShowPassword(false);
@@ -323,9 +375,12 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
                   fullWidth
                   size="small"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter password"
+                  placeholder={editingStream ? "Leave unchanged or enter new password" : "Enter password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordChanged(true);
+                  }}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -380,9 +435,12 @@ const DataStreamDialog: React.FC<DataStreamDialogProps> = ({
                 fullWidth
                 size="small"
                 type={showSecretKey ? 'text' : 'password'}
-                placeholder="Enter secret key"
+                placeholder={editingStream ? "Leave unchanged or enter new secret key" : "Enter secret key"}
                 value={secretKey}
-                onChange={(e) => setSecretKey(e.target.value)}
+                onChange={(e) => {
+                  setSecretKey(e.target.value);
+                  setSecretKeyChanged(true);
+                }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

@@ -146,16 +146,29 @@ const DataStreamsPage = () => {
 
         // Add source-specific fields
         if (stream?.sourceType === 'SFTP') {
+          console.log('[DataStreams UPDATE] stream.defaultPath:', stream?.defaultPath);
           updatePayload.hostName = stream?.host || '';
           updatePayload.port = parseInt(stream?.port || '22');
           updatePayload.userName = stream?.username || '';
-          updatePayload.password = stream?.password || '';
+          // Only include password if it was provided (not undefined)
+          if (stream?.password !== undefined) {
+            updatePayload.password = stream?.password;
+          }
           updatePayload.defaultDirectory = stream?.defaultPath || '';
+          console.log('[DataStreams UPDATE] updatePayload.defaultDirectory:', updatePayload.defaultDirectory);
+          console.log('[DataStreams UPDATE] Full payload:', updatePayload);
         } else if (stream?.sourceType === 'AWS S3') {
+          console.log('[DataStreams UPDATE AWS] stream.defaultPath:', stream?.defaultPath);
           updatePayload.bucketName = stream?.defaultBucket || '';
           updatePayload.accessKey = stream?.accessKey || '';
-          updatePayload.secretKey = stream?.secretKey || '';
+          // Only include secret key if it was provided (not undefined)
+          if (stream?.secretKey !== undefined) {
+            updatePayload.secretKey = stream?.secretKey;
+          }
           updatePayload.region = stream?.region || 'us-east-1';
+          updatePayload.defaultDirectory = stream?.defaultPath || '';
+          console.log('[DataStreams UPDATE AWS] updatePayload.defaultDirectory:', updatePayload.defaultDirectory);
+          console.log('[DataStreams UPDATE AWS] Full payload:', updatePayload);
         }
 
         response = await updateDataStream(updatePayload);
@@ -171,16 +184,23 @@ const DataStreamsPage = () => {
 
         // Add source-specific fields
         if (stream?.sourceType === 'SFTP') {
+          console.log('[DataStreams CREATE] stream.defaultPath:', stream?.defaultPath);
           createPayload.hostName = stream?.host || '';
           createPayload.port = parseInt(stream?.port || '22');
           createPayload.userName = stream?.username || '';
           createPayload.password = stream?.password || '';
           createPayload.defaultDirectory = stream?.defaultPath || '';
+          console.log('[DataStreams CREATE] createPayload.defaultDirectory:', createPayload.defaultDirectory);
+          console.log('[DataStreams CREATE] Full payload:', createPayload);
         } else if (stream?.sourceType === 'AWS S3') {
+          console.log('[DataStreams CREATE AWS] stream.defaultPath:', stream?.defaultPath);
           createPayload.bucketName = stream?.defaultBucket || '';
           createPayload.accessKey = stream?.accessKey || '';
           createPayload.secretKey = stream?.secretKey || '';
           createPayload.region = stream?.region || 'us-east-1';
+          createPayload.defaultDirectory = stream?.defaultPath || '';
+          console.log('[DataStreams CREATE AWS] createPayload.defaultDirectory:', createPayload.defaultDirectory);
+          console.log('[DataStreams CREATE AWS] Full payload:', createPayload);
         }
 
         response = await createDataStream(createPayload);

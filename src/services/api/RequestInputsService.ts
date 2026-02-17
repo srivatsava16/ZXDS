@@ -108,14 +108,15 @@ export interface Top10RecordsRequest {
 }
 
 // API can return multiple formats:
-// 1. New format: { separator?: string, data: Record<string, any>[] }
-// 2. Legacy format: { columns: string[], data: Record<string, any>[] }
+// 1. New format: { separator?: string, data: Record<string, any>[], fileName?: string }
+// 2. Legacy format: { columns: string[], data: Record<string, any>[], fileName?: string }
 // 3. Plain array: Record<string, any>[] (fallback)
 export interface Top10RecordsResponse {
   columns?: string[];
   data: Record<string, any>[];
   separator?: string;
   content?: string; // Raw delimited text content for preview
+  fileName?: string; // File name returned from API (especially for Desktop uploads)
 }
 
 export async function getRequestInputs(): Promise<RequestInputsResponse> {

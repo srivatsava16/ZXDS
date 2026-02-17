@@ -66,6 +66,7 @@ interface OutputModuleProps {
   onConfigurationsChange?: (configurations: OutputConfig[]) => void;
   onTransformedDataChange?: (transformedData: OutputAPIPayload | null) => void;
   appendConfigurations?: AppendConfig[]; // To track appended fields
+  sharedCustomSources?: InputSource[]; // Custom sources (including self-sources)
 }
 
 const OutputModule: React.FC<OutputModuleProps> = ({
@@ -76,6 +77,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   onConfigurationsChange,
   onTransformedDataChange,
   appendConfigurations = [],
+  sharedCustomSources = [],
 }) => {
   const { showAlert } = useNotification();
   const [configs, setConfigs] = useState<OutputConfig[]>([]);
@@ -172,9 +174,53 @@ const OutputModule: React.FC<OutputModuleProps> = ({
   // Helper function to get all fields for a source (original + appended fields)
   const getSourceFieldsWithAppends = useMemo(() => {
     return (source: InputSource): string[] => {
+      console.log('[issuee] OUTPUT MODULE - getSourceFieldsWithAppends called for source:', source?.sourceName);
+
+      // Check if this is a versioned source with combinedHeaders
+      // Versioned sources already have all fields (including generated columns) in combinedHeaders
+      const isVersionedSource = (source as any)?.isVersioned === true;
+      const combinedHeaders = (source as any)?.combinedHeaders;
+
+      console.log('[issuee] OUTPUT MODULE - isVersionedSource:', isVersionedSource);
+      console.log('[issuee] OUTPUT MODULE - combinedHeaders:', combinedHeaders);
+
+      if (isVersionedSource && combinedHeaders && Array.isArray(combinedHeaders)) {
+        // For versioned sources, use combinedHeaders which includes all fields
+        const allFields = new Set<string>();
+        combinedHeaders?.forEach((header: string) => {
+          if (header && typeof header === 'string') {
+            allFields.add(header);
+          }
+        });
+
+        // IMPORTANT: Also add generated columns from self-append sources that use this versioned source as input
+        sharedCustomSources?.forEach(customSource => {
+          // Check if this is a self-append source
+          if (customSource?.sourceType === 'Self' && (customSource as any)?.selfConfig) {
+            const { input_source_names, generated_column } = (customSource as any).selfConfig;
+
+            // Check if this versioned source is one of the input sources for this self-append source
+            const isInputSource = input_source_names?.includes(source?.sourceName);
+
+            // If this versioned source is used in the self-append config, add the generated column
+            if (isInputSource && generated_column) {
+              console.log('[issuee] OUTPUT MODULE - Adding generated column from self-source to versioned source:', generated_column);
+              allFields.add(generated_column);
+            }
+          }
+        });
+
+        const result = Array.from(allFields);
+        console.log('[issuee] OUTPUT MODULE - Returning combinedHeaders for versioned source (with self-source columns):', result);
+        return result;
+      }
+
+      // For regular (non-versioned) sources, use original logic
       // Start with original headers
       const originalHeaders = source?.selectedHeaders || source?.headers || [];
       const allFields = new Set<string>();
+
+      console.log('[issuee] OUTPUT MODULE - Using originalHeaders for non-versioned source:', originalHeaders);
 
       // Add original headers, filtering out null/undefined values
       originalHeaders?.forEach((header: string) => {
@@ -201,9 +247,28 @@ const OutputModule: React.FC<OutputModuleProps> = ({
         }
       });
 
-      return Array.from(allFields);
+      // IMPORTANT: Also add generated columns from self-append sources that use this source as input
+      sharedCustomSources?.forEach(customSource => {
+        // Check if this is a self-append source
+        if (customSource?.sourceType === 'Self' && (customSource as any)?.selfConfig) {
+          const { input_source_names, generated_column } = (customSource as any).selfConfig;
+
+          // Check if this source is one of the input sources for this self-append source
+          const isInputSource = input_source_names?.includes(source?.sourceName);
+
+          // If this source is used in the self-append config, add the generated column
+          if (isInputSource && generated_column) {
+            console.log('[issuee] OUTPUT MODULE - Adding generated column from self-source:', generated_column);
+            allFields.add(generated_column);
+          }
+        }
+      });
+
+      const result = Array.from(allFields);
+      console.log('[issuee] OUTPUT MODULE - Returning fields for non-versioned source:', result);
+      return result;
     };
-  }, [appendConfigurations, availableInputSources]);
+  }, [appendConfigurations, availableInputSources, sharedCustomSources]);
 
   // Memoize available output fields to prevent infinite re-renders
   // IMPORTANT: Show only COMMON fields (intersection) when multiple sources are selected
@@ -228,9 +293,13 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       if (source) {
         const allFields = getSourceFieldsWithAppends(source); // Include appended fields
         console.log('All fields (including appends):', allFields);
+        console.log('[issuee] OUTPUT MODULE - getSourceFieldsWithAppends result:', allFields);
+        console.log('[issuee] OUTPUT MODULE - Source isVersioned:', (source as any)?.isVersioned);
+        console.log('[issuee] OUTPUT MODULE - Source combinedHeaders:', (source as any)?.combinedHeaders);
 
         if (!allFields || allFields.length === 0) {
           console.warn('=== OutputModule: Source has no fields ===');
+          console.warn('[issuee] OUTPUT MODULE - WARNING: Source has no fields!');
           return [];
         }
 
@@ -265,6 +334,7 @@ const OutputModule: React.FC<OutputModuleProps> = ({
       });
 
       console.log('=== OutputModule: Final available fields ===', safeResult);
+      console.log('[issuee] OUTPUT MODULE - FINAL availableOutputFields (single source):', safeResult);
       return safeResult;
     }
 
@@ -821,14 +891,33 @@ const OutputModule: React.FC<OutputModuleProps> = ({
                     value={selectedInputSources}
                     onChange={(e) => {
                       const value = typeof e.target.value === 'string' ? e.target.value?.split(',') : e.target.value;
+
+                      console.log('[issuee] OUTPUT MODULE - Input sources changed:', value);
+
                       if (value?.includes('select-all-input-sources')) {
                         if (selectedInputSources?.length === filteredInputSources?.length) {
                           setSelectedInputSources([]);
                           setSelectedOutputFields([]);
                         } else {
-                          setSelectedInputSources(filteredInputSources?.map(src => src.id));
+                          const allSourceIds = filteredInputSources?.map(src => src.id);
+                          console.log('[issuee] OUTPUT MODULE - Selecting all sources:', allSourceIds);
+                          setSelectedInputSources(allSourceIds);
                         }
                       } else {
+                        console.log('[issuee] OUTPUT MODULE - Setting input sources:', value);
+
+                        // Log details for each selected source
+                        value?.forEach((sourceId: string) => {
+                          const source = availableInputSources?.find(s => s?.id === sourceId);
+                          console.log('[issuee] OUTPUT MODULE - Source details for ID:', sourceId);
+                          console.log('[issuee] OUTPUT MODULE - Source object:', source);
+                          console.log('[issuee] OUTPUT MODULE - Source name:', source?.sourceName);
+                          console.log('[issuee] OUTPUT MODULE - Is versioned:', (source as any)?.isVersioned);
+                          console.log('[issuee] OUTPUT MODULE - combinedHeaders:', (source as any)?.combinedHeaders);
+                          console.log('[issuee] OUTPUT MODULE - headers:', source?.headers);
+                          console.log('[issuee] OUTPUT MODULE - selectedHeaders:', source?.selectedHeaders);
+                        });
+
                         setSelectedInputSources(value);
                         setSelectedOutputFields([]);
                       }

@@ -9,19 +9,38 @@ interface AppendConfig {
 }
 
 /**
- * Helper to get all fields for a source (original + appended fields)
+ * Helper to get all fields for a source (original + appended fields from UPSTREAM modules only)
  */
 const getSourceFieldsWithAppends = (
   source: InputSource,
   appendConfigurations: AppendConfig[],
-  availableInputSources: InputSource[]
+  availableInputSources: InputSource[],
+  modules?: Array<{ id: string; type: string }>,
+  currentModuleId?: string
 ): string[] => {
   // Start with original headers
   const originalHeaders = source.selectedHeaders || source.headers || [];
   const allFields = new Set<string>(originalHeaders);
 
+  // Find current module index for filtering
+  const currentModuleIndex = modules?.findIndex(m => m?.id === currentModuleId) ?? -1;
+
+  console.log(`[match-filter] MatchModule ${currentModuleId} (index: ${currentModuleIndex}) - Computing fields for source: ${source?.sourceName}`);
+
+  // Filter to only UPSTREAM append configurations
+  const upstreamAppendConfigs = appendConfigurations?.filter(config => {
+    const configModuleId = (config as any)?.createdByModuleId;
+    const configModuleIndex = modules?.findIndex(m => m?.id === configModuleId) ?? -1;
+    // Include only if the config's module appears BEFORE the current module
+    const isUpstream = configModuleIndex !== -1 && configModuleIndex < currentModuleIndex;
+    console.log(`[match-filter] Append config from module ${configModuleId} (index: ${configModuleIndex}), is upstream: ${isUpstream}`);
+    return isUpstream;
+  });
+
+  console.log(`[match-filter] Total append configs: ${appendConfigurations?.length}, Upstream configs: ${upstreamAppendConfigs?.length}`);
+
   // Find all append configurations where this source is an input source
-  appendConfigurations?.forEach(config => {
+  upstreamAppendConfigs?.forEach(config => {
     // Check if this source is one of the input sources for this append config
     const isInputSource = config?.inputSources?.some(inputSourceId => {
       const inputSource = availableInputSources?.find(s => s?.id === inputSourceId);
@@ -59,7 +78,9 @@ export const getMatchOnFields = (
   sourceIds: string[],
   availableInputSources: InputSource[],
   fieldMappings?: Array<{ id: string; fieldName: string; selectedSources: string[]; selectedColumns: string[] }>,
-  appendConfigurations: AppendConfig[] = []
+  appendConfigurations: AppendConfig[] = [],
+  modules?: Array<{ id: string; type: string }>,
+  currentModuleId?: string
 ): string[] => {
   if (sourceIds?.length === 0) return [];
 
@@ -70,7 +91,7 @@ export const getMatchOnFields = (
   const fieldsMap = new Map<string, string>();
 
   selectedSources?.forEach(source => {
-    const headers = getSourceFieldsWithAppends(source, appendConfigurations, availableInputSources); // Include appended fields
+    const headers = getSourceFieldsWithAppends(source, appendConfigurations, availableInputSources, modules, currentModuleId); // Include appended fields from UPSTREAM modules only
 
     headers?.forEach(field => {
       const sourceFieldKey = `${source?.id}::${field}`;

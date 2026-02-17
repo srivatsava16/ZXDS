@@ -32,8 +32,13 @@ const LoginPage: React.FC = () => {
   };
 
   const handleSignIn = () => {
-    // Demo: Navigate to main app
-    navigate?.('/report');
+    // For now, accept any username/password (no validation)
+    // Store authentication token in localStorage
+    localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('username', formData.username);
+
+    // Navigate to Data Requests list page (not to any specific project)
+    navigate('/dataPullReports');
   };
 
   const handleForgotPassword = () => {
